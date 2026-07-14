@@ -1,0 +1,27 @@
+# CMake build output
+build/
+cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Compiled files
+*.o
+*.out
+*.exe
+*.dylib
+*.so
+*.a
+
+# Debug files
+*.dSYM/
