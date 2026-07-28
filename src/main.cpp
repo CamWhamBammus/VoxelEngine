@@ -6,7 +6,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
-#include "engine.h"
+#include "renderer.h"
+#include "window.h"
 
 int main()
 {
