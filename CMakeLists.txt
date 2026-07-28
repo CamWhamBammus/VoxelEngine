@@ -10,7 +10,7 @@ find_package(glfw3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
-add_executable(GameEngine1 src/main.cpp)
+add_executable(GameEngine1 src/main.cpp src/engine.cpp)
 
 target_link_libraries(GameEngine1 PRIVATE
     OpenGL::GL
