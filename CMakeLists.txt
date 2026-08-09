@@ -10,7 +10,7 @@ find_package(glfw3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
-add_executable(VoxelEngine src/main.cpp)
+add_executable(VoxelEngine src/main.cpp src/core/debug.cpp)
 
 target_link_libraries(VoxelEngine PRIVATE
     OpenGL::GL
