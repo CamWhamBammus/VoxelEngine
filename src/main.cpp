@@ -1,5 +1,6 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include "core/debug.h"
 
 #include <iostream>
 
@@ -37,7 +38,6 @@ int main()
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << "\n";
     std::cout << glGetString(GL_RENDERER) << "\n";
     std::cout << glGetString(GL_VENDOR) << "\n";
-
 
     while(!glfwWindowShouldClose(window))
     {
