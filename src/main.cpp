@@ -4,10 +4,64 @@
 
 #include <iostream>
 
+const char* vertexShaderSource = R"(
+    #version 410 core
+    layout(location = 0) in vec2 aPos;
+    void main() {
+    gl_Position = vec4(aPos, 0.0, 1.0);
+    }
+    )";
+    const char* fragmentShaderSource = R"(
+    #version 410 core
+    out vec4 FragColor;
+    void main() {
+    FragColor = vec4(1.0, 0.5, 0.2, 1.0);
+    }
+    )";
+GLuint compileShader(GLenum type, const char* source) 
+{
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, nullptr);
+    glCompileShader(shader);
+    GLint success;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+    if (!success) 
+    {
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        std::cerr << "Shader compilation failed:\n" << infoLog << "\n";
+    }
+    return shader;
+}
+
+GLuint createProgram(const char* vertexSrc, const char* fragmentSrc) 
+{
+    GLuint vs = compileShader(GL_VERTEX_SHADER, vertexSrc);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragmentSrc);
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vs);
+    glAttachShader(program, fs);
+    glLinkProgram(program);
+    GLint success;
+    glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (!success) 
+    {
+        char infoLog[512];
+        glGetProgramInfoLog(program, 512, nullptr, infoLog);
+        std::cerr << "Program linking failed:\n" << infoLog << "\n";
+    }
+    // The shader objects are only needed during linking; the program keeps
+    // its own internal compiled representation afterward. We free them
+    // immediately rather than leaking two objects we'll never use again.
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    return program;
+}
 
 
 int main()
 {
+    
     if (!glfwInit())
     {
         std::cerr << "Failed to initialize glfw\n";
@@ -34,21 +88,43 @@ int main()
         std::cerr << "Failed to initialize GLEW\n";
         return-1;
     }
-
+    /*
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << "\n";
     std::cout << glGetString(GL_RENDERER) << "\n";
     std::cout << glGetString(GL_VENDOR) << "\n";
-
-    while(!glfwWindowShouldClose(window))
+    */
+    float vertices[] = 
     {
-        float color = (sin(static_cast<float>(glfwGetTime())) + 1.0f) / 2.0f;
-        
-        glClearColor(color,1.0f - color,.15f,1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        0.0f, 0.5f,
+        -0.5f, -0.5f,
+        0.5f, -0.5f,
+    };
+    GLuint vao, vbo;
+    GLCall(glGenVertexArrays(1, &vao));
+    GLCall(glBindVertexArray(vao));
+
+    GLCall(glGenBuffers(1, &vbo));
+    GLCall(glBindBuffer(GL_ARRAY_BUFFER, vbo));
+    GLCall(glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW));
+    GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0));
+    GLCall(glEnableVertexAttribArray(0));
+    GLCall(glBindVertexArray(0));
+    GLuint shaderProgram = createProgram(vertexShaderSource, fragmentShaderSource);
+    
+    while (!glfwWindowShouldClose(window)) 
+    {
+        GLCall(glClearColor(0.1f, 0.1f, 0.15f, 1.0f));
+        GLCall(glClear(GL_COLOR_BUFFER_BIT));
+        GLCall(glUseProgram(shaderProgram));
+        GLCall(glBindVertexArray(vao));
+        GLCall(glDrawArrays(GL_TRIANGLES, 0, 3));
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
 
+    GLCall(glDeleteVertexArrays(1, &vao));
+    GLCall(glDeleteBuffers(1, &vbo));
+    GLCall(glDeleteProgram(shaderProgram));
     glfwTerminate();
     return 0;
 }
