@@ -7,15 +7,20 @@
 const char* vertexShaderSource = R"(
     #version 410 core
     layout(location = 0) in vec2 aPos;
-    void main() {
-    gl_Position = vec4(aPos, 0.0, 1.0);
+    void main() 
+    {
+        gl_Position = vec4(aPos, 0.0, 1.0);
     }
     )";
     const char* fragmentShaderSource = R"(
     #version 410 core
     out vec4 FragColor;
-    void main() {
-    FragColor = vec4(1.0, 0.5, 0.2, 1.0);
+    void main() 
+    {
+        float red = gl_FragCoord.x / 1280.0;
+        float green = gl_FragCoord.y / 720.0;
+        float blue = (gl_FragCoord.x + gl_FragCoord.y)/(720.0 + 1280.0);
+        FragColor = vec4(red, green, blue, 1.0);
     }
     )";
 GLuint compileShader(GLenum type, const char* source) 
@@ -31,6 +36,7 @@ GLuint compileShader(GLenum type, const char* source)
         glGetShaderInfoLog(shader, 512, nullptr, infoLog);
         std::cerr << "Shader compilation failed:\n" << infoLog << "\n";
     }
+    
     return shader;
 }
 
