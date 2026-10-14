@@ -2,6 +2,9 @@
 #include "core/camera.h"
 #include "core/input.h"
 #include "render/world_renderer.h"
+#include "render/overlay.h"
+#include "voxel/editor.h"
+#include "voxel/raycast.h"
 #include "voxel/world.h"
 
 #include <GL/glew.h>
@@ -28,12 +31,14 @@ int main(int argc, char** argv)
         voxel::World world;
         voxel::Camera camera;
         voxel::WorldRenderer renderer;
+        voxel::Overlay overlay;
         // Input changes the system cursor only for interactive runs.
         std::optional<voxel::Input> input;
         if (!smokeTest) input.emplace(window.handle());
         std::cout << "OpenGL: " << glGetString(GL_VERSION) << '\n'
                   << "WASD fly | Mouse look | Space/Ctrl up/down | Shift boost\n"
                   << "Esc release mouse | Tab capture mouse | F wireframe | Q quit\n";
+        std::cout << "Left click remove | Right click place | 1 Grass 2 Dirt 3 Stone 4 Sand\n";
         double previousTime = glfwGetTime();
         double titleTime = previousTime;
         int frames = 0;
@@ -42,6 +47,19 @@ int main(int argc, char** argv)
             const double now = glfwGetTime();
             if (input) input->update(camera, static_cast<float>(now - previousTime));
             previousTime = now;
+            auto target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
+                [&world](glm::ivec3 p) { return world.get(p); });
+            if (input && target) {
+                bool edited = false;
+                if (input->removeRequested()) edited = voxel::removeBlock(world, *target);
+                else if (input->placeRequested()) {
+                    edited = voxel::placeBlock(world, *target, input->selectedBlock(), camera.position());
+                }
+                if (edited) {
+                    target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
+                        [&world](glm::ivec3 p) { return world.get(p); });
+                }
+            }
             int width, height;
             window.framebufferSize(width, height);
             if (width <= 0 || height <= 0) {
@@ -49,6 +67,7 @@ int main(int argc, char** argv)
                 continue;
             }
             renderer.render(world, camera, width, height, input && input->wireframe());
+            if (!input || input->captured()) overlay.draw(target, camera, width, height);
             if (smokeTest && frames == 2) {
                 std::vector<float> depth(static_cast<std::size_t>(width) * height);
                 glReadPixels(0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depth.data());
@@ -61,10 +80,13 @@ int main(int argc, char** argv)
             }
             if (now - titleTime >= 0.25) {
                 const auto p = camera.position();
-                const std::string title = "Voxel Engine | " + std::to_string(renderer.triangleCount())
+                const char* materials[] = {"Air", "Grass", "Dirt", "Stone", "Sand"};
+                const auto selected = input ? input->selectedBlock() : voxel::Block::Grass;
+                const std::string title = std::string("Voxel Engine | ") + materials[static_cast<int>(selected)]
+                    + " | " + std::to_string(renderer.triangleCount())
                     + " triangles | XYZ " + std::to_string(static_cast<int>(p.x)) + ", "
                     + std::to_string(static_cast<int>(p.y)) + ", " + std::to_string(static_cast<int>(p.z))
-                    + " | Tab: mouse  F: wireframe  Q: quit";
+                    + " | 1-4: material  Tab: mouse  Q: quit";
                 glfwSetWindowTitle(window.handle(), title.c_str());
                 titleTime = now;
             }

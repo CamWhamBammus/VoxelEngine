@@ -21,6 +21,8 @@ add_library(VoxelCore
     src/voxel/mesh.cpp
     src/voxel/terrain.cpp
     src/voxel/world.cpp
+    src/voxel/raycast.cpp
+    src/voxel/editor.cpp
 )
 target_include_directories(VoxelCore PUBLIC src)
 target_link_libraries(VoxelCore PUBLIC glm::glm)
@@ -38,6 +40,7 @@ if(VOXEL_BUILD_APP)
         src/render/shader.cpp
         src/render/gpu_mesh.cpp
         src/render/world_renderer.cpp
+        src/render/overlay.cpp
     )
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
     voxel_warnings(VoxelEngine)
@@ -45,7 +48,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS chunk mesh terrain camera world)
+    foreach(test_name IN ITEMS chunk mesh terrain camera world raycast editor)
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)
         voxel_warnings(${test_name}_tests)

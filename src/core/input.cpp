@@ -20,6 +20,14 @@ void Input::capture(bool enabled)
 void Input::update(Camera& camera, float deltaSeconds)
 {
     const auto down = [this](int key) { return glfwGetKey(window_, key) == GLFW_PRESS; };
+    const std::array<bool, 2> mouse{
+        glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
+        glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
+    };
+    const bool removePressed = mouse[0] && !previousMouse_[0];
+    const bool placePressed = mouse[1] && !previousMouse_[1];
+    previousMouse_ = mouse;
+    remove_ = place_ = false;
     const std::array<bool, 3> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F)};
     if (down(GLFW_KEY_Q)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
@@ -34,6 +42,11 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (keys[2] && !previous_[2]) wireframe_ = !wireframe_;
     previous_ = keys;
     if (!captured_) return;
+    remove_ = removePressed;
+    place_ = placePressed;
+    for (int slot = 0; slot < 4; ++slot) {
+        if (down(GLFW_KEY_1 + slot)) selected_ = static_cast<Block>(slot + 1);
+    }
 
     double x, y;
     glfwGetCursorPos(window_, &x, &y);
