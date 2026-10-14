@@ -34,8 +34,10 @@ if(VOXEL_BUILD_APP)
     add_executable(VoxelEngine
         src/main.cpp
         src/core/window.cpp
+        src/core/input.cpp
         src/render/shader.cpp
         src/render/gpu_mesh.cpp
+        src/render/world_renderer.cpp
     )
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
     voxel_warnings(VoxelEngine)
