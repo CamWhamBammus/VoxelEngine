@@ -20,6 +20,7 @@ add_library(VoxelCore
     src/voxel/chunk.cpp
     src/voxel/mesh.cpp
     src/voxel/terrain.cpp
+    src/voxel/world.cpp
 )
 target_include_directories(VoxelCore PUBLIC src)
 target_link_libraries(VoxelCore PUBLIC glm::glm)
@@ -42,7 +43,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS chunk mesh terrain camera)
+    foreach(test_name IN ITEMS chunk mesh terrain camera world)
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)
         voxel_warnings(${test_name}_tests)
