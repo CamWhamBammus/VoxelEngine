@@ -3,6 +3,7 @@
 #include "core/input.h"
 #include "render/world_renderer.h"
 #include "render/overlay.h"
+#include "render/diagnostics.h"
 #include "voxel/editor.h"
 #include "voxel/raycast.h"
 #include "voxel/world.h"
@@ -11,24 +12,66 @@
 #include <GLFW/glfw3.h>
 
 #include <cstdlib>
-#include <algorithm>
+#include <charconv>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <vector>
+
+namespace {
+constexpr const char* usage = "Usage: VoxelEngine [--seed N] [--smoke-test] [--screenshot path.ppm] [--help]\n";
+
+struct Options {
+    std::uint32_t seed = 1337;
+    bool smokeTest = false;
+    bool help = false;
+    std::string screenshot;
+};
+
+Options parseOptions(int argc, char** argv)
+{
+    Options options;
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view argument(argv[i]);
+        if (argument == "--help") options.help = true;
+        else if (argument == "--smoke-test") options.smokeTest = true;
+        else if (argument == "--seed" && i + 1 < argc) {
+            const std::string_view value(argv[++i]);
+            const auto result = std::from_chars(value.data(), value.data() + value.size(), options.seed);
+            if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+                throw std::invalid_argument("Seed must be an integer from 0 to 4294967295");
+            }
+        } else if (argument == "--screenshot" && i + 1 < argc) {
+            options.screenshot = argv[++i];
+            if (options.screenshot.empty()) throw std::invalid_argument("Screenshot path is empty");
+            options.smokeTest = true;
+        } else {
+            throw std::invalid_argument(std::string("Unknown or incomplete option: ") + std::string(argument));
+        }
+    }
+    return options;
+}
+} // namespace
 
 int main(int argc, char** argv)
 {
-    const bool smokeTest = argc == 2 && std::string_view(argv[1]) == "--smoke-test";
-    if (argc > 1 && !smokeTest) {
-        std::cerr << "Usage: VoxelEngine [--smoke-test]\n";
+    Options options;
+    try {
+        options = parseOptions(argc, argv);
+    } catch (const std::invalid_argument& error) {
+        std::cerr << error.what() << '\n' << usage;
         return EXIT_FAILURE;
     }
+    if (options.help) {
+        std::cout << usage;
+        return EXIT_SUCCESS;
+    }
+    const bool smokeTest = options.smokeTest;
     try {
         voxel::Window window(!smokeTest);
-        voxel::World world;
+        if (smokeTest) voxel::verifyGpuResources();
+        voxel::World world(options.seed);
         voxel::Camera camera;
         voxel::WorldRenderer renderer;
         voxel::Overlay overlay;
@@ -42,6 +85,7 @@ int main(int argc, char** argv)
         double previousTime = glfwGetTime();
         double titleTime = previousTime;
         int frames = 0;
+        bool frameVerified = false;
         while (!window.shouldClose() && (!smokeTest || frames < 3)) {
             glfwPollEvents();
             const double now = glfwGetTime();
@@ -63,20 +107,16 @@ int main(int argc, char** argv)
             int width, height;
             window.framebufferSize(width, height);
             if (width <= 0 || height <= 0) {
+                if (smokeTest) throw std::runtime_error("Smoke test framebuffer is empty");
                 glfwWaitEventsTimeout(0.05);
                 continue;
             }
             renderer.render(world, camera, width, height, input && input->wireframe());
             if (!input || input->captured()) overlay.draw(target, camera, width, height);
             if (smokeTest && frames == 2) {
-                std::vector<float> depth(static_cast<std::size_t>(width) * height);
-                glReadPixels(0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depth.data());
-                const auto covered = std::count_if(depth.begin(), depth.end(), [](float d) { return d < 1.0f; });
-                if (static_cast<std::size_t>(covered) < depth.size() / 100 || glGetError() != GL_NO_ERROR) {
-                    throw std::runtime_error("Rendering smoke test failed: missing terrain or OpenGL error");
-                }
-                std::cout << "Smoke test passed: " << renderer.triangleCount() << " triangles, "
-                          << covered << " terrain pixels\n";
+                voxel::verifyFrame(width, height, options.screenshot);
+                frameVerified = true;
+                std::cout << "Smoke test passed: " << renderer.triangleCount() << " triangles\n";
             }
             if (now - titleTime >= 0.25) {
                 const auto p = camera.position();
@@ -92,6 +132,9 @@ int main(int argc, char** argv)
             }
             window.present();
             ++frames;
+        }
+        if (smokeTest && !frameVerified) {
+            throw std::runtime_error("Window closed before the smoke test completed");
         }
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {
