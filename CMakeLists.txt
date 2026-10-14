@@ -4,13 +4,14 @@ project(VoxelEngine LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenGL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
-add_executable(VoxelEngine src/main.cpp src/core/debug.cpp)
+add_executable(VoxelEngine src/main.cpp src/core/window.cpp)
 
 target_link_libraries(VoxelEngine PRIVATE
     OpenGL::GL
@@ -20,3 +21,6 @@ target_link_libraries(VoxelEngine PRIVATE
 )
 
 target_include_directories(VoxelEngine PRIVATE src)
+target_compile_options(VoxelEngine PRIVATE
+    $<$<CXX_COMPILER_ID:AppleClang,Clang,GNU>:-Wall;-Wextra;-Wpedantic>
+)
