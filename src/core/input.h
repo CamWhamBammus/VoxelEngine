@@ -2,6 +2,7 @@
 
 #include <array>
 #include "voxel/block.h"
+#include "core/edit_shortcuts.h"
 
 struct GLFWwindow;
 
@@ -42,7 +43,8 @@ private:
     bool pick_ = false;
     bool help_ = false;
     Block selected_ = Block::Grass;
-    std::array<bool, 9> previous_{};
+    EditShortcuts editShortcuts_;
+    std::array<bool, 7> previous_{};
     std::array<bool, 3> previousMouse_{};
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;

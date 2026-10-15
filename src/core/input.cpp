@@ -49,9 +49,10 @@ void Input::update(Camera& camera, float deltaSeconds)
     const bool shortcut = down(GLFW_KEY_LEFT_CONTROL) || down(GLFW_KEY_RIGHT_CONTROL)
         || down(GLFW_KEY_LEFT_SUPER) || down(GLFW_KEY_RIGHT_SUPER);
     const bool shift = down(GLFW_KEY_LEFT_SHIFT) || down(GLFW_KEY_RIGHT_SHIFT);
-    const std::array<bool, 9> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
-        down(GLFW_KEY_F5), down(GLFW_KEY_F9), shortcut && down(GLFW_KEY_Z) && !shift,
-        shortcut && (down(GLFW_KEY_Y) || (down(GLFW_KEY_Z) && shift)), down(GLFW_KEY_R), down(GLFW_KEY_H)};
+    const EditShortcutKeys editKeys{down(GLFW_KEY_Z), down(GLFW_KEY_Y), shortcut, shift};
+    const auto editActions = editShortcuts_.update(editKeys);
+    const std::array<bool, 7> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
+        down(GLFW_KEY_F5), down(GLFW_KEY_F9), down(GLFW_KEY_R), down(GLFW_KEY_H)};
     if (down(GLFW_KEY_Q)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
     }
@@ -65,10 +66,10 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (keys[2] && !previous_[2]) wireframe_ = !wireframe_;
     save_ = keys[3] && !previous_[3];
     load_ = keys[4] && !previous_[4];
-    undo_ = keys[5] && !previous_[5];
-    redo_ = keys[6] && !previous_[6];
-    if (keys[7] && !previous_[7]) camera.reset();
-    if (keys[8] && !previous_[8]) help_ = !help_;
+    undo_ = editActions.undo;
+    redo_ = editActions.redo;
+    if (keys[5] && !previous_[5]) camera.reset();
+    if (keys[6] && !previous_[6]) help_ = !help_;
     previous_ = keys;
     if (!captured_) return;
     camera.setFieldOfView(camera.fieldOfView() - static_cast<float>(scroll_) * 2.0f);
@@ -86,7 +87,7 @@ void Input::update(Camera& camera, float deltaSeconds)
                   static_cast<float>(cursorY_ - y) * 0.10f);
     cursorX_ = x;
     cursorY_ = y;
-    if (keys[5] || keys[6]) return;
+    if (shortcut && (editKeys.z || editKeys.y)) return;
     const glm::vec3 direction{
         static_cast<float>(down(GLFW_KEY_D) - down(GLFW_KEY_A)),
         static_cast<float>(down(GLFW_KEY_SPACE) - down(GLFW_KEY_LEFT_CONTROL)),

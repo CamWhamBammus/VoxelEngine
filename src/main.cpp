@@ -51,7 +51,12 @@ int main(int argc, char** argv)
         voxel::EditHistory history;
         std::string status = loadExisting ? "Loaded " + options.worldPath : "New world - F5 to save";
         voxel::Window window(!smokeTest);
-        if (smokeTest) voxel::verifyGpuResources();
+        if (smokeTest) {
+            voxel::verifyGpuResources();
+            int width, height;
+            window.framebufferSize(width, height);
+            voxel::verifyRenderTransitions(width, height);
+        }
         voxel::Camera camera;
         voxel::WorldRenderer renderer;
         voxel::Overlay overlay;

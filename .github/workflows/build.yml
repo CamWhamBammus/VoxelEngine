@@ -35,7 +35,9 @@ jobs:
       - name: Run graphics smoke test with software rendering
         env:
           LIBGL_ALWAYS_SOFTWARE: "1"
-        run: xvfb-run -a ./build/VoxelEngine --smoke-test
+        run: |
+          xvfb-run -a ./build/VoxelEngine --smoke-test
+          xvfb-run -a ./build/VoxelEngine --seed 4294967295 --screenshot build/terrain.ppm
 
       - name: Configure core without graphics dependencies
         run: cmake -S . -B build-core -DVOXEL_BUILD_APP=OFF -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
@@ -44,3 +46,10 @@ jobs:
         run: |
           cmake --build build-core --parallel 2
           ctest --test-dir build-core --output-on-failure
+
+      - name: Check memory and undefined behavior
+        if: matrix.build_type == 'Debug'
+        run: |
+          cmake -S . -B build-sanitize -DVOXEL_BUILD_APP=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          cmake --build build-sanitize --parallel 2
+          ctest --test-dir build-sanitize --output-on-failure

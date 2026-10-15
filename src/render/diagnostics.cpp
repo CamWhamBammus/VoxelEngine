@@ -1,11 +1,16 @@
 #include "render/diagnostics.h"
 #include "render/gpu_mesh.h"
 #include "render/shader.h"
+#include "render/world_renderer.h"
+#include "core/camera.h"
+#include "voxel/edit_history.h"
+#include "voxel/world_codec.h"
 
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <sstream>
 #include <vector>
 
 namespace voxel {
@@ -54,6 +59,54 @@ void verifyGpuResources()
     mesh.draw();
     if (mesh.indexCount() != 0) throw std::runtime_error("Empty upload retained geometry");
     checkOpenGl();
+}
+
+void verifyRenderTransitions(int width, int height)
+{
+    if (width <= 0 || height <= 0) throw std::runtime_error("Smoke test framebuffer is empty");
+    World world;
+    Camera camera;
+    WorldRenderer renderer;
+    EditHistory history;
+    std::stringstream snapshot(std::ios::in | std::ios::out | std::ios::binary);
+    encodeWorld(world, snapshot);
+    renderer.render(world, camera, width, height, false);
+    const auto triangles = renderer.triangleCount();
+    if (renderer.visibleChunks() == 0 || triangles == 0) {
+        throw std::runtime_error("Initial terrain was incorrectly culled");
+    }
+    // This floating block is isolated above the highest possible terrain.
+    if (!history.apply(world, {0, 15, 0}, Block::Stone)) {
+        throw std::runtime_error("Smoke test edit failed");
+    }
+    renderer.render(world, camera, width, height, false);
+    if (renderer.triangleCount() != triangles + 12 || !history.undo(world)) {
+        throw std::runtime_error("Edited chunk did not rebuild correctly");
+    }
+    renderer.render(world, camera, width, height, false);
+    if (renderer.triangleCount() != triangles || !history.redo(world)) {
+        throw std::runtime_error("Undo did not restore the rendered mesh");
+    }
+    renderer.render(world, camera, width, height, true);
+    if (renderer.triangleCount() != triangles + 12) {
+        throw std::runtime_error("Redo did not rebuild the rendered mesh");
+    }
+    world = decodeWorld(snapshot);
+    renderer.render(world, camera, width, height, false);
+    if (renderer.triangleCount() != triangles) {
+        throw std::runtime_error("Loading a world did not refresh the GPU meshes");
+    }
+    camera.setPosition({200, 80, 200});
+    camera.rotate(180, 0);
+    renderer.render(world, camera, width, height, false);
+    if (renderer.visibleChunks() != 0 || renderer.drawnTriangles() != 0) {
+        throw std::runtime_error("Chunks behind the camera were not culled");
+    }
+    camera.reset();
+    renderer.render(world, camera, width, height, false);
+    verifyFrame(width, height, {});
+    checkOpenGl();
+    std::cout << "Render transitions passed: edit, undo, redo, reload, wireframe, culling\n";
 }
 
 void verifyFrame(int width, int height, const std::string& screenshotPath)
