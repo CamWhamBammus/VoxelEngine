@@ -120,9 +120,8 @@ int main(int argc, char** argv)
             }
             if (now - titleTime >= 0.25) {
                 const auto p = camera.position();
-                const char* materials[] = {"Air", "Grass", "Dirt", "Stone", "Sand"};
                 const auto selected = input ? input->selectedBlock() : voxel::Block::Grass;
-                const std::string title = std::string("Voxel Engine | ") + materials[static_cast<int>(selected)]
+                const std::string title = std::string("Voxel Engine | ") + std::string(voxel::blockName(selected))
                     + " | " + std::to_string(renderer.triangleCount())
                     + " triangles | XYZ " + std::to_string(static_cast<int>(p.x)) + ", "
                     + std::to_string(static_cast<int>(p.y)) + ", " + std::to_string(static_cast<int>(p.z))

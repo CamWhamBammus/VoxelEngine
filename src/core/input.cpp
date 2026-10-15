@@ -44,8 +44,8 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (!captured_) return;
     remove_ = removePressed;
     place_ = placePressed;
-    for (int slot = 0; slot < 4; ++slot) {
-        if (down(GLFW_KEY_1 + slot)) selected_ = static_cast<Block>(slot + 1);
+    for (std::size_t slot = 0; slot < PlaceableBlocks.size(); ++slot) {
+        if (down(GLFW_KEY_1 + static_cast<int>(slot))) selected_ = PlaceableBlocks[slot];
     }
 
     double x, y;

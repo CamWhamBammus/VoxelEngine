@@ -1,15 +1,36 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
+#include <string_view>
 #include <glm/vec3.hpp>
 
 namespace voxel {
 
 enum class Block : std::uint8_t { Air, Grass, Dirt, Stone, Sand };
 
+inline constexpr std::array PlaceableBlocks{Block::Grass, Block::Dirt, Block::Stone, Block::Sand};
+
+constexpr bool isValidBlock(Block block) noexcept
+{
+    return static_cast<std::uint8_t>(block) <= static_cast<std::uint8_t>(Block::Sand);
+}
+
+constexpr std::string_view blockName(Block block) noexcept
+{
+    switch (block) {
+    case Block::Air: return "Air";
+    case Block::Grass: return "Grass";
+    case Block::Dirt: return "Dirt";
+    case Block::Stone: return "Stone";
+    case Block::Sand: return "Sand";
+    }
+    return "Unknown";
+}
+
 constexpr bool isSolid(Block block) noexcept
 {
-    return block != Block::Air;
+    return isValidBlock(block) && block != Block::Air;
 }
 
 inline glm::vec3 blockColor(Block block) noexcept

@@ -9,7 +9,7 @@ Block Chunk::get(int x, int y, int z) const noexcept
 
 bool Chunk::set(int x, int y, int z, Block block) noexcept
 {
-    if (!inBounds(x, y, z)) {
+    if (!inBounds(x, y, z) || !isValidBlock(block)) {
         return false;
     }
     blocks_[index(x, y, z)] = block;

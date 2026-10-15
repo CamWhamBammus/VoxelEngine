@@ -51,5 +51,16 @@ int main()
         check(color.x >= 0 && color.x <= 1 && color.y >= 0 && color.y <= 1
               && color.z >= 0 && color.z <= 1, "material color must be normalized");
     }
+    for (unsigned int value = 5; value < 256; ++value) {
+        const auto invalid = static_cast<voxel::Block>(value);
+        check(!voxel::isValidBlock(invalid) && !voxel::isSolid(invalid), "unknown block IDs must not be solid");
+        check(!chunk.set(0, 0, 0, invalid), "unknown block IDs must not enter storage");
+        check(voxel::blockName(invalid) == "Unknown", "unknown block names must be safe");
+    }
+    check(chunk.get(0, 0, 0) == voxel::Block::Grass, "invalid material writes preserve contents");
+    for (const auto block : voxel::PlaceableBlocks) {
+        check(voxel::isValidBlock(block) && voxel::isSolid(block), "palette contains only valid solids");
+        check(voxel::blockName(block) != "Unknown", "palette has display names");
+    }
     return failures == 0 ? 0 : 1;
 }
