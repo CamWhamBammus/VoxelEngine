@@ -5,6 +5,7 @@
 #include "render/world_renderer.h"
 #include "render/overlay.h"
 #include "render/diagnostics.h"
+#include "render/hud.h"
 #include "voxel/editor.h"
 #include "voxel/edit_history.h"
 #include "voxel/raycast.h"
@@ -16,6 +17,8 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
@@ -43,6 +46,7 @@ int main(int argc, char** argv)
         const bool loadExisting = (options.worldExplicit || (!smokeTest && !options.seedExplicit))
             && std::filesystem::exists(options.worldPath);
         voxel::World world = loadExisting ? voxel::loadWorld(options.worldPath) : voxel::World(options.seed);
+        voxel::World savedWorld = world;
         bool unsaved = false;
         voxel::EditHistory history;
         std::string status = loadExisting ? "Loaded " + options.worldPath : "New world - F5 to save";
@@ -51,6 +55,7 @@ int main(int argc, char** argv)
         voxel::Camera camera;
         voxel::WorldRenderer renderer;
         voxel::Overlay overlay;
+        voxel::Hud hud;
         // Input changes the system cursor only for interactive runs.
         std::optional<voxel::Input> input;
         if (!smokeTest) input.emplace(window.handle());
@@ -60,14 +65,24 @@ int main(int argc, char** argv)
         std::cout << "Left click remove | Right click place | 1 Grass 2 Dirt 3 Stone 4 Sand\n";
         std::cout << "F5 save | F9 reload | World file: " << options.worldPath << '\n' << status << '\n';
         std::cout << "Ctrl/Cmd Z undo | Ctrl/Cmd Y or Shift Z redo | Middle click pick material\n";
-        std::cout << "Scroll zoom | R reset camera\n";
+        std::cout << "Scroll zoom | R reset camera | H help overlay\n";
         double previousTime = glfwGetTime();
         double titleTime = previousTime;
+        double sampleTime = previousTime;
+        int sampleFrames = 0;
+        double framesPerSecond = 0.0;
+        std::string hudText;
         int frames = 0;
         bool frameVerified = false;
         while (!window.shouldClose() && (!smokeTest || frames < 3)) {
             glfwPollEvents();
             const double now = glfwGetTime();
+            ++sampleFrames;
+            if (now - sampleTime >= 0.25) {
+                framesPerSecond = sampleFrames / (now - sampleTime);
+                sampleTime = now;
+                sampleFrames = 0;
+            }
             if (input) input->update(camera, static_cast<float>(now - previousTime));
             previousTime = now;
             if (input && (input->saveRequested() || input->loadRequested())) {
@@ -80,6 +95,7 @@ int main(int argc, char** argv)
                         history.clear();
                         status = "Loaded " + options.worldPath;
                     }
+                    savedWorld = world;
                     unsaved = false;
                     std::cout << status << '\n';
                 } catch (const std::exception& error) {
@@ -90,7 +106,7 @@ int main(int argc, char** argv)
             if (input && (input->undoRequested() || input->redoRequested())) {
                 const bool undo = input->undoRequested();
                 const bool changed = undo ? history.undo(world) : history.redo(world);
-                if (changed) unsaved = true;
+                if (changed) unsaved = !world.sameContents(savedWorld);
                 status = changed ? (undo ? "Undid edit" : "Redid edit") : "No edit available";
             }
             auto target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
@@ -103,7 +119,7 @@ int main(int argc, char** argv)
                     edited = voxel::placeBlock(world, *target, input->selectedBlock(), camera.position(), &history);
                 }
                 if (edited) {
-                    unsaved = true;
+                    unsaved = !world.sameContents(savedWorld);
                     target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
                         [&world](glm::ivec3 p) { return world.get(p); });
                 }
@@ -117,12 +133,7 @@ int main(int argc, char** argv)
             }
             renderer.render(world, camera, width, height, input && input->wireframe());
             if (!input || input->captured()) overlay.draw(target, camera, width, height);
-            if (smokeTest && frames == 2) {
-                voxel::verifyFrame(width, height, options.screenshot);
-                frameVerified = true;
-                std::cout << "Smoke test passed: " << renderer.triangleCount() << " triangles\n";
-            }
-            if (now - titleTime >= 0.25) {
+            if (frames == 0 || now - titleTime >= 0.25 || (smokeTest && frames == 2)) {
                 const auto p = camera.position();
                 const auto selected = input ? input->selectedBlock() : voxel::Block::Grass;
                 const std::string title = std::string(unsaved ? "Voxel Engine * | " : "Voxel Engine | ")
@@ -132,7 +143,36 @@ int main(int argc, char** argv)
                     + std::to_string(static_cast<int>(p.y)) + ", " + std::to_string(static_cast<int>(p.z))
                     + " | " + status;
                 glfwSetWindowTitle(window.handle(), title.c_str());
+                std::ostringstream text;
+                text << std::fixed << std::setprecision(1)
+                     << "VOXEL ENGINE | " << voxel::blockName(selected) << " | SEED " << world.seed()
+                     << (unsaved ? " | UNSAVED" : "")
+                     << "\nCHUNKS " << renderer.visibleChunks() << "/" << voxel::World::ChunkCount
+                     << " | TRIANGLES " << renderer.drawnTriangles() << "/" << renderer.triangleCount();
+                if (framesPerSecond > 0.0) text << " | FPS " << framesPerSecond << " | " << 1000.0 / framesPerSecond << " MS";
+                text << "\nXYZ " << p.x << ", " << p.y << ", " << p.z
+                     << " | FOV " << camera.fieldOfView() << " | UNDO " << history.undoCount()
+                     << " REDO " << history.redoCount()
+                     << "\n" << status << "\nH HELP | F5 SAVE | F9 RELOAD | TAB MOUSE | Q QUIT";
+                if (input && !input->captured()) text << " | MOUSE RELEASED";
+                if (input && input->helpVisible()) {
+                    text << "\nWASD FLY | SPACE/CTRL UP/DOWN | SHIFT BOOST"
+                         << "\nMOUSE LOOK | SCROLL ZOOM | R RESET | F WIREFRAME"
+                         << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK | 1-4 MATERIAL"
+                         << "\nCTRL/CMD Z UNDO | CTRL/CMD Y OR SHIFT Z REDO"
+                         << "\nESC RELEASE MOUSE | EDIT REACH 8 BLOCKS";
+                }
+                hudText = text.str();
                 titleTime = now;
+            }
+            float scaleX, scaleY;
+            glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
+            hud.draw(hudText, width, height, scaleY);
+            if (smokeTest && frames == 2) {
+                voxel::verifyFrame(width, height, options.screenshot);
+                frameVerified = true;
+                std::cout << "Smoke test passed: " << renderer.triangleCount() << " triangles, "
+                          << renderer.visibleChunks() << " visible chunks\n";
             }
             window.present();
             ++frames;

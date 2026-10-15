@@ -17,6 +17,8 @@ public:
     static constexpr std::size_t ChunkCount = Width * Width;
 
     explicit World(std::uint32_t seed = 1337);
+    // Renderer dirty flags are not part of the saved world contents.
+    bool sameContents(const World& other) const { return seed_ == other.seed_ && chunks_ == other.chunks_; }
 
     std::uint32_t seed() const noexcept { return seed_; }
 

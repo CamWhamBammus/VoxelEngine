@@ -137,5 +137,14 @@ int main()
     if (failures == 0) {
         std::cout << "World tests passed\n";
     }
+    voxel::World baseline;
+    voxel::World changedWorld = baseline;
+    changedWorld.takeDirtyChunks();
+    check(changedWorld.sameContents(baseline), "renderer dirty flags do not affect saved contents");
+    const auto originalBlock = changedWorld.get({0, 15, 0});
+    changedWorld.set({0, 15, 0}, voxel::Block::Sand);
+    check(!changedWorld.sameContents(baseline), "edits differ from saved contents");
+    changedWorld.set({0, 15, 0}, originalBlock);
+    check(changedWorld.sameContents(baseline), "undo back to saved contents clears dirty status");
     return failures == 0 ? 0 : 1;
 }

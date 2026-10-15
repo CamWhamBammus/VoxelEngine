@@ -10,6 +10,7 @@ namespace voxel {
 class Chunk {
 public:
     static constexpr int Size = 16;
+    bool operator==(const Chunk&) const = default;
 
     static constexpr bool inBounds(int x, int y, int z) noexcept
     {

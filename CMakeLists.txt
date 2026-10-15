@@ -47,6 +47,7 @@ if(VOXEL_BUILD_APP)
         src/render/world_renderer.cpp
         src/render/overlay.cpp
         src/render/diagnostics.cpp
+        src/render/hud.cpp
     )
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
     voxel_warnings(VoxelEngine)

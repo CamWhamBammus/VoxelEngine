@@ -49,9 +49,9 @@ void Input::update(Camera& camera, float deltaSeconds)
     const bool shortcut = down(GLFW_KEY_LEFT_CONTROL) || down(GLFW_KEY_RIGHT_CONTROL)
         || down(GLFW_KEY_LEFT_SUPER) || down(GLFW_KEY_RIGHT_SUPER);
     const bool shift = down(GLFW_KEY_LEFT_SHIFT) || down(GLFW_KEY_RIGHT_SHIFT);
-    const std::array<bool, 8> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
+    const std::array<bool, 9> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
         down(GLFW_KEY_F5), down(GLFW_KEY_F9), shortcut && down(GLFW_KEY_Z) && !shift,
-        shortcut && (down(GLFW_KEY_Y) || (down(GLFW_KEY_Z) && shift)), down(GLFW_KEY_R)};
+        shortcut && (down(GLFW_KEY_Y) || (down(GLFW_KEY_Z) && shift)), down(GLFW_KEY_R), down(GLFW_KEY_H)};
     if (down(GLFW_KEY_Q)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
     }
@@ -68,6 +68,7 @@ void Input::update(Camera& camera, float deltaSeconds)
     undo_ = keys[5] && !previous_[5];
     redo_ = keys[6] && !previous_[6];
     if (keys[7] && !previous_[7]) camera.reset();
+    if (keys[8] && !previous_[8]) help_ = !help_;
     previous_ = keys;
     if (!captured_) return;
     camera.setFieldOfView(camera.fieldOfView() - static_cast<float>(scroll_) * 2.0f);

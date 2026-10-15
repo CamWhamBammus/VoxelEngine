@@ -25,6 +25,7 @@ public:
     bool undoRequested() const { return undo_; }
     bool redoRequested() const { return redo_; }
     bool pickRequested() const { return pick_; }
+    bool helpVisible() const { return help_; }
     void selectBlock(Block block) { if (isSolid(block)) selected_ = block; }
 
 private:
@@ -39,8 +40,9 @@ private:
     bool undo_ = false;
     bool redo_ = false;
     bool pick_ = false;
+    bool help_ = false;
     Block selected_ = Block::Grass;
-    std::array<bool, 8> previous_{};
+    std::array<bool, 9> previous_{};
     std::array<bool, 3> previousMouse_{};
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;
