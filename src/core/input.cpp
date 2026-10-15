@@ -8,11 +8,26 @@
 
 namespace voxel {
 
-Input::Input(GLFWwindow* window) : window_(window) { capture(true); }
+Input::Input(GLFWwindow* window) : window_(window)
+{
+    glfwSetWindowUserPointer(window_, this);
+    glfwSetScrollCallback(window_, [](GLFWwindow* window, double, double y) {
+        auto* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
+        if (input && input->captured_ && glfwGetWindowAttrib(window, GLFW_FOCUSED)) input->scroll_ += y;
+    });
+    capture(true);
+}
+
+Input::~Input()
+{
+    glfwSetScrollCallback(window_, nullptr);
+    glfwSetWindowUserPointer(window_, nullptr);
+}
 
 void Input::capture(bool enabled)
 {
     captured_ = enabled;
+    scroll_ = 0.0;
     glfwSetInputMode(window_, GLFW_CURSOR, enabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
     glfwGetCursorPos(window_, &cursorX_, &cursorY_);
 }
@@ -34,9 +49,9 @@ void Input::update(Camera& camera, float deltaSeconds)
     const bool shortcut = down(GLFW_KEY_LEFT_CONTROL) || down(GLFW_KEY_RIGHT_CONTROL)
         || down(GLFW_KEY_LEFT_SUPER) || down(GLFW_KEY_RIGHT_SUPER);
     const bool shift = down(GLFW_KEY_LEFT_SHIFT) || down(GLFW_KEY_RIGHT_SHIFT);
-    const std::array<bool, 7> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
+    const std::array<bool, 8> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
         down(GLFW_KEY_F5), down(GLFW_KEY_F9), shortcut && down(GLFW_KEY_Z) && !shift,
-        shortcut && (down(GLFW_KEY_Y) || (down(GLFW_KEY_Z) && shift))};
+        shortcut && (down(GLFW_KEY_Y) || (down(GLFW_KEY_Z) && shift)), down(GLFW_KEY_R)};
     if (down(GLFW_KEY_Q)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
     }
@@ -52,8 +67,11 @@ void Input::update(Camera& camera, float deltaSeconds)
     load_ = keys[4] && !previous_[4];
     undo_ = keys[5] && !previous_[5];
     redo_ = keys[6] && !previous_[6];
+    if (keys[7] && !previous_[7]) camera.reset();
     previous_ = keys;
     if (!captured_) return;
+    camera.setFieldOfView(camera.fieldOfView() - static_cast<float>(scroll_) * 2.0f);
+    scroll_ = 0.0;
     remove_ = removePressed;
     place_ = placePressed;
     pick_ = pickPressed;

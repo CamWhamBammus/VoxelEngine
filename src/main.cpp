@@ -60,6 +60,7 @@ int main(int argc, char** argv)
         std::cout << "Left click remove | Right click place | 1 Grass 2 Dirt 3 Stone 4 Sand\n";
         std::cout << "F5 save | F9 reload | World file: " << options.worldPath << '\n' << status << '\n';
         std::cout << "Ctrl/Cmd Z undo | Ctrl/Cmd Y or Shift Z redo | Middle click pick material\n";
+        std::cout << "Scroll zoom | R reset camera\n";
         double previousTime = glfwGetTime();
         double titleTime = previousTime;
         int frames = 0;

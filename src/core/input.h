@@ -11,6 +11,9 @@ class Camera;
 class Input {
 public:
     explicit Input(GLFWwindow* window);
+    ~Input();
+    Input(const Input&) = delete;
+    Input& operator=(const Input&) = delete;
     void update(Camera& camera, float deltaSeconds);
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
@@ -37,10 +40,11 @@ private:
     bool redo_ = false;
     bool pick_ = false;
     Block selected_ = Block::Grass;
-    std::array<bool, 7> previous_{};
+    std::array<bool, 8> previous_{};
     std::array<bool, 3> previousMouse_{};
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;
+    double scroll_ = 0.0;
 };
 
 } // namespace voxel
