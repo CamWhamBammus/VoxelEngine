@@ -18,6 +18,8 @@ public:
 
     explicit World(std::uint32_t seed = 1337);
 
+    std::uint32_t seed() const noexcept { return seed_; }
+
     const Chunk& chunk(std::size_t index) const;
     glm::ivec3 origin(std::size_t index) const;
     Block get(glm::ivec3 worldPosition) const;
@@ -27,6 +29,7 @@ public:
     MeshData mesh(std::size_t index) const;
 
 private:
+    std::uint32_t seed_;
     std::array<Chunk, ChunkCount> chunks_;
     std::array<bool, ChunkCount> dirty_{};
 };

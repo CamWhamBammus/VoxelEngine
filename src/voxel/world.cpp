@@ -30,7 +30,7 @@ std::optional<std::size_t> chunkIndex(glm::ivec3 position)
 
 } // namespace
 
-World::World(std::uint32_t seed)
+World::World(std::uint32_t seed) : seed_(seed)
 {
     for (std::size_t index = 0; index < ChunkCount; ++index) {
         generateTerrain(chunks_[index], origin(index), seed);
@@ -65,6 +65,9 @@ Block World::get(glm::ivec3 worldPosition) const
 
 bool World::set(glm::ivec3 worldPosition, Block block)
 {
+    if (!isValidBlock(block)) {
+        return false;
+    }
     const auto index = chunkIndex(worldPosition);
     if (!index) {
         return false;
