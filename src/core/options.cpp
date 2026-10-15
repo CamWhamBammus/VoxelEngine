@@ -19,6 +19,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
         if (argument == "--help") options.help = true;
         else if (argument == "--smoke-test") options.smokeTest = true;
         else if (argument == "--seed") {
+            options.seedExplicit = true;
             const auto seed = value();
             const auto result = std::from_chars(seed.data(), seed.data() + seed.size(), options.seed);
             if (result.ec != std::errc{} || result.ptr != seed.data() + seed.size()) {

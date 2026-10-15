@@ -16,7 +16,7 @@ int main()
     const std::vector<std::string_view> complete{
         "--seed", "4294967295", "--world", "my world.vxl", "--screenshot", "capture.ppm"};
     const auto parsed = voxel::parseOptions(complete);
-    check(parsed.seed == 4294967295u && parsed.worldExplicit && parsed.worldPath == "my world.vxl"
+    check(parsed.seed == 4294967295u && parsed.seedExplicit && parsed.worldExplicit && parsed.worldPath == "my world.vxl"
           && parsed.smokeTest && parsed.screenshot == "capture.ppm", "combined options parse");
     for (const std::vector<std::string_view>& args : std::vector<std::vector<std::string_view>>{
             {"--seed"}, {"--seed", "-1"}, {"--seed", "4294967296"}, {"--seed", "1tail"},

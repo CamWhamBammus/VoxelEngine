@@ -12,6 +12,7 @@ inline constexpr const char* Usage =
 
 struct Options {
     std::uint32_t seed = 1337;
+    bool seedExplicit = false;
     bool smokeTest = false;
     bool help = false;
     bool worldExplicit = false;

@@ -8,12 +8,14 @@
 #include "voxel/editor.h"
 #include "voxel/raycast.h"
 #include "voxel/world.h"
+#include "voxel/world_io.h"
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
 #include <cstdlib>
 #include <iostream>
+#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -37,9 +39,13 @@ int main(int argc, char** argv)
     }
     const bool smokeTest = options.smokeTest;
     try {
+        const bool loadExisting = (options.worldExplicit || (!smokeTest && !options.seedExplicit))
+            && std::filesystem::exists(options.worldPath);
+        voxel::World world = loadExisting ? voxel::loadWorld(options.worldPath) : voxel::World(options.seed);
+        bool unsaved = false;
+        std::string status = loadExisting ? "Loaded " + options.worldPath : "New world - F5 to save";
         voxel::Window window(!smokeTest);
         if (smokeTest) voxel::verifyGpuResources();
-        voxel::World world(options.seed);
         voxel::Camera camera;
         voxel::WorldRenderer renderer;
         voxel::Overlay overlay;
@@ -50,6 +56,7 @@ int main(int argc, char** argv)
                   << "WASD fly | Mouse look | Space/Ctrl up/down | Shift boost\n"
                   << "Esc release mouse | Tab capture mouse | F wireframe | Q quit\n";
         std::cout << "Left click remove | Right click place | 1 Grass 2 Dirt 3 Stone 4 Sand\n";
+        std::cout << "F5 save | F9 reload | World file: " << options.worldPath << '\n' << status << '\n';
         double previousTime = glfwGetTime();
         double titleTime = previousTime;
         int frames = 0;
@@ -59,6 +66,22 @@ int main(int argc, char** argv)
             const double now = glfwGetTime();
             if (input) input->update(camera, static_cast<float>(now - previousTime));
             previousTime = now;
+            if (input && (input->saveRequested() || input->loadRequested())) {
+                try {
+                    if (input->saveRequested()) {
+                        voxel::saveWorld(world, options.worldPath);
+                        status = "Saved " + options.worldPath;
+                    } else {
+                        world = voxel::loadWorld(options.worldPath);
+                        status = "Loaded " + options.worldPath;
+                    }
+                    unsaved = false;
+                    std::cout << status << '\n';
+                } catch (const std::exception& error) {
+                    status = std::string("File error: ") + error.what();
+                    std::cerr << status << '\n';
+                }
+            }
             auto target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
                 [&world](glm::ivec3 p) { return world.get(p); });
             if (input && target) {
@@ -68,6 +91,7 @@ int main(int argc, char** argv)
                     edited = voxel::placeBlock(world, *target, input->selectedBlock(), camera.position());
                 }
                 if (edited) {
+                    unsaved = true;
                     target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
                         [&world](glm::ivec3 p) { return world.get(p); });
                 }
@@ -89,11 +113,12 @@ int main(int argc, char** argv)
             if (now - titleTime >= 0.25) {
                 const auto p = camera.position();
                 const auto selected = input ? input->selectedBlock() : voxel::Block::Grass;
-                const std::string title = std::string("Voxel Engine | ") + std::string(voxel::blockName(selected))
+                const std::string title = std::string(unsaved ? "Voxel Engine * | " : "Voxel Engine | ")
+                    + std::string(voxel::blockName(selected))
                     + " | " + std::to_string(renderer.triangleCount())
                     + " triangles | XYZ " + std::to_string(static_cast<int>(p.x)) + ", "
                     + std::to_string(static_cast<int>(p.y)) + ", " + std::to_string(static_cast<int>(p.z))
-                    + " | 1-4: material  Tab: mouse  Q: quit";
+                    + " | " + status;
                 glfwSetWindowTitle(window.handle(), title.c_str());
                 titleTime = now;
             }

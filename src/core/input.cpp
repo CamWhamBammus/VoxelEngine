@@ -28,7 +28,9 @@ void Input::update(Camera& camera, float deltaSeconds)
     const bool placePressed = mouse[1] && !previousMouse_[1];
     previousMouse_ = mouse;
     remove_ = place_ = false;
-    const std::array<bool, 3> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F)};
+    save_ = load_ = false;
+    const std::array<bool, 5> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
+                                  down(GLFW_KEY_F5), down(GLFW_KEY_F9)};
     if (down(GLFW_KEY_Q)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
     }
@@ -40,6 +42,8 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (keys[0] && !previous_[0]) capture(false);
     if (keys[1] && !previous_[1]) capture(!captured_);
     if (keys[2] && !previous_[2]) wireframe_ = !wireframe_;
+    save_ = keys[3] && !previous_[3];
+    load_ = keys[4] && !previous_[4];
     previous_ = keys;
     if (!captured_) return;
     remove_ = removePressed;

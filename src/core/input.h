@@ -17,6 +17,8 @@ public:
     bool removeRequested() const { return remove_; }
     bool placeRequested() const { return place_; }
     Block selectedBlock() const { return selected_; }
+    bool saveRequested() const { return save_; }
+    bool loadRequested() const { return load_; }
 
 private:
     void capture(bool enabled);
@@ -25,8 +27,10 @@ private:
     bool wireframe_ = false;
     bool remove_ = false;
     bool place_ = false;
+    bool save_ = false;
+    bool load_ = false;
     Block selected_ = Block::Grass;
-    std::array<bool, 3> previous_{};
+    std::array<bool, 5> previous_{};
     std::array<bool, 2> previousMouse_{};
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;
