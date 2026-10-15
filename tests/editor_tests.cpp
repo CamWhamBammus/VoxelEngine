@@ -1,4 +1,5 @@
 #include "voxel/editor.h"
+#include "voxel/edit_history.h"
 #include "voxel/terrain.h"
 
 #include <iostream>
@@ -78,5 +79,18 @@ int main()
     check(!voxel::placeBlock(world, *hit, voxel::Block::Stone,
                             {std::numeric_limits<float>::infinity(), 0, 0}),
           "nonfinite camera position must not permit placement");
+    voxel::World trackedWorld;
+    voxel::EditHistory history;
+    const voxel::RayHit tracked{{0, 14, 0}, {0, 1, 0}, 1.0f};
+    trackedWorld.set(tracked.position, voxel::Block::Stone);
+    check(voxel::removeBlock(trackedWorld, tracked, &history), "editor removal records history");
+    check(history.undo(trackedWorld) && trackedWorld.get(tracked.position) == voxel::Block::Stone,
+          "editor removal can be undone");
+    check(voxel::placeBlock(trackedWorld, tracked, voxel::Block::Sand, {5, 15, 5}, &history),
+          "editor placement records history");
+    check(history.undo(trackedWorld) && trackedWorld.get({0, 15, 0}) == voxel::Block::Air,
+          "editor placement can be undone");
+    check(history.redo(trackedWorld) && trackedWorld.get({0, 15, 0}) == voxel::Block::Sand,
+          "editor placement can be redone with its material");
     return failures == 0 ? 0 : 1;
 }

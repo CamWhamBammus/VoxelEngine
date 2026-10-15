@@ -19,6 +19,10 @@ public:
     Block selectedBlock() const { return selected_; }
     bool saveRequested() const { return save_; }
     bool loadRequested() const { return load_; }
+    bool undoRequested() const { return undo_; }
+    bool redoRequested() const { return redo_; }
+    bool pickRequested() const { return pick_; }
+    void selectBlock(Block block) { if (isSolid(block)) selected_ = block; }
 
 private:
     void capture(bool enabled);
@@ -29,9 +33,12 @@ private:
     bool place_ = false;
     bool save_ = false;
     bool load_ = false;
+    bool undo_ = false;
+    bool redo_ = false;
+    bool pick_ = false;
     Block selected_ = Block::Grass;
-    std::array<bool, 5> previous_{};
-    std::array<bool, 2> previousMouse_{};
+    std::array<bool, 7> previous_{};
+    std::array<bool, 3> previousMouse_{};
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;
 };

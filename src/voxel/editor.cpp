@@ -1,4 +1,5 @@
 #include "voxel/editor.h"
+#include "voxel/edit_history.h"
 
 #include <cmath>
 #include <cstdint>
@@ -6,12 +7,13 @@
 
 namespace voxel {
 
-bool removeBlock(World& world, const RayHit& hit)
+bool removeBlock(World& world, const RayHit& hit, EditHistory* history)
 {
-    return isSolid(world.get(hit.position)) && world.set(hit.position, Block::Air);
+    return isSolid(world.get(hit.position)) && (history
+        ? history->apply(world, hit.position, Block::Air) : world.set(hit.position, Block::Air));
 }
 
-bool placeBlock(World& world, const RayHit& hit, Block block, glm::vec3 cameraPosition)
+bool placeBlock(World& world, const RayHit& hit, Block block, glm::vec3 cameraPosition, EditHistory* history)
 {
     if (!isSolid(block) || !isSolid(world.get(hit.position))) {
         return false;
@@ -36,7 +38,7 @@ bool placeBlock(World& world, const RayHit& hit, Block block, glm::vec3 cameraPo
     if (normalAxes != 1 || overlapsCamera || isSolid(world.get(destination))) {
         return false;
     }
-    return world.set(destination, block);
+    return history ? history->apply(world, destination, block) : world.set(destination, block);
 }
 
 } // namespace voxel

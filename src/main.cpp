@@ -6,6 +6,7 @@
 #include "render/overlay.h"
 #include "render/diagnostics.h"
 #include "voxel/editor.h"
+#include "voxel/edit_history.h"
 #include "voxel/raycast.h"
 #include "voxel/world.h"
 #include "voxel/world_io.h"
@@ -43,6 +44,7 @@ int main(int argc, char** argv)
             && std::filesystem::exists(options.worldPath);
         voxel::World world = loadExisting ? voxel::loadWorld(options.worldPath) : voxel::World(options.seed);
         bool unsaved = false;
+        voxel::EditHistory history;
         std::string status = loadExisting ? "Loaded " + options.worldPath : "New world - F5 to save";
         voxel::Window window(!smokeTest);
         if (smokeTest) voxel::verifyGpuResources();
@@ -57,6 +59,7 @@ int main(int argc, char** argv)
                   << "Esc release mouse | Tab capture mouse | F wireframe | Q quit\n";
         std::cout << "Left click remove | Right click place | 1 Grass 2 Dirt 3 Stone 4 Sand\n";
         std::cout << "F5 save | F9 reload | World file: " << options.worldPath << '\n' << status << '\n';
+        std::cout << "Ctrl/Cmd Z undo | Ctrl/Cmd Y or Shift Z redo | Middle click pick material\n";
         double previousTime = glfwGetTime();
         double titleTime = previousTime;
         int frames = 0;
@@ -73,6 +76,7 @@ int main(int argc, char** argv)
                         status = "Saved " + options.worldPath;
                     } else {
                         world = voxel::loadWorld(options.worldPath);
+                        history.clear();
                         status = "Loaded " + options.worldPath;
                     }
                     unsaved = false;
@@ -82,13 +86,20 @@ int main(int argc, char** argv)
                     std::cerr << status << '\n';
                 }
             }
+            if (input && (input->undoRequested() || input->redoRequested())) {
+                const bool undo = input->undoRequested();
+                const bool changed = undo ? history.undo(world) : history.redo(world);
+                if (changed) unsaved = true;
+                status = changed ? (undo ? "Undid edit" : "Redid edit") : "No edit available";
+            }
             auto target = voxel::raycast(camera.position(), camera.forward(), 8.0f,
                 [&world](glm::ivec3 p) { return world.get(p); });
             if (input && target) {
+                if (input->pickRequested()) input->selectBlock(world.get(target->position));
                 bool edited = false;
-                if (input->removeRequested()) edited = voxel::removeBlock(world, *target);
+                if (input->removeRequested()) edited = voxel::removeBlock(world, *target, &history);
                 else if (input->placeRequested()) {
-                    edited = voxel::placeBlock(world, *target, input->selectedBlock(), camera.position());
+                    edited = voxel::placeBlock(world, *target, input->selectedBlock(), camera.position(), &history);
                 }
                 if (edited) {
                     unsaved = true;

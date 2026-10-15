@@ -20,17 +20,23 @@ void Input::capture(bool enabled)
 void Input::update(Camera& camera, float deltaSeconds)
 {
     const auto down = [this](int key) { return glfwGetKey(window_, key) == GLFW_PRESS; };
-    const std::array<bool, 2> mouse{
+    const std::array<bool, 3> mouse{
         glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
         glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
+        glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
     };
     const bool removePressed = mouse[0] && !previousMouse_[0];
     const bool placePressed = mouse[1] && !previousMouse_[1];
+    const bool pickPressed = mouse[2] && !previousMouse_[2];
     previousMouse_ = mouse;
     remove_ = place_ = false;
-    save_ = load_ = false;
-    const std::array<bool, 5> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
-                                  down(GLFW_KEY_F5), down(GLFW_KEY_F9)};
+    save_ = load_ = undo_ = redo_ = pick_ = false;
+    const bool shortcut = down(GLFW_KEY_LEFT_CONTROL) || down(GLFW_KEY_RIGHT_CONTROL)
+        || down(GLFW_KEY_LEFT_SUPER) || down(GLFW_KEY_RIGHT_SUPER);
+    const bool shift = down(GLFW_KEY_LEFT_SHIFT) || down(GLFW_KEY_RIGHT_SHIFT);
+    const std::array<bool, 7> keys{down(GLFW_KEY_ESCAPE), down(GLFW_KEY_TAB), down(GLFW_KEY_F),
+        down(GLFW_KEY_F5), down(GLFW_KEY_F9), shortcut && down(GLFW_KEY_Z) && !shift,
+        shortcut && (down(GLFW_KEY_Y) || (down(GLFW_KEY_Z) && shift))};
     if (down(GLFW_KEY_Q)) {
         glfwSetWindowShouldClose(window_, GLFW_TRUE);
     }
@@ -44,10 +50,13 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (keys[2] && !previous_[2]) wireframe_ = !wireframe_;
     save_ = keys[3] && !previous_[3];
     load_ = keys[4] && !previous_[4];
+    undo_ = keys[5] && !previous_[5];
+    redo_ = keys[6] && !previous_[6];
     previous_ = keys;
     if (!captured_) return;
     remove_ = removePressed;
     place_ = placePressed;
+    pick_ = pickPressed;
     for (std::size_t slot = 0; slot < PlaceableBlocks.size(); ++slot) {
         if (down(GLFW_KEY_1 + static_cast<int>(slot))) selected_ = PlaceableBlocks[slot];
     }
@@ -58,6 +67,7 @@ void Input::update(Camera& camera, float deltaSeconds)
                   static_cast<float>(cursorY_ - y) * 0.10f);
     cursorX_ = x;
     cursorY_ = y;
+    if (keys[5] || keys[6]) return;
     const glm::vec3 direction{
         static_cast<float>(down(GLFW_KEY_D) - down(GLFW_KEY_A)),
         static_cast<float>(down(GLFW_KEY_SPACE) - down(GLFW_KEY_LEFT_CONTROL)),
