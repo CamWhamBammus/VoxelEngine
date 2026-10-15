@@ -1,6 +1,7 @@
 #include "core/window.h"
 #include "core/camera.h"
 #include "core/input.h"
+#include "core/options.h"
 #include "render/world_renderer.h"
 #include "render/overlay.h"
 #include "render/diagnostics.h"
@@ -12,59 +13,26 @@
 #include <GLFW/glfw3.h>
 
 #include <cstdlib>
-#include <charconv>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
-namespace {
-constexpr const char* usage = "Usage: VoxelEngine [--seed N] [--smoke-test] [--screenshot path.ppm] [--help]\n";
-
-struct Options {
-    std::uint32_t seed = 1337;
-    bool smokeTest = false;
-    bool help = false;
-    std::string screenshot;
-};
-
-Options parseOptions(int argc, char** argv)
-{
-    Options options;
-    for (int i = 1; i < argc; ++i) {
-        const std::string_view argument(argv[i]);
-        if (argument == "--help") options.help = true;
-        else if (argument == "--smoke-test") options.smokeTest = true;
-        else if (argument == "--seed" && i + 1 < argc) {
-            const std::string_view value(argv[++i]);
-            const auto result = std::from_chars(value.data(), value.data() + value.size(), options.seed);
-            if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
-                throw std::invalid_argument("Seed must be an integer from 0 to 4294967295");
-            }
-        } else if (argument == "--screenshot" && i + 1 < argc) {
-            options.screenshot = argv[++i];
-            if (options.screenshot.empty()) throw std::invalid_argument("Screenshot path is empty");
-            options.smokeTest = true;
-        } else {
-            throw std::invalid_argument(std::string("Unknown or incomplete option: ") + std::string(argument));
-        }
-    }
-    return options;
-}
-} // namespace
 
 int main(int argc, char** argv)
 {
-    Options options;
+    voxel::Options options;
     try {
-        options = parseOptions(argc, argv);
+        std::vector<std::string_view> arguments(argv + 1, argv + argc);
+        options = voxel::parseOptions(arguments);
     } catch (const std::invalid_argument& error) {
-        std::cerr << error.what() << '\n' << usage;
+        std::cerr << error.what() << '\n' << voxel::Usage;
         return EXIT_FAILURE;
     }
     if (options.help) {
-        std::cout << usage;
+        std::cout << voxel::Usage;
         return EXIT_SUCCESS;
     }
     const bool smokeTest = options.smokeTest;
