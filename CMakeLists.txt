@@ -23,6 +23,7 @@ add_library(VoxelCore
     src/voxel/terrain.cpp
     src/voxel/world.cpp
     src/voxel/world_codec.cpp
+    src/voxel/world_io.cpp
     src/voxel/raycast.cpp
     src/voxel/editor.cpp
     src/voxel/edit_history.cpp
@@ -52,7 +53,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS chunk mesh terrain camera world raycast editor options world_codec edit_history)
+    foreach(test_name IN ITEMS chunk mesh terrain camera world raycast editor options world_codec edit_history world_io)
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)
         voxel_warnings(${test_name}_tests)
