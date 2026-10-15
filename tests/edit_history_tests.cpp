@@ -1,5 +1,5 @@
-#include "voxel/edit_history.h"
-#include "voxel/world.h"
+#include "editing.h"
+#include "world.h"
 
 #include <iostream>
 #include <limits>

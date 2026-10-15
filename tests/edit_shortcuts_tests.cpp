@@ -1,4 +1,4 @@
-#include "core/edit_shortcuts.h"
+#include "input.h"
 #include <iostream>
 
 int main()

@@ -1,4 +1,5 @@
-#include "voxel/world.h"
+#include "mesh.h"
+#include "world.h"
 
 #include <iostream>
 #include <limits>
@@ -117,14 +118,14 @@ int main()
     }
     world.set({-1, 5, 1}, Block::Stone);
     world.set({0, 5, 1}, Block::Stone);
-    const auto leftMesh = world.mesh(11);
-    const auto rightMesh = world.mesh(12);
+    const auto leftMesh = voxel::buildMesh(world, 11);
+    const auto rightMesh = voxel::buildMesh(world, 12);
     check(leftMesh.indices.size() == 30 && rightMesh.indices.size() == 30,
         "world mesh culls both faces at negative chunk seam");
     check(voxel::buildMesh(world.chunk(11), world.origin(11)).indices.size() == 36,
         "isolated meshing retains the seam face");
     world.set({0, 5, 1}, Block::Air);
-    check(world.mesh(11).indices.size() == 36 && world.mesh(12).indices.empty(),
+    check(voxel::buildMesh(world, 11).indices.size() == 36 && voxel::buildMesh(world, 12).indices.empty(),
         "removing a seam voxel exposes its neighbor face");
 
     bool rejectedInvalidIndex = false;

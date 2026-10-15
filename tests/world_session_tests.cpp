@@ -1,7 +1,6 @@
-#include "voxel/editor.h"
-#include "voxel/edit_history.h"
-#include "voxel/world_codec.h"
-#include "voxel/world_io.h"
+#include "mesh.h"
+#include "editing.h"
+#include "save.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -101,8 +100,8 @@ int main()
     if (!placedHit) {
         return 1;
     }
-    const auto savedLeftMesh = world.mesh(11);
-    const auto savedRightMesh = world.mesh(12);
+    const auto savedLeftMesh = voxel::buildMesh(world, 11);
+    const auto savedRightMesh = voxel::buildMesh(world, 12);
     const auto savedState = snapshot(world);
     voxel::saveWorld(world, savePath);
     check(history.undoCount() == 2 && history.redoCount() == 0,
@@ -116,7 +115,7 @@ int main()
     const auto undoneHit = target();
     check(undoneHit && undoneHit->position == left, "undo must update subsequent ray targets");
     check(world.takeDirtyChunks() == seamChunks, "undo must invalidate both meshes at the seam");
-    check(!sameMesh(world.mesh(11), savedLeftMesh) && !sameMesh(world.mesh(12), savedRightMesh),
+    check(!sameMesh(voxel::buildMesh(world, 11), savedLeftMesh) && !sameMesh(voxel::buildMesh(world, 12), savedRightMesh),
           "undo must expose the neighboring face and remove the placed voxel geometry");
     check(history.redo(world) && snapshot(world) == savedState,
           "redo must restore exactly the saved world contents");
@@ -136,7 +135,7 @@ int main()
     check(world.takeDirtyChunks().size() == voxel::World::ChunkCount,
           "loaded world must replace every previously cached chunk mesh");
     check(world.takeDirtyChunks().empty(), "loaded mesh invalidations must clear after upload");
-    check(sameMesh(world.mesh(11), savedLeftMesh) && sameMesh(world.mesh(12), savedRightMesh),
+    check(sameMesh(voxel::buildMesh(world, 11), savedLeftMesh) && sameMesh(voxel::buildMesh(world, 12), savedRightMesh),
           "saved seam edits must reconstruct identical positions, normals, colors, and indices");
     const auto loadedHit = target();
     check(loadedHit && loadedHit->position == right && world.get(left) == voxel::Block::Sand

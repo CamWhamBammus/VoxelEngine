@@ -1,5 +1,4 @@
-#include "voxel/world_io.h"
-#include "voxel/world_codec.h"
+#include "save.h"
 
 #include <cstdlib>
 #include <filesystem>

@@ -2,6 +2,56 @@
 
 A C++20 voxel terrain editor for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. It generates a finite terrain world, supports undoable block editing and world saves, and uses greedy meshing and view-frustum culling to reduce rendering work.
 
+## Understand the code
+
+Start with [src/main.cpp](src/main.cpp). It opens the window and repeats three steps: **read input → update the game → draw the frame**.
+
+Each module has a `.h` file that declares its types and functions, and a matching `.cpp` file that implements them. Related code stays together:
+
+```text
+src/
+  main.cpp          Startup and the main loop
+  game.h/.cpp       Game state, player actions, and status text
+  input.h/.cpp      Keyboard and mouse controls
+  camera.h/.cpp     Camera movement, view math, and visibility checks
+  world.h/.cpp      Blocks, chunks, world storage, and terrain generation
+  mesh.h/.cpp       Turn blocks into triangles
+  editing.h/.cpp    Find the block under the cursor; place, remove, undo, redo
+  save.h/.cpp       Read and write world files
+  graphics/
+    window.h/.cpp   Open and close the GLFW window
+    opengl.h/.cpp   Compile shaders and upload mesh data to the GPU
+    renderer.h/.cpp Draw terrain and the selected block's outline
+    hud.h/.cpp      Draw text on the screen
+tests/              Behavior tests and graphics smoke checks
+CMakeLists.txt      List the source files and build targets
+```
+
+Read these first:
+
+1. [main.cpp](src/main.cpp) shows how everything connects.
+2. [game.h](src/game.h) names the current world, camera, selected material, and edit history. [Game::update in game.cpp](src/game.cpp) handles the player's actions in order.
+3. [world.h](src/world.h) explains the data: a `Block` is a material, a `Chunk` stores a 16×16×16 cube of blocks, and a `World` holds the chunks.
+4. [editing.cpp](src/editing.cpp) shows how aiming and editing work. `raycast` follows the camera's viewing direction through blocks to find a hit.
+
+For one frame, `Input::update` moves the camera and fills an `InputActions` value. `Game::update` uses those actions to save, load, undo, or edit. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
+
+Use this map when changing something:
+
+| I want to change… | Start here |
+| --- | --- |
+| Keys, mouse sensitivity, or movement speed | [input.cpp](src/input.cpp) |
+| Starting camera position and direction | [camera.h](src/camera.h) |
+| Zoom limits | [camera.cpp](src/camera.cpp) |
+| Block colors and names | [world.h](src/world.h) |
+| Terrain shape | `terrainHeight` and `generateTerrain` in [world.cpp](src/world.cpp) |
+| Editing reach or the order of player actions | [game.cpp](src/game.cpp) |
+| Placement rules or undo behavior | [editing.cpp](src/editing.cpp) |
+| HUD words and controls text | `Game::statusText` in [game.cpp](src/game.cpp) |
+| Lighting or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
+
+You can learn the game logic before reading `graphics/`, the greedy meshing algorithm, or the binary save format. Those details are contained in their own modules. The `VoxelCore` build target and its tests work without an OpenGL window.
+
 ## Build and run
 
 Install a C++20 compiler and CMake 3.20 or newer, plus the graphics dependencies.
@@ -130,16 +180,8 @@ cmake --build build-sanitize --parallel
 ctest --test-dir build-sanitize --output-on-failure
 ```
 
-Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and a complete edit/save/reload session. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
+Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 
-## Code layout
-
-- `src/main.cpp` manages the session, file actions, application loop, and status text.
-- `src/core/` contains the camera, frustum, options, keyboard/mouse handling, and GLFW window lifetime. Camera and frustum math have no graphics-context dependency.
-- `src/voxel/` contains materials, chunks, terrain, greedy meshes, raycasting, history, and persistence. World meshing samples adjacent chunks to hide shared faces. Editing marks affected chunks for rebuilding.
-- `src/render/` contains shader/GPU ownership, the terrain renderer, selection overlay, bitmap HUD, and graphics diagnostics. GPU objects are destroyed while the OpenGL context is alive.
-- `tests/` contains standalone CTest executables for the core behavior.
-
-The `VoxelCore` CMake target is independent of the viewer's OpenGL dependencies. Terrain is finite; chunk streaming, collision, and gravity are not implemented.
+Terrain is finite; chunk streaming, collision, and gravity are not implemented.

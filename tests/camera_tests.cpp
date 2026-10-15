@@ -1,4 +1,4 @@
-#include "core/camera.h"
+#include "camera.h"
 
 #include <cmath>
 #include <cstdlib>

@@ -1,6 +1,5 @@
-#include "voxel/editor.h"
-#include "voxel/edit_history.h"
-#include "voxel/terrain.h"
+#include "editing.h"
+#include "world.h"
 
 #include <iostream>
 #include <limits>

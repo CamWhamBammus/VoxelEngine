@@ -1,4 +1,4 @@
-#include "voxel/mesh.h"
+#include "mesh.h"
 
 #include <glm/geometric.hpp>
 

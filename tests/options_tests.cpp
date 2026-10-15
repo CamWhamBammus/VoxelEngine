@@ -1,4 +1,4 @@
-#include "core/options.h"
+#include "game.h"
 
 #include <iostream>
 #include <stdexcept>

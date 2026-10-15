@@ -1,0 +1,97 @@
+#pragma once
+
+#include "world.h"
+
+#include <optional>
+
+struct GLFWwindow;
+
+namespace voxel {
+class Camera;
+
+// One-frame requests passed to Game, reset at the start of every input update.
+struct InputActions {
+    bool save = false;
+    bool load = false;
+    bool undo = false;
+    bool redo = false;
+    bool remove = false;
+    bool place = false;
+    bool pick = false;
+    std::optional<Block> selectedBlock;
+};
+
+struct EditShortcutKeys {
+    bool z = false;
+    bool y = false;
+    bool modifier = false;
+    bool shift = false;
+};
+
+struct EditShortcutActions {
+    bool undo = false;
+    bool redo = false;
+};
+
+class EditShortcuts {
+public:
+    EditShortcutActions update(EditShortcutKeys keys)
+    {
+        // Only a physical letter-key press creates an action. Releasing Shift
+        // after redo must never turn the held Z key into a fresh undo action.
+        const bool zPressed = keys.z && !previous_.z;
+        const bool yPressed = keys.y && !previous_.y;
+        previous_ = keys;
+        return {keys.modifier && zPressed && !keys.shift,
+                keys.modifier && (yPressed || (zPressed && keys.shift))};
+    }
+
+private:
+    EditShortcutKeys previous_;
+};
+
+class Input {
+public:
+    explicit Input(GLFWwindow* window);
+    ~Input();
+    Input(const Input&) = delete;
+    Input& operator=(const Input&) = delete;
+
+    void update(Camera& camera, float deltaSeconds);
+    const InputActions& actions() const { return actions_; }
+    bool captured() const { return captured_; }
+    bool wireframe() const { return wireframe_; }
+    bool helpVisible() const { return help_; }
+
+private:
+    struct Buttons {
+        bool releaseMouse = false;
+        bool toggleMouse = false;
+        bool wireframe = false;
+        bool save = false;
+        bool load = false;
+        bool resetCamera = false;
+        bool help = false;
+        bool remove = false;
+        bool place = false;
+        bool pick = false;
+    };
+
+    bool keyDown(int key) const;
+    Buttons readButtons() const;
+    void capture(bool enabled);
+    void updateCamera(Camera& camera, float deltaSeconds, bool editingShortcut);
+
+    GLFWwindow* window_;
+    InputActions actions_;
+    Buttons previousButtons_;
+    EditShortcuts editShortcuts_;
+    bool captured_ = false;
+    bool wireframe_ = false;
+    bool help_ = false;
+    double cursorX_ = 0.0;
+    double cursorY_ = 0.0;
+    double scroll_ = 0.0;
+};
+
+} // namespace voxel

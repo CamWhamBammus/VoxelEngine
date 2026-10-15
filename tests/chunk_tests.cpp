@@ -1,4 +1,4 @@
-#include "voxel/chunk.h"
+#include "world.h"
 
 #include <iostream>
 #include <limits>

@@ -1,4 +1,4 @@
-#include "voxel/terrain.h"
+#include "world.h"
 
 #include <cmath>
 #include <iostream>
