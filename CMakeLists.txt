@@ -18,6 +18,7 @@ endfunction()
 add_library(VoxelCore
     src/core/camera.cpp
     src/core/options.cpp
+    src/core/frustum.cpp
     src/voxel/chunk.cpp
     src/voxel/mesh.cpp
     src/voxel/terrain.cpp
@@ -53,7 +54,7 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS chunk mesh terrain camera world raycast editor options world_codec edit_history world_io greedy_mesh)
+    foreach(test_name IN ITEMS chunk mesh terrain camera world raycast editor options world_codec edit_history world_io greedy_mesh frustum)
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)
         voxel_warnings(${test_name}_tests)

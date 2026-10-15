@@ -1,5 +1,6 @@
 #include "render/world_renderer.h"
 #include "core/camera.h"
+#include "core/frustum.h"
 
 namespace voxel {
 namespace {
@@ -52,10 +53,20 @@ void WorldRenderer::render(World& world, const Camera& camera, int width, int he
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     shader_.use();
-    shader_.setMat4("viewProjection", camera.projectionMatrix(static_cast<float>(width) / height)
-                                    * camera.viewMatrix());
+    const glm::mat4 viewProjection = camera.projectionMatrix(static_cast<float>(width) / height)
+                                    * camera.viewMatrix();
+    const Frustum frustum(viewProjection);
+    shader_.setMat4("viewProjection", viewProjection);
     shader_.setVec3("cameraPosition", camera.position());
-    for (const auto& mesh : meshes_) mesh.draw();
+    visibleChunks_ = drawnTriangles_ = 0;
+    for (std::size_t index = 0; index < meshes_.size(); ++index) {
+        const glm::vec3 minimum(world.origin(index));
+        if (meshes_[index].indexCount() == 0
+            || !frustum.intersects(minimum, minimum + glm::vec3(Chunk::Size))) continue;
+        meshes_[index].draw();
+        ++visibleChunks_;
+        drawnTriangles_ += meshes_[index].indexCount() / 3;
+    }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
