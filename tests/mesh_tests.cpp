@@ -84,8 +84,8 @@ int main()
         }
     }
     const auto shell = voxel::buildMesh(full);
-    check(shell.vertices.size() == 6 * 16 * 16 * 4 && shell.indices.size() == 6 * 16 * 16 * 6,
-          "solid chunk must emit only its outer shell");
+    check(shell.vertices.size() == 6 * 4 && shell.indices.size() == 6 * 6,
+          "solid chunk must merge its outer shell into six quads");
     const auto enclosed = voxel::buildMesh(full, origin, [](glm::ivec3) { return voxel::Block::Stone; });
     check(enclosed.vertices.empty() && enclosed.indices.empty(),
           "fully enclosed chunk must emit no geometry");
