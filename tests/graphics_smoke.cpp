@@ -206,11 +206,24 @@ void verifyUndergroundMaterials(int width, int height)
     camera.rotate(35, 25); // Look straight at the front of the test block.
     camera.setPosition({0.5f, 6.5f, 6.5f});
     WorldRenderer renderer;
-    constexpr int patchSize = 48;
+    GLuint callerTexture = 0;
+    glGenTextures(1, &callerTexture);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_3D, callerTexture);
+    glActiveTexture(GL_TEXTURE3);
+    constexpr int patchSize = 128;
     std::array<unsigned char, patchSize * patchSize * 4> pixels{};
     const auto sample = [&](Block material) {
         world.set({0, 6, 0}, material);
         renderer.render(world, camera, width, height, false, true);
+        GLint activeTexture = 0, texture = 0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+        glActiveTexture(GL_TEXTURE0);
+        glGetIntegerv(GL_TEXTURE_BINDING_3D, &texture);
+        glActiveTexture(GL_TEXTURE3);
+        if (activeTexture != GL_TEXTURE3 || texture != static_cast<GLint>(callerTexture)) {
+            throw std::runtime_error("Voxel lighting changed the caller's texture bindings");
+        }
         glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
                      patchSize, patchSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
         glm::vec3 average(0);
@@ -229,23 +242,63 @@ void verifyUndergroundMaterials(int width, int height)
         maximum = std::max(maximum, pixels[pixel]);
     }
     if (maximum - minimum < 5) throw std::runtime_error("Stone lost its voxel-space pixel grain");
-    const auto copper = sample(Block::CopperOre);
-    const auto coal = sample(Block::CoalOre);
+    sample(Block::CopperOre);
+    std::size_t copperFlecks = 0;
+    for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+        copperFlecks += pixels[pixel] > pixels[pixel + 1] * 1.2f
+            && pixels[pixel] > pixels[pixel + 2] * 1.3f;
+    }
+    sample(Block::CoalOre);
+    std::size_t coalFlecks = 0;
+    for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+        coalFlecks += pixels[pixel] < stone.x * 0.6f;
+    }
     const auto planks = sample(Block::Planks);
     const auto brick = sample(Block::Brick);
-    if (copper.x - copper.z < 5 || coal.x >= stone.x - 5
-        || planks.x - planks.z < 25 || brick.x - brick.y < 20) {
-        throw std::runtime_error("Ore, wood and brick materials lost their distinct surface colors");
+    if (copperFlecks < patchSize || coalFlecks < patchSize
+        || (planks.x - planks.z) - (stone.x - stone.z) < 20
+        || (brick.x - brick.y) - (stone.x - stone.y) < 15) {
+        throw std::runtime_error("Ore, wood and brick materials lost their distinct surface colors: "
+            + std::to_string(copperFlecks) + " copper, " + std::to_string(coalFlecks)
+            + " coal, wood contrast " + std::to_string(planks.x - planks.z)
+            + ", brick contrast " + std::to_string(brick.x - brick.y));
     }
-    const auto lantern = sample(Block::Lantern);
+    sample(Block::Lantern);
+    std::size_t glass = 0, metal = 0;
+    for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+        glass += pixels[pixel] > 220 && pixels[pixel + 1] > 150 && pixels[pixel + 2] < 150;
+        metal += pixels[pixel] < 100 && pixels[pixel + 1] < 100 && pixels[pixel + 2] < 100;
+    }
     const auto crystal = sample(Block::Crystal);
-    if (lantern.x < 220 || lantern.y < 170 || crystal.z < 170 || crystal.y < 150) {
+    if (renderer.triangleCount() <= 12) {
+        throw std::runtime_error("Crystal detail geometry did not render in the underground view");
+    }
+    if (glass < patchSize || metal < patchSize || crystal.z < 120 || crystal.y < 100
+        || crystal.z - crystal.x < 30) {
         throw std::runtime_error("Lantern or crystal lost its emissive surface");
+    }
+    sample(Block::Stone);
+    if (renderer.triangleCount() != 12) {
+        throw std::runtime_error("Replacing a crystal retained stale decorative geometry");
     }
 
     // Light edits must refresh the source cache, even with the same renderer.
     world.set({2, 7, 3}, Block::Lantern);
     const auto warm = sample(Block::Stone);
+    // This wall crosses the light ray but stays outside both the camera ray
+    // and the surface's contact-shading neighborhood.
+    for (int x = 1; x <= 3; ++x) {
+        for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Stone);
+    }
+    const auto blocked = sample(Block::Stone);
+    for (int x = 1; x <= 3; ++x) {
+        for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Air);
+    }
+    const auto reopened = sample(Block::Stone);
+    if (blocked.x > warm.x - 10 || glm::length(blocked - stone) > 2.0f
+        || glm::length(reopened - warm) > 1.0f) {
+        throw std::runtime_error("Voxel wall failed to block light or reopening failed to restore it");
+    }
     world.set({2, 7, 3}, Block::Crystal);
     const auto cool = sample(Block::Stone);
     world.set({2, 7, 3}, Block::Air);
@@ -262,6 +315,17 @@ void verifyUndergroundMaterials(int width, int height)
     if (pooled.x > 220 || pooled.z > 245 || pooled.z < pooled.x + 10) {
         throw std::runtime_error("Clustered crystals washed out the surrounding rock");
     }
+    for (int x = 1; x <= 3; ++x) {
+        for (int y = 5; y <= 8; ++y) world.set({x, y, 3}, Block::Air);
+    }
+    camera.setPosition({0.78f, 9.5f, 0.5f});
+    camera.rotate(0, -89);
+    const auto floor = sample(Block::Stone);
+    world.set({1, 7, 0}, Block::Stone);
+    const auto contact = sample(Block::Stone);
+    if (floor.x < 40 || contact.x < 30 || contact.x > floor.x - 3) {
+        throw std::runtime_error("Floor contact shading lost its readable, darker corner");
+    }
     std::array<unsigned char, 4> background{};
     glReadPixels(0, height - 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, background.data());
     if (background[0] > 20 || background[1] > 20 || background[2] > 20) {
@@ -272,8 +336,11 @@ void verifyUndergroundMaterials(int width, int height)
     if (background[0] < 100 || background[2] < 180) {
         throw std::runtime_error("Outdoor editor lost its sky when switching render modes");
     }
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    glDeleteTextures(1, &callerTexture);
     checkOpenGl();
-    std::cout << "Underground materials passed: grain, ores, wood, emission and cached lights\n";
+    std::cout << "Underground materials passed: grain, ores, wood, emission, wall shadows and light edits\n";
 }
 
 } // namespace

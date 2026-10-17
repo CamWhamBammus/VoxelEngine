@@ -3,6 +3,9 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
+#include <cstdlib>
+#include <glm/vec2.hpp>
 
 namespace voxel {
 namespace {
@@ -75,7 +78,7 @@ void supportFrame(World& world, int x, int z, bool passageRunsEastWest)
     box(world, beam - across * 2, beam + across * 2, Block::Timber);
 }
 
-void cottage(World& world, int x, int z, bool westDoor)
+void cottage(World& world, int x, int z, bool westDoor, int roofStyle)
 {
     box(world, {x, 3, z}, {x + 6, 3, z + 6}, Block::Planks);
     box(world, {x, 4, z}, {x + 6, 4, z + 6}, Block::Brick);
@@ -86,8 +89,30 @@ void cottage(World& world, int x, int z, bool westDoor)
             box(world, {postX, 4, postZ}, {postX, 8, postZ}, Block::Timber);
         }
     }
-    box(world, {x, 8, z}, {x + 6, 8, z + 6}, Block::Timber);
-    box(world, {x + 1, 9, z + 1}, {x + 5, 9, z + 5}, Block::Planks);
+    // Two gable directions and a stepped workshop roof break up the skyline.
+    // Overhanging slate rests on timber trim; the gable ends close the attic.
+    for (int dz = -1; dz <= 7; ++dz) {
+        for (int dx = -1; dx <= 7; ++dx) {
+            const int across = roofStyle == 1 ? dz : dx;
+            const int along = roofStyle == 1 ? dx : dz;
+            const int height = roofStyle == 2 ? 9 + (dx + 1) / 3
+                : 8 + std::max(0, 3 - std::abs(across - 3));
+            if (dx >= 0 && dx <= 6 && dz >= 0 && dz <= 6) {
+                if (along == 0 || along == 6) {
+                    box(world, {x + dx, 8, z + dz}, {x + dx, height - 1, z + dz}, Block::Planks);
+                }
+            }
+            world.set({x + dx, height, z + dz}, along == -1 || along == 7 ? Block::Timber : Block::Slate);
+        }
+    }
+    if (roofStyle == 0) {
+        box(world, {x + 5, 8, z + 1}, {x + 5, 11, z + 1}, Block::Brick);
+        world.set({x + 5, 12, z + 1}, Block::Slate);
+        box(world, {x + 1, 7, z + 7}, {x + 4, 7, z + 8}, Block::Planks);
+        for (const int postX : {x + 1, x + 4}) {
+            box(world, {postX, 4, z + 8}, {postX, 6, z + 8}, Block::Timber);
+        }
+    }
     // Two-block doors and windows leave the interiors visible and accessible.
     if (westDoor) {
         box(world, {x, 4, z + 2}, {x, 6, z + 3}, Block::Air);
@@ -113,6 +138,55 @@ void vein(World& world, glm::ivec3 center, Block ore, int radius)
                 const Block old = world.get({x, y, z});
                 if (old == Block::Limestone || old == Block::Stone || old == Block::Slate) {
                     world.set({x, y, z}, ore);
+                }
+            }
+        }
+    }
+}
+
+void mossPatch(World& world, int centerX, int centerZ, int radius)
+{
+    // Change the floor material, never its height or the brick walking paths.
+    for (int z = centerZ - radius; z <= centerZ + radius; ++z) {
+        for (int x = centerX - radius; x <= centerX + radius; ++x) {
+            const int dx = x - centerX, dz = z - centerZ;
+            const auto variation = hash(x, z, world.seed());
+            if (dx * dx + dz * dz > radius * radius || variation % 7 == 0) continue;
+            const Block floor = world.get({x, 3, z});
+            if ((floor != Block::Limestone && floor != Block::Slate) || world.get({x, 4, z}) != Block::Air) continue;
+            world.set({x, 2, z}, Block::Dirt);
+            world.set({x, 3, z}, variation % 5 == 0 ? Block::Dirt : Block::Grass);
+        }
+    }
+}
+
+void outcrop(World& world, int centerX, int centerZ, int radius, int height)
+{
+    // Uneven tapered shoulders frame the rooms without filling their centers.
+    for (int z = centerZ - radius; z <= centerZ + radius; ++z) {
+        for (int x = centerX - radius; x <= centerX + radius; ++x) {
+            const int dx = std::abs(x - centerX), dz = std::abs(z - centerZ);
+            if (dx + dz > radius + 1 || world.get({x, 4, z}) != Block::Air) continue;
+            const int top = 3 + height - std::max(dx, dz) - int(hash(x, z, world.seed()) % 2);
+            for (int y = 4; y <= top; ++y) {
+                if (world.get({x, y, z}) == Block::Air) {
+                    world.set({x, y, z}, y == top ? Block::Limestone : Block::Slate);
+                }
+            }
+        }
+    }
+}
+
+void hangingRock(World& world, int x, int z, int length)
+{
+    int ceiling = 14;
+    while (ceiling >= 8 && world.get({x, ceiling, z}) != Block::Air) --ceiling;
+    for (int y = std::max(8, ceiling - length + 1); y <= ceiling; ++y) {
+        const int width = y >= ceiling - 1 ? 1 : 0;
+        for (int dz = -width; dz <= width; ++dz) {
+            for (int dx = -width; dx <= width; ++dx) {
+                if (world.get({x + dx, y, z + dz}) == Block::Air) {
+                    world.set({x + dx, y, z + dz}, Block::Stone);
                 }
             }
         }
@@ -160,9 +234,9 @@ void buildUndergroundScene(World& world)
     box(world, {-9, 3, 0}, {-7, 3, 5}, Block::Brick);
     box(world, {7, 3, -1}, {9, 3, 5}, Block::Brick);
     box(world, {5, 3, 5}, {7, 3, 12}, Block::Brick);
-    cottage(world, -11, -5, false);
-    cottage(world, 5, -6, false);
-    cottage(world, 8, 8, true);
+    cottage(world, -11, -5, false, 0);
+    cottage(world, 5, -6, false, 1);
+    cottage(world, 8, 8, true, 2);
 
     // Square lantern, benches, and stacked supplies beside the workshop.
     lampPost(world, 2, 5);
@@ -177,6 +251,34 @@ void buildUndergroundScene(World& world)
     lampPost(world, 18, 5);
     for (const int z : {-8, 2}) lampPost(world, -24, z);
     for (const int z : {-8, 1, 12, 23}) lampPost(world, 30, z);
+
+    // Green pockets soften the refuge; stone shoulders and hanging formations
+    // frame its amber houses and leave the central square and mine routes open.
+    for (const glm::ivec2 patch : {glm::ivec2(-13, 10), {-4, -6}, {1, -8},
+                                  {15, 10}, {4, 13}, {-12, 0}}) {
+        mossPatch(world, patch.x, patch.y, 3);
+    }
+    for (const glm::ivec2 patch : {glm::ivec2(-26, -12), {25, -14}, {24, 26}}) {
+        mossPatch(world, patch.x, patch.y, 2);
+    }
+    outcrop(world, 1, -10, 3, 5);
+    outcrop(world, -14, 11, 2, 6);
+    outcrop(world, 17, -4, 2, 5);
+    outcrop(world, -26, -12, 1, 3);
+    outcrop(world, 32, -14, 1, 3);
+    outcrop(world, 23, 29, 1, 3);
+    for (const glm::ivec3 pendant : {glm::ivec3(-2, 3, -1), {15, 4, 1}, {-14, 4, 10},
+                                    {5, 3, 16}, {-24, 4, -13}, {25, 3, -16}, {30, 4, 27}}) {
+        hangingRock(world, pendant.x, pendant.z, pendant.y);
+    }
+
+    // Raised, exposed crystals provide cool focal points behind the warm square.
+    // Each source has solid support and open sides for light and faceted details.
+    for (const glm::ivec3 crystal : {glm::ivec3(0, 8, -10), {2, 9, -10}, {3, 7, -9},
+                                    {-12, 8, 12}, {-27, 5, -12}, {33, 5, -14}}) {
+        box(world, {crystal.x, 4, crystal.z}, crystal - glm::ivec3(0, 1, 0), Block::Slate);
+        world.set(crystal, Block::Crystal);
+    }
 
     // Clusters intersect chamber walls at eye height, never isolated speckles.
     const int shift = static_cast<int>(world.seed() % 2);

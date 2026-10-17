@@ -88,8 +88,11 @@ int main()
             }
         }
         check(closed, "bedrock closes every outer face, including floor and roof");
-        check(counts[static_cast<int>(Block::Grass)] == 0 && counts[static_cast<int>(Block::Sand)] == 0,
-              "surface terrain is completely replaced");
+        check(counts[static_cast<int>(Block::Sand)] == 0,
+              "the underground sample contains no leftover surface sand");
+        check(counts[static_cast<int>(Block::Grass)] >= 40 && counts[static_cast<int>(Block::Grass)] < 220
+              && counts[static_cast<int>(Block::Dirt)] >= 40,
+              "small moss and earth patches add color without covering the cavern floor");
         for (const Block block : {Block::Limestone, Block::Stone, Block::Slate,
                                   Block::Timber, Block::Planks, Block::Brick}) {
             check(counts[static_cast<int>(block)] > 40, "rocks and village materials form substantial structures");
@@ -99,6 +102,18 @@ int main()
         voxel::Player player;
         check(player.setFeetPosition(world, voxel::VillageSpawn) && player.grounded(),
               "village spawn has full body clearance and solid ground");
+        for (const glm::ivec3 crystal : {glm::ivec3(0, 8, -10), {2, 9, -10}, {3, 7, -9},
+                                         {-12, 8, 12}, {-27, 5, -12}, {33, 5, -14}}) {
+            check(world.get(crystal) == Block::Crystal
+                  && voxel::isSolid(world.get(crystal - glm::ivec3(0, 1, 0))),
+                  "raised crystal landmarks have solid support");
+            bool exposed = false;
+            for (const glm::ivec3 side : {glm::ivec3(1, 0, 0), {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}) {
+                exposed |= world.get(crystal + side) == Block::Air;
+            }
+            if (!exposed) std::cerr << "Buried crystal: " << crystal.x << ',' << crystal.y << ',' << crystal.z << " seed " << seed << '\n';
+            check(exposed, "crystal landmarks have exposed sides for visible glow and geometry");
+        }
         for (const glm::ivec3 frame : {glm::ivec3(-16, 4, 5), glm::ivec3(-22, 4, 1),
                                        glm::ivec3(21, 4, 3), glm::ivec3(28, 4, 7)}) {
             check(world.get(frame + glm::ivec3(0, 4, 0)) == Block::Timber

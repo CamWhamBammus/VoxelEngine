@@ -16,6 +16,7 @@ class Camera;
 class WorldRenderer {
 public:
     WorldRenderer();
+    ~WorldRenderer();
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
                 bool underground = false);
     std::size_t triangleCount() const;
@@ -23,13 +24,16 @@ public:
     std::size_t drawnTriangles() const { return drawnTriangles_; }
 
 private:
-    struct Light { glm::vec3 position; glm::vec3 color; };
+    struct Light { glm::vec3 position; glm::vec3 color; float radius; };
     Shader shader_;
     std::array<GpuMesh, World::ChunkCount> meshes_;
+    std::array<GpuMesh, World::ChunkCount> details_;
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.
+    GLuint occupancy_ = 0; // One byte per voxel for contact shading and light occlusion.
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
+    bool underground_ = false;
 };
 
 // Draws the selected block outline and the screen-center crosshair.
