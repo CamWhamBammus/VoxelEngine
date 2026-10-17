@@ -110,13 +110,17 @@ Overlay::Overlay() : shader_(overlayVertexShader, overlayFragmentShader)
         glDeleteVertexArrays(1, &vao_);
         throw std::runtime_error("Failed to allocate overlay resources");
     }
+    GLint previousVao = 0;
+    GLint previousBuffer = 0;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousBuffer);
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, buffer_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(lines), lines.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(static_cast<GLuint>(previousVao));
+    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousBuffer));
 }
 
 Overlay::~Overlay()
@@ -128,10 +132,19 @@ Overlay::~Overlay()
 void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height)
 {
     if (width <= 0 || height <= 0) return;
+    const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean depthMask = GL_TRUE;
+    GLint program = 0;
+    GLint vao = 0;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+
     shader_.use();
     glBindVertexArray(vao_);
     glDepthMask(GL_FALSE);
     if (hit) {
+        glEnable(GL_DEPTH_TEST);
         const glm::mat4 model = glm::scale(glm::translate(glm::mat4(1.0f),
             glm::vec3(hit->position) - glm::vec3(0.002f)), glm::vec3(1.004f));
         shader_.setMat4("transform", camera.projectionMatrix(static_cast<float>(width) / height)
@@ -144,9 +157,13 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
                                            {2.0f / width, 2.0f / height, 1.0f}));
     shader_.setVec3("color", {1.0f, 1.0f, 1.0f});
     glDrawArrays(GL_LINES, 24, 4);
-    glBindVertexArray(0);
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
+    // The overlay can be called between other passes without changing their
+    // bindings or whether subsequent geometry reads/writes the depth buffer.
+    glBindVertexArray(static_cast<GLuint>(vao));
+    glUseProgram(static_cast<GLuint>(program));
+    if (depthTest) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
+    glDepthMask(depthMask);
 }
 
 } // namespace voxel

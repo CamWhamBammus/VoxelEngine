@@ -30,6 +30,65 @@ void checkOpenGl()
     }
 }
 
+void verifyOverlayState()
+{
+    Shader program("#version 410 core\nvoid main() { gl_Position = vec4(0); }",
+                   "#version 410 core\nout vec4 color; void main() { color = vec4(1); }");
+    GLuint vao = 0;
+    GLuint buffer = 0;
+    glGenVertexArrays(1, &vao);
+    glGenBuffers(1, &buffer);
+    const auto cleanup = [&] {
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glUseProgram(0);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glDeleteBuffers(1, &buffer);
+        glDeleteVertexArrays(1, &vao);
+    };
+    try {
+        program.use();
+        glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+        GLint expectedProgram = 0;
+        glGetIntegerv(GL_CURRENT_PROGRAM, &expectedProgram);
+        const auto checkBindings = [&] {
+            GLint activeProgram = 0, activeVao = 0, activeBuffer = 0;
+            glGetIntegerv(GL_CURRENT_PROGRAM, &activeProgram);
+            glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &activeVao);
+            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &activeBuffer);
+            if (activeProgram != expectedProgram || activeVao != static_cast<GLint>(vao)
+                || activeBuffer != static_cast<GLint>(buffer)) {
+                throw std::runtime_error("Overlay changed the caller's OpenGL bindings");
+            }
+        };
+        Overlay overlay;
+        checkBindings();
+        Camera camera;
+        for (const bool depthEnabled : {false, true}) {
+            for (const bool depthWrites : {false, true}) {
+                if (depthEnabled) glEnable(GL_DEPTH_TEST);
+                else glDisable(GL_DEPTH_TEST);
+                glDepthMask(depthWrites ? GL_TRUE : GL_FALSE);
+                overlay.draw(RayHit{{0, 0, 0}, {0, 1, 0}, 0.0f}, camera, 640, 360);
+                checkBindings();
+                GLboolean depthMask = GL_TRUE;
+                glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+                if ((glIsEnabled(GL_DEPTH_TEST) == GL_TRUE) != depthEnabled
+                    || (depthMask == GL_TRUE) != depthWrites) {
+                    throw std::runtime_error("Overlay changed the caller's depth state");
+                }
+            }
+        }
+        checkOpenGl();
+    } catch (...) {
+        cleanup();
+        throw;
+    }
+    cleanup();
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -64,6 +123,7 @@ void verifyGpuResources()
     mesh.upload({});
     mesh.draw();
     if (mesh.indexCount() != 0) throw std::runtime_error("Empty upload retained geometry");
+    verifyOverlayState();
     checkOpenGl();
 }
 
