@@ -1,5 +1,6 @@
 #pragma once
 
+#include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 namespace voxel {
@@ -21,12 +22,17 @@ public:
     bool setFeetPosition(const World& world, glm::vec3 position);
     // Resolve each axis independently so the player slides along walls.
     void move(const World& world, glm::vec3 displacement);
+    // Movement x is right and y is forward. Looking up/down never changes speed.
+    void update(const World& world, glm::vec2 movement, glm::vec3 forward,
+                bool jump, bool sprint, float deltaSeconds);
 
 private:
     void moveAxis(const World& world, int axis, float distance);
 
     glm::vec3 feet_{0.5f, 16.0f, 0.5f};
     bool grounded_ = false;
+    float verticalVelocity_ = 0.0f;
+    bool jumpHeld_ = false;
 };
 
 } // namespace voxel

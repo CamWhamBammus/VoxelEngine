@@ -98,6 +98,8 @@ bool Player::setFeetPosition(const World& world, glm::vec3 position)
     if (collides(world, position)) return false;
     feet_ = position;
     grounded_ = supported(world, feet_);
+    verticalVelocity_ = 0.0f;
+    jumpHeld_ = false;
     return true;
 }
 
@@ -136,6 +138,44 @@ void Player::moveAxis(const World& world, int axis, float distance)
     });
     const double next = feet_[axis] + allowed;
     if (std::abs(next) <= std::numeric_limits<float>::max()) feet_[axis] = static_cast<float>(next);
+}
+
+void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
+                    bool jump, bool sprint, float deltaSeconds)
+{
+    if (!std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f
+        || !std::isfinite(movement.x) || !std::isfinite(movement.y) || !finite(forward)) return;
+
+    const double forwardLength = std::hypot(double(forward.x), double(forward.z));
+    const glm::vec3 facing = forwardLength > 0.0
+        ? glm::vec3(forward.x / forwardLength, 0, forward.z / forwardLength)
+        : glm::vec3(0, 0, -1);
+    const glm::vec3 right{-facing.z, 0, facing.x};
+    const double inputLength = std::hypot(double(movement.x), double(movement.y));
+    if (inputLength > 1.0) movement = glm::vec2(movement.x / inputLength, movement.y / inputLength);
+    const float speed = sprint ? 7.0f : 4.5f;
+    const glm::vec3 horizontalVelocity = (right * movement.x + facing * movement.y) * speed;
+
+    // Refresh support before jumping, including when the floor was just mined.
+    grounded_ = supported(world, feet_);
+    if (jump && !jumpHeld_ && grounded_) verticalVelocity_ = 8.0f;
+    jumpHeld_ = jump;
+
+    // Small physics steps keep jumps and wall sliding consistent during a slow frame.
+    constexpr float gravity = 24.0f;
+    float remaining = std::min(deltaSeconds, 0.1f);
+    while (remaining > 0.0f) {
+        const float step = std::min(remaining, 1.0f / 120.0f);
+        const float verticalDistance = verticalVelocity_ * step - 0.5f * gravity * step * step;
+        const float previousY = feet_.y;
+        move(world, horizontalVelocity * step + glm::vec3(0, verticalDistance, 0));
+        verticalVelocity_ -= gravity * step;
+        if (std::abs((feet_.y - previousY) - verticalDistance) > ContactTolerance
+            || (grounded_ && verticalVelocity_ < 0.0f)) {
+            verticalVelocity_ = 0.0f;
+        }
+        remaining -= step;
+    }
 }
 
 } // namespace voxel

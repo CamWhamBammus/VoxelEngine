@@ -1,6 +1,7 @@
 #include "player.h"
 #include "world.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -16,9 +17,9 @@ void check(bool condition, const char* message)
     }
 }
 
-bool near(float first, float second)
+bool near(float first, float second, float tolerance = 0.0001f)
 {
-    return std::abs(first - second) < 0.0001f;
+    return std::abs(first - second) < tolerance;
 }
 } // namespace
 
@@ -108,6 +109,82 @@ int main()
         "removed support immediately leaves the body ungrounded");
     player.move(world, {0, -4, 0});
     check(near(player.feetPosition().y, -3.0f), "the body can fall through an opening");
+
+    const glm::vec3 start{10.5f, 1, 30.5f};
+    const glm::vec3 forward{0, 0, -1};
+    player.setFeetPosition(world, start);
+    for (int frame = 0; frame < 60; ++frame) {
+        player.update(world, {0, 1}, forward, false, false, 1.0f / 60.0f);
+    }
+    check(near(player.feetPosition().z, start.z - 4.5f) && player.grounded(),
+        "walking covers 4.5 blocks per second without sinking into the floor");
+    player.setFeetPosition(world, start);
+    for (int frame = 0; frame < 60; ++frame) {
+        player.update(world, {0, 1}, {0, -100, -1}, false, true, 1.0f / 60.0f);
+    }
+    check(near(player.feetPosition().z, start.z - 7.0f, 0.001f)
+        && near(player.feetPosition().y, start.y), "sprinting ignores the camera's pitch");
+    player.setFeetPosition(world, start);
+    for (int frame = 0; frame < 60; ++frame) {
+        player.update(world, {1, 1}, forward, false, false, 1.0f / 60.0f);
+    }
+    const auto diagonal = player.feetPosition() - start;
+    check(std::abs(std::hypot(diagonal.x, diagonal.z) - 4.5f) < 0.001f,
+        "diagonal walking does not move faster");
+
+    player.setFeetPosition(world, start);
+    player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+    check(player.feetPosition().y > start.y && !player.grounded(), "jump lifts a grounded player");
+    float highest = player.feetPosition().y;
+    for (int frame = 0; frame < 120; ++frame) {
+        player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+        highest = std::max(highest, player.feetPosition().y);
+    }
+    check(highest > start.y + 1.0f, "jump clears a one-block obstacle");
+    check(near(player.feetPosition().y, start.y) && player.grounded(),
+        "held jump lands without automatically jumping again");
+    player.update(world, {}, forward, false, false, 1.0f / 60.0f);
+    player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+    check(player.feetPosition().y > start.y, "jump works again after release and a new press");
+
+    player.setFeetPosition(world, {start.x, 5, start.z});
+    player.update(world, {}, forward, true, false, 0.1f);
+    check(player.feetPosition().y < 5, "jump cannot create lift while airborne");
+    for (int frame = 0; frame < 60; ++frame) {
+        player.update(world, {}, forward, false, false, 1.0f / 60.0f);
+    }
+    check(near(player.feetPosition().y, start.y) && player.grounded(), "gravity lands on solid ground");
+
+    world.set({10, 3, 30}, Block::Stone);
+    player.setFeetPosition(world, start);
+    player.update(world, {}, forward, true, false, 0.1f);
+    check(player.feetPosition().y + Player::Height <= 3.0001f,
+        "jumping into a ceiling keeps the full body below it");
+    for (int frame = 0; frame < 60; ++frame) {
+        player.update(world, {}, forward, false, false, 1.0f / 60.0f);
+    }
+    check(near(player.feetPosition().y, 1.0f), "head collision cancels upward velocity and permits landing");
+    world.set({10, 3, 30}, Block::Air);
+
+    player.setFeetPosition(world, start);
+    world.set({10, 0, 30}, Block::Air);
+    player.update(world, {}, forward, true, false, 0.1f);
+    check(player.feetPosition().y < start.y && !player.grounded(),
+        "mined support cannot still launch a grounded jump");
+    world.set({10, 0, 30}, Block::Stone);
+
+    Player clamped;
+    player.setFeetPosition(world, start);
+    clamped.setFeetPosition(world, start);
+    player.update(world, {0, 1}, forward, false, false, 1000.0f);
+    clamped.update(world, {0, 1}, forward, false, false, 0.1f);
+    check(player.feetPosition() == clamped.feetPosition(), "large frame times are capped consistently");
+    const auto beforeInvalidUpdate = player.feetPosition();
+    for (const float invalid : {-1.0f, 0.0f, std::numeric_limits<float>::infinity(),
+             std::numeric_limits<float>::quiet_NaN()}) {
+        player.update(world, {1, 1}, forward, true, true, invalid);
+        check(player.feetPosition() == beforeInvalidUpdate, "invalid frame time does not move the player");
+    }
 
     if (failures == 0) std::cout << "Player tests passed\n";
     return failures == 0 ? 0 : 1;
