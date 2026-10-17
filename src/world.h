@@ -84,6 +84,17 @@ public:
     static constexpr int Radius = 2;
     static constexpr int Width = 2 * Radius + 1;
     static constexpr std::size_t ChunkCount = Width * Width;
+    static constexpr glm::ivec3 Min{-Radius * Chunk::Size, 0, -Radius * Chunk::Size};
+    static constexpr glm::ivec3 MaxExclusive{(Radius + 1) * Chunk::Size, Chunk::Size,
+                                            (Radius + 1) * Chunk::Size};
+
+    // Bounds describe editable cells, including air. The upper edge is excluded.
+    static constexpr bool contains(glm::ivec3 position) noexcept
+    {
+        return position.x >= Min.x && position.x < MaxExclusive.x
+            && position.y >= Min.y && position.y < MaxExclusive.y
+            && position.z >= Min.z && position.z < MaxExclusive.z;
+    }
 
     explicit World(std::uint32_t seed = 1337);
     // Renderer dirty flags are not part of the saved world contents.

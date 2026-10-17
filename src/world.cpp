@@ -99,15 +99,11 @@ int chunkCoordinate(int coordinate)
 
 std::optional<std::size_t> chunkIndex(glm::ivec3 position)
 {
-    if (position.y < 0 || position.y >= Chunk::Size) {
+    if (!World::contains(position)) {
         return std::nullopt;
     }
     const int x = chunkCoordinate(position.x);
     const int z = chunkCoordinate(position.z);
-    if (x < -World::Radius || x > World::Radius
-        || z < -World::Radius || z > World::Radius) {
-        return std::nullopt;
-    }
     return static_cast<std::size_t>((z + World::Radius) * World::Width + x + World::Radius);
 }
 

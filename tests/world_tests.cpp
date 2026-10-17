@@ -29,6 +29,25 @@ int main()
     using voxel::World;
     World world;
 
+    check(World::Min == glm::ivec3(-32, 0, -32)
+          && World::MaxExclusive == glm::ivec3(48, 16, 48), "world bounds describe the entire chunk grid");
+    for (const int x : {World::Min.x, World::MaxExclusive.x - 1}) {
+        for (const int y : {World::Min.y, World::MaxExclusive.y - 1}) {
+            for (const int z : {World::Min.z, World::MaxExclusive.z - 1}) {
+                check(World::contains({x, y, z}), "all eight boundary cells are editable");
+            }
+        }
+    }
+    for (int axis = 0; axis < 3; ++axis) {
+        glm::ivec3 outside(0);
+        outside[axis] = World::Min[axis] - 1;
+        check(!World::contains(outside), "cell below each minimum is outside");
+        outside[axis] = World::MaxExclusive[axis];
+        check(!World::contains(outside), "cell at each exclusive maximum is outside");
+    }
+    check(World::contains({1, 15, 1}) && world.get({1, 15, 1}) == Block::Air,
+          "bounds distinguish editable air from cells outside the world");
+
     const auto initiallyDirty = world.takeDirtyChunks();
     check(initiallyDirty.size() == World::ChunkCount, "new world marks every chunk dirty");
     for (std::size_t index = 0; index < initiallyDirty.size(); ++index) {
@@ -104,6 +123,7 @@ int main()
              glm::ivec3(std::numeric_limits<int>::min()),
              glm::ivec3(std::numeric_limits<int>::max())}) {
         check(world.get(position) == Block::Air, "outside world reads return air");
+        check(!World::contains(position), "bounds reject outside and extreme coordinates without overflow");
         check(!world.set(position, Block::Stone), "outside world writes return false");
     }
     check(world.takeDirtyChunks().empty(), "no-op and outside writes do not dirty chunks");
