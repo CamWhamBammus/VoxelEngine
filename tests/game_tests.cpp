@@ -32,8 +32,19 @@ int main()
         const int height = voxel::terrainHeight(0, 0, options.seed);
         const glm::ivec3 surface(0, height, 0);
         const auto original = game.world.get(surface);
-        game.camera.setPosition({0.5f, height + 3.5f, 0.5f});
+        game.camera.setPosition({0.5f, height + 12.5f, 0.5f});
         game.camera.rotate(125.0f, -65.0f);
+        game.update({});
+        check(!game.target, "default reach excludes distant terrain");
+        auto extendedOptions = options;
+        extendedOptions.editReach = 64;
+        voxel::Game extended(extendedOptions);
+        extended.camera = game.camera;
+        extended.update({});
+        check(extended.target && extended.target->position == surface, "configured reach can target distant terrain");
+        check(extended.statusText(0, 0, 0, 0, true, true).find("EDIT REACH 64 BLOCKS") != std::string::npos,
+              "help reports the configured reach");
+        game.camera.setPosition({0.5f, height + 3.5f, 0.5f});
         game.update({});
         check(game.target && game.target->position == surface, "game finds the block under the crosshair");
 

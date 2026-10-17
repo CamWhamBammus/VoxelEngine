@@ -14,6 +14,7 @@ namespace voxel {
 // Startup settings. The command line is read once, before opening the window.
 struct Options {
     std::uint32_t seed = 1337;
+    int editReach = 8;
     bool seedExplicit = false;
     bool smokeTest = false;
     bool help = false;
@@ -26,6 +27,7 @@ inline constexpr const char* Usage =
     "Usage: VoxelEngine [options]\n\n"
     "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
     "  --world path.vxl   Choose the save file (default: world.vxl).\n"
+    "  --reach N          Editing distance in blocks, 1 to 64 (default: 8).\n"
     "  --smoke-test       Check rendering in a hidden window, then exit.\n"
     "  --screenshot path.ppm\n"
     "                     Run the smoke test and write a rendered image.\n"
@@ -68,6 +70,7 @@ private:
 
     World savedWorld_;
     std::string savePath_;
+    int editReach_;
 };
 
 } // namespace voxel

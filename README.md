@@ -45,7 +45,8 @@ Use this map when changing something:
 | Zoom limits | [camera.cpp](src/camera.cpp) |
 | Block colors and names | [world.h](src/world.h) |
 | Terrain shape | `terrainHeight` and `generateTerrain` in [world.cpp](src/world.cpp) |
-| Editing reach or the order of player actions | [game.cpp](src/game.cpp) |
+| Default editing reach | `Options` in [game.h](src/game.h), or the `--reach` flag |
+| The order of player actions | [game.cpp](src/game.cpp) |
 | Placement rules or undo behavior | [editing.cpp](src/editing.cpp) |
 | HUD words and controls text | `Game::statusText` in [game.cpp](src/game.cpp) |
 | Lighting or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
@@ -104,7 +105,7 @@ Run `./build/VoxelEngine --help` (or `-h`) for options, startup rules, and examp
 | Tab | Toggle cursor capture |
 | Q | Quit |
 
-Movement uses a flying camera with no collision or gravity. Editing works while the cursor is captured, within eight blocks of the camera. The targeted block has a yellow outline; placement cannot fill the camera's current cell. Undo history keeps the latest 256 edits for this session. A new edit after undo clears the redo branch.
+Movement uses a flying camera with no collision or gravity. Editing works while the cursor is captured, within eight blocks of the camera by default. Use `--reach N` to choose a whole-number distance from 1 to 64 blocks, such as `./build/VoxelEngine --reach 16`. Reach is a session setting; it does not change the save format. The targeted block has a yellow outline; placement cannot fill the camera's current cell. Undo history keeps the latest 256 edits for this session. A new edit after undo clears the redo branch.
 
 The HUD shows the selected material, seed, camera position, zoom, undo/redo counts, visible chunks, submitted/total triangles, and average frame rate. `UNSAVED` and a title-bar `*` indicate changes from the loaded or last-saved contents; undoing back to that state clears them. FPS appears after the first sampling interval.
 

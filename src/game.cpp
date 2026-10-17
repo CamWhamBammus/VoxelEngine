@@ -32,6 +32,13 @@ Options parseOptions(std::span<const std::string_view> arguments)
             if (result.ec != std::errc{} || result.ptr != seed.data() + seed.size()) {
                 throw std::invalid_argument("Seed must be an integer from 0 to 4294967295");
             }
+        } else if (argument == "--reach") {
+            const auto reach = value();
+            const auto result = std::from_chars(reach.data(), reach.data() + reach.size(), options.editReach);
+            if (result.ec != std::errc{} || result.ptr != reach.data() + reach.size()
+                || options.editReach < 1 || options.editReach > 64) {
+                throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
+            }
         } else if (argument == "--world") {
             options.worldPath = value();
             options.worldExplicit = true;
@@ -47,8 +54,11 @@ Options parseOptions(std::span<const std::string_view> arguments)
 
 // An explicit --seed starts fresh unless an explicit existing world file was requested.
 Game::Game(const Options& options)
-    : world(options.seed), savedWorld_(world), savePath_(options.worldPath)
+    : world(options.seed), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach)
 {
+    if (editReach_ < 1 || editReach_ > 64) {
+        throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
+    }
     const bool loadExisting = (options.worldExplicit || (!options.smokeTest && !options.seedExplicit))
         && std::filesystem::exists(savePath_);
     if (loadExisting) {
@@ -108,7 +118,7 @@ void Game::handleUndoRedo(const InputActions& actions)
 
 void Game::findTarget()
 {
-    target = raycast(camera.position(), camera.forward(), 8.0f,
+    target = raycast(camera.position(), camera.forward(), static_cast<float>(editReach_),
         [this](glm::ivec3 position) { return world.get(position); });
 }
 
@@ -154,7 +164,7 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
              << "\nMOUSE LOOK | SCROLL ZOOM | R RESET | F WIREFRAME"
              << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK | 1-4 MATERIAL"
              << "\nCTRL/CMD Z UNDO | CTRL/CMD Y OR SHIFT Z REDO"
-             << "\nESC RELEASE MOUSE | EDIT REACH 8 BLOCKS";
+             << "\nESC RELEASE MOUSE | EDIT REACH " << editReach_ << " BLOCKS";
     }
     return text.str();
 }
