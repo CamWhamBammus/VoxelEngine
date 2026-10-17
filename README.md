@@ -92,6 +92,7 @@ Run `./build/VoxelEngine --help` (or `-h`) for options, startup rules, and examp
 | R | Reset camera position, direction, and zoom |
 | Space / Left Ctrl | Move up / down |
 | Left Shift | Boost movement speed |
+| Left Alt / Option | Slow movement for precise editing (takes priority over Shift) |
 | Left click | Remove the targeted block |
 | Right click | Place the selected material beside the targeted block |
 | Middle click | Pick the targeted block's material |

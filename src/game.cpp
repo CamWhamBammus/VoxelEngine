@@ -168,7 +168,8 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
          << "\n" << status << "\nH HELP | F5 SAVE | F9 RELOAD | TAB MOUSE | Q QUIT";
     if (!captured) text << " | MOUSE RELEASED";
     if (showHelp) {
-        text << "\nWASD FLY | SPACE/CTRL UP/DOWN | SHIFT BOOST"
+        text << "\nWASD FLY | SPACE/CTRL UP/DOWN"
+             << "\nSHIFT BOOST | ALT PRECISION"
              << "\nMOUSE LOOK | SCROLL ZOOM | R RESET | F WIREFRAME"
              << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK"
              << "\n1-4 MATERIAL | [ PREVIOUS | ] NEXT"

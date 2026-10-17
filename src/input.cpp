@@ -132,7 +132,10 @@ void Input::updateCamera(Camera& camera, float deltaSeconds, bool editingShortcu
         static_cast<float>(keyDown(GLFW_KEY_SPACE) - keyDown(GLFW_KEY_LEFT_CONTROL)),
         static_cast<float>(keyDown(GLFW_KEY_W) - keyDown(GLFW_KEY_S)),
     };
-    const float speed = keyDown(GLFW_KEY_LEFT_SHIFT) ? 30.0f : 10.0f;
+    float speed = 10.0f;
+    if (keyDown(GLFW_KEY_LEFT_SHIFT)) speed = 30.0f;
+    // Precision movement takes priority if Alt and Shift are both held.
+    if (keyDown(GLFW_KEY_LEFT_ALT)) speed = 2.0f;
     camera.move(direction, speed * std::clamp(deltaSeconds, 0.0f, 0.1f));
 }
 
