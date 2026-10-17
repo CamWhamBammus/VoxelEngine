@@ -79,6 +79,8 @@ cmake --build build --parallel
 
 The viewer needs a display and a driver supporting OpenGL 4.1 core.
 
+Run `./build/VoxelEngine --help` (or `-h`) for options, startup rules, and examples. Help works without a display and does not read or write world files.
+
 ## Controls
 
 | Input | Action |

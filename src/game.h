@@ -23,7 +23,22 @@ struct Options {
 };
 
 inline constexpr const char* Usage =
-    "Usage: VoxelEngine [--seed N] [--world path.vxl] [--smoke-test] [--screenshot path.ppm] [--help]\n";
+    "Usage: VoxelEngine [options]\n\n"
+    "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
+    "  --world path.vxl   Choose the save file (default: world.vxl).\n"
+    "  --smoke-test       Check rendering in a hidden window, then exit.\n"
+    "  --screenshot path.ppm\n"
+    "                     Run the smoke test and write a rendered image.\n"
+    "  -h, --help         Show this help without opening a window.\n\n"
+    "Startup loads an existing world.vxl unless --seed is given.\n"
+    "An explicit existing --world file takes precedence over --seed.\n"
+    "Smoke tests only load files explicitly selected with --world.\n"
+    "Press H for controls, F5 to save, F9 to reload, and Q to quit.\n"
+    "Changes are not saved automatically on exit.\n\n"
+    "Examples:\n"
+    "  VoxelEngine --seed 42\n"
+    "  VoxelEngine --world my-world.vxl\n"
+    "  VoxelEngine --seed 42 --screenshot terrain.ppm\n";
 Options parseOptions(std::span<const std::string_view> arguments);
 
 struct InputActions;

@@ -19,6 +19,7 @@ int main()
     check(parsed.seed == 4294967295u && parsed.seedExplicit && parsed.worldExplicit && parsed.worldPath == "my world.vxl"
           && parsed.smokeTest && parsed.screenshot == "capture.ppm", "combined options parse");
     for (const std::vector<std::string_view>& args : std::vector<std::vector<std::string_view>>{
+            {"--world", "-h"}, {"--screenshot", "-h"},
             {"--seed"}, {"--seed", "-1"}, {"--seed", "4294967296"}, {"--seed", "1tail"},
             {"--seed", ""}, {"--seed", " 1"}, {"--world"}, {"--world", ""},
             {"--world", "--help"}, {"--screenshot"}, {"--screenshot", "--seed", "4"}, {"--unknown"}}) {
@@ -29,5 +30,7 @@ int main()
     const std::vector<std::string_view> zero{"--seed", "0", "--smoke-test", "--help"};
     const auto flags = voxel::parseOptions(zero);
     check(flags.seed == 0 && flags.smokeTest && flags.help, "zero seed and flags work");
+    const std::vector<std::string_view> shortHelp{"-h"};
+    check(voxel::parseOptions(shortHelp).help, "-h opens command-line help");
     return failures ? 1 : 0;
 }

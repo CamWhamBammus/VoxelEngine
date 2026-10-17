@@ -17,12 +17,13 @@ Options parseOptions(std::span<const std::string_view> arguments)
     for (std::size_t i = 0; i < arguments.size(); ++i) {
         const auto argument = arguments[i];
         const auto value = [&]() {
-            if (++i == arguments.size() || arguments[i].empty() || arguments[i].starts_with("--")) {
+            if (++i == arguments.size() || arguments[i].empty()
+                || arguments[i].starts_with("--") || arguments[i] == "-h") {
                 throw std::invalid_argument("Missing value for " + std::string(argument));
             }
             return arguments[i];
         };
-        if (argument == "--help") options.help = true;
+        if (argument == "--help" || argument == "-h") options.help = true;
         else if (argument == "--smoke-test") options.smokeTest = true;
         else if (argument == "--seed") {
             options.seedExplicit = true;
