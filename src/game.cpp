@@ -132,14 +132,49 @@ void Game::findTarget()
 
 void Game::editTarget(const InputActions& actions)
 {
-    if (!target) return;
-    if (actions.pick) selectedBlock = world.get(target->position);
+    if (!actions.pick && !actions.remove && !actions.place) return;
+    if (!target) {
+        status = "No block within editing reach";
+        return;
+    }
+    const auto targetMaterial = world.get(target->position);
+    if (actions.pick) {
+        selectedBlock = targetMaterial;
+        status = "Selected " + std::string(blockName(selectedBlock));
+    }
 
     bool changed = false;
     if (actions.remove) {
         changed = removeBlock(world, *target, &history);
+        if (changed) status = "Removed " + std::string(blockName(targetMaterial));
     } else if (actions.place) {
+        const auto placement = checkPlacement(world, *target, selectedBlock, camera.position());
+        switch (placement.failure) {
+        case PlacementFailure::None: break;
+        case PlacementFailure::OutsideWorld:
+            status = "Cannot place: outside world bounds";
+            return;
+        case PlacementFailure::Occupied:
+            status = "Cannot place: cell is occupied";
+            return;
+        case PlacementFailure::CameraOverlap:
+            status = "Cannot place: move out of the destination cell";
+            return;
+        case PlacementFailure::InvalidFace:
+            status = "Cannot place: aim at a block face from outside it";
+            return;
+        case PlacementFailure::InvalidMaterial:
+            status = "Cannot place: select a solid material";
+            return;
+        case PlacementFailure::MissingTarget:
+            status = "Cannot place: target is no longer solid";
+            return;
+        case PlacementFailure::InvalidCamera:
+            status = "Cannot place: reset the camera with R";
+            return;
+        }
         changed = placeBlock(world, *target, selectedBlock, camera.position(), &history);
+        if (changed) status = "Placed " + std::string(blockName(selectedBlock));
     }
     if (changed) findTarget();
 }

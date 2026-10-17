@@ -70,6 +70,7 @@ int main()
         game.update(actions);
         check(game.world.get(surface) == voxel::Block::Air && game.hasUnsavedChanges(),
               "remove action changes world and saved status");
+        check(game.status == "Removed " + std::string(voxel::blockName(original)), "removal reports its material");
         actions = {};
         actions.undo = true;
         game.update(actions);
@@ -82,6 +83,7 @@ int main()
         game.update(actions);
         const glm::ivec3 placed(0, height + 1, 0);
         check(game.world.get(placed) == voxel::Block::Sand, "material selection applies before placement");
+        check(game.status == "Placed Sand", "successful placement is confirmed");
         actions = {};
         actions.save = true;
         game.update(actions);
@@ -93,6 +95,7 @@ int main()
         actions.pick = true;
         game.update(actions);
         check(game.selectedBlock == voxel::Block::Sand, "middle-click picks the target material");
+        check(game.status == "Selected Sand", "material picking is confirmed");
         actions = {};
         actions.remove = true;
         game.update(actions);
@@ -131,6 +134,35 @@ int main()
               "failed reload keeps edits, history, and useful error status");
         check(game.statusText(24, 100, 120, 60, false, true).find("MOUSE RELEASED") != std::string::npos,
               "status text describes the input state");
+
+        // Invalid actions should explain what to do without adding undo entries.
+        auto feedbackOptions = options;
+        feedbackOptions.worldExplicit = false;
+        voxel::Game feedback(feedbackOptions);
+        feedback.camera.rotate(125.0f, -65.0f);
+        feedback.camera.setPosition({0.5f, 18.5f, 0.5f});
+        feedback.world.set({0, 15, 0}, voxel::Block::Stone);
+        const auto beforeRejectedPlace = feedback.world;
+        actions = {};
+        actions.place = true;
+        feedback.update(actions);
+        check(feedback.status == "Cannot place: outside world bounds"
+              && feedback.history.undoCount() == 0 && feedback.world.sameContents(beforeRejectedPlace),
+              "out-of-world placement explains the limit without editing");
+        feedback.world.set({0, 15, 0}, voxel::Block::Air);
+        feedback.world.set({0, 14, 0}, voxel::Block::Stone);
+        feedback.camera.setPosition({0.5f, 15.5f, 0.5f});
+        feedback.update(actions);
+        check(feedback.status == "Cannot place: move out of the destination cell"
+              && feedback.history.undoCount() == 0, "camera overlap gives useful guidance");
+        feedback.camera.setPosition({0.5f, 14.5f, 0.5f});
+        feedback.update(actions);
+        check(feedback.status == "Cannot place: aim at a block face from outside it",
+              "starting inside a block explains the missing face");
+        feedback.camera.setPosition({1000, 1000, 1000});
+        feedback.update(actions);
+        check(feedback.status == "No block within editing reach" && feedback.history.undoCount() == 0,
+              "editing empty space explains why nothing changed");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         ++failures;
