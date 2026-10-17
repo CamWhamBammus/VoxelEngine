@@ -1,5 +1,6 @@
 #include "challenge.h"
 
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 
@@ -46,6 +47,7 @@ void Challenge::reset(const World& world, glm::vec3 camp)
     crystals_ = crystals;
     camp_ = camp;
     state_ = ChallengeState::Playing;
+    timeRemaining_ = TimeLimit;
 }
 
 Interaction Challenge::interact(glm::vec3 eye)
@@ -80,6 +82,22 @@ int Challenge::collectedCount() const
         if (crystal.collected) ++count;
     }
     return count;
+}
+
+void Challenge::update(float seconds, bool paused)
+{
+    if (paused || state_ != ChallengeState::Playing || !std::isfinite(seconds) || seconds <= 0.0f) {
+        return;
+    }
+    timeRemaining_ = std::max(0.0f, timeRemaining_ - seconds);
+    if (timeRemaining_ == 0.0f) {
+        state_ = ChallengeState::Lost;
+    }
+}
+
+void Challenge::penalizeFall()
+{
+    update(FallPenalty);
 }
 
 } // namespace voxel

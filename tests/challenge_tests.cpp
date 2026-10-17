@@ -98,5 +98,63 @@ int main()
         rejected = true;
     }
     check(rejected, "nonfinite camp positions must be rejected");
+
+    challenge.reset(unchanged, camp);
+    check(challenge.timeRemaining() == 300.0f, "a fresh trail must allow five minutes");
+    challenge.update(7.5f);
+    check(challenge.timeRemaining() == 292.5f, "timer must consume the full positive elapsed duration");
+    challenge.update(90.0f, true);
+    check(challenge.timeRemaining() == 292.5f, "pausing must freeze the countdown");
+    for (const float invalid : {0.0f, -5.0f, std::numeric_limits<float>::infinity(),
+                                std::numeric_limits<float>::quiet_NaN()}) {
+        challenge.update(invalid);
+    }
+    check(challenge.timeRemaining() == 292.5f && challenge.state() == ChallengeState::Playing,
+          "invalid elapsed time must not extend or corrupt the countdown");
+    challenge.penalizeFall();
+    check(challenge.timeRemaining() == 272.5f && challenge.state() == ChallengeState::Playing,
+          "falling must cost twenty seconds");
+    challenge.update(271.5f);
+    check(challenge.timeRemaining() == 1.0f && challenge.state() == ChallengeState::Playing,
+          "one remaining second must keep the trail active");
+    check(challenge.interact(challenge.crystals()[0].position) == Interaction::Collected,
+          "objectives remain collectible before the timer expires");
+    challenge.update(1.0f);
+    check(challenge.timeRemaining() == 0.0f && challenge.state() == ChallengeState::Lost,
+          "reaching zero must end the trail in a loss");
+    check(challenge.interact(challenge.crystals()[1].position) == Interaction::Finished
+          && challenge.collectedCount() == 1, "a lost trail must not accept more pickups");
+    challenge.update(100.0f);
+    challenge.penalizeFall();
+    check(challenge.timeRemaining() == 0.0f && challenge.state() == ChallengeState::Lost,
+          "a lost trail must stay finished without negative time");
+
+    challenge.reset(unchanged, camp);
+    check(challenge.timeRemaining() == 300.0f && challenge.collectedCount() == 0
+          && challenge.state() == ChallengeState::Playing,
+          "restarting a lost trail must restore time and objectives together");
+    challenge.update(290.0f);
+    challenge.penalizeFall();
+    check(challenge.timeRemaining() == 0.0f && challenge.state() == ChallengeState::Lost,
+          "a fall penalty larger than the remaining time must cause a loss");
+    challenge.reset(unchanged, camp);
+    challenge.update(std::numeric_limits<float>::max());
+    check(challenge.timeRemaining() == 0.0f && challenge.state() == ChallengeState::Lost,
+          "large finite elapsed time must expire the trail without overflow");
+
+    challenge.reset(unchanged, camp);
+    challenge.update(17.0f);
+    for (const auto& crystal : challenge.crystals()) {
+        check(challenge.interact(crystal.position) == Interaction::Collected,
+              "a timed trail must allow collecting every crystal");
+    }
+    check(challenge.interact(camp) == Interaction::Won, "returning in time must win");
+    challenge.update(500.0f);
+    challenge.penalizeFall();
+    check(challenge.state() == ChallengeState::Won && challenge.timeRemaining() == 283.0f,
+          "victory must freeze the finishing time and ignore further fall penalties");
+    challenge.reset(unchanged, camp);
+    check(challenge.state() == ChallengeState::Playing && challenge.timeRemaining() == 300.0f
+          && challenge.collectedCount() == 0, "restarting after victory must restore the challenge");
     return failures == 0 ? 0 : 1;
 }
