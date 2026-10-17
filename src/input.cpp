@@ -51,6 +51,9 @@ Input::Buttons Input::readButtons() const
         .help = keyDown(GLFW_KEY_H),
         .previousMaterial = keyDown(GLFW_KEY_LEFT_BRACKET),
         .nextMaterial = keyDown(GLFW_KEY_RIGHT_BRACKET),
+        .jump = keyDown(GLFW_KEY_SPACE),
+        .interact = keyDown(GLFW_KEY_E),
+        .restart = keyDown(GLFW_KEY_ENTER),
         .remove = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
         .place = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
         .pick = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
@@ -65,7 +68,7 @@ void Input::capture(bool enabled)
     glfwGetCursorPos(window_, &cursorX_, &cursorY_);
 }
 
-void Input::update(Camera& camera, float deltaSeconds)
+void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
 {
     actions_ = {};
     const Buttons buttons = readButtons();
@@ -89,7 +92,7 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (pressed(buttons.wireframe, previous.wireframe)) wireframe_ = !wireframe_;
     const bool resetCamera = pressed(buttons.resetCamera, previous.resetCamera);
     if (resetCamera) {
-        camera.reset();
+        if (editorMode) camera.reset();
         scroll_ = 0.0;
         glfwGetCursorPos(window_, &cursorX_, &cursorY_);
     }
@@ -98,10 +101,20 @@ void Input::update(Camera& camera, float deltaSeconds)
     actions_.load = pressed(buttons.load, previous.load);
     actions_.undo = editActions.undo;
     actions_.redo = editActions.redo;
+    actions_.restart = pressed(buttons.restart, previous.restart);
 
     // File/history shortcuts work with the cursor released. Movement, mouse
     // editing, and material selection below require mouse capture.
     if (!captured_) return;
+    actions_.active = true;
+    actions_.movement = {
+        static_cast<float>(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)),
+        static_cast<float>(keyDown(GLFW_KEY_W) - keyDown(GLFW_KEY_S)),
+    };
+    actions_.jump = pressed(buttons.jump, previous.jump);
+    actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT);
+    actions_.interact = pressed(buttons.interact, previous.interact);
+    actions_.respawn = resetCamera;
     actions_.remove = pressed(buttons.remove, previous.remove);
     actions_.place = pressed(buttons.place, previous.place);
     actions_.pick = pressed(buttons.pick, previous.pick);
@@ -111,10 +124,10 @@ void Input::update(Camera& camera, float deltaSeconds)
         if (keyDown(GLFW_KEY_1 + static_cast<int>(slot))) actions_.selectedBlock = PlaceableBlocks[slot];
     }
     // Reset wins over queued mouse motion, zoom, and held movement keys this frame.
-    if (!resetCamera) updateCamera(camera, deltaSeconds, modifier && (editKeys.z || editKeys.y));
+    if (!resetCamera) updateCamera(camera, deltaSeconds, modifier && (editKeys.z || editKeys.y), editorMode);
 }
 
-void Input::updateCamera(Camera& camera, float deltaSeconds, bool editingShortcut)
+void Input::updateCamera(Camera& camera, float deltaSeconds, bool editingShortcut, bool editorMode)
 {
     camera.setFieldOfView(camera.fieldOfView() - static_cast<float>(scroll_) * 2.0f);
     scroll_ = 0.0;
@@ -126,7 +139,7 @@ void Input::updateCamera(Camera& camera, float deltaSeconds, bool editingShortcu
     cursorY_ = y;
 
     // Ctrl-Z/Ctrl-Y should edit history without also moving the camera down.
-    if (editingShortcut) return;
+    if (!editorMode || editingShortcut) return;
     const glm::vec3 direction{
         static_cast<float>(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)),
         static_cast<float>(keyDown(GLFW_KEY_SPACE) - keyDown(GLFW_KEY_LEFT_CONTROL)),
