@@ -85,7 +85,12 @@ void Input::update(Camera& camera, float deltaSeconds)
     if (pressed(buttons.releaseMouse, previous.releaseMouse)) capture(false);
     if (pressed(buttons.toggleMouse, previous.toggleMouse)) capture(!captured_);
     if (pressed(buttons.wireframe, previous.wireframe)) wireframe_ = !wireframe_;
-    if (pressed(buttons.resetCamera, previous.resetCamera)) camera.reset();
+    const bool resetCamera = pressed(buttons.resetCamera, previous.resetCamera);
+    if (resetCamera) {
+        camera.reset();
+        scroll_ = 0.0;
+        glfwGetCursorPos(window_, &cursorX_, &cursorY_);
+    }
     if (pressed(buttons.help, previous.help)) help_ = !help_;
     actions_.save = pressed(buttons.save, previous.save);
     actions_.load = pressed(buttons.load, previous.load);
@@ -101,7 +106,8 @@ void Input::update(Camera& camera, float deltaSeconds)
     for (std::size_t slot = 0; slot < PlaceableBlocks.size(); ++slot) {
         if (keyDown(GLFW_KEY_1 + static_cast<int>(slot))) actions_.selectedBlock = PlaceableBlocks[slot];
     }
-    updateCamera(camera, deltaSeconds, modifier && (editKeys.z || editKeys.y));
+    // Reset wins over queued mouse motion, zoom, and held movement keys this frame.
+    if (!resetCamera) updateCamera(camera, deltaSeconds, modifier && (editKeys.z || editKeys.y));
 }
 
 void Input::updateCamera(Camera& camera, float deltaSeconds, bool editingShortcut)
