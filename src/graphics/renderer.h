@@ -33,7 +33,8 @@ public:
     ~Overlay();
     Overlay(const Overlay&) = delete;
     Overlay& operator=(const Overlay&) = delete;
-    void draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height);
+    void draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height,
+              float contentScale = 1.0f);
 
 private:
     Shader shader_;

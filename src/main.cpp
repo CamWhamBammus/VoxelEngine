@@ -62,7 +62,9 @@ int main(int argc, char** argv)
                 continue;
             }
             renderer.render(game.world, game.camera, width, height, input.wireframe());
-            if (input.captured()) selection.draw(game.target, game.camera, width, height);
+            float scaleX, scaleY;
+            glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
+            if (input.captured()) selection.draw(game.target, game.camera, width, height, scaleY);
 
             // Refresh text four times per second; draw the cached text every frame.
             ++sampleFrames;
@@ -77,8 +79,6 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
-            float scaleX, scaleY;
-            glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             hud.draw(statusText, width, height, scaleY);
             window.present();
         }

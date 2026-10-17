@@ -3,7 +3,9 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <stdexcept>
 
 namespace voxel {
@@ -97,11 +99,16 @@ void main() { fragmentColor = vec4(color, 1.0); }
 
 Overlay::Overlay() : shader_(overlayVertexShader, overlayFragmentShader)
 {
-    const std::array<glm::vec3, 28> lines{{
+    const std::array<glm::vec3, 48> vertices{{
+        // Twelve edges of the selected block.
         {0,0,0}, {1,0,0}, {1,0,0}, {1,0,1}, {1,0,1}, {0,0,1}, {0,0,1}, {0,0,0},
         {0,1,0}, {1,1,0}, {1,1,0}, {1,1,1}, {1,1,1}, {0,1,1}, {0,1,1}, {0,1,0},
         {0,0,0}, {0,1,0}, {1,0,0}, {1,1,0}, {1,0,1}, {1,1,1}, {0,0,1}, {0,1,1},
-        {-8,0,0}, {8,0,0}, {0,-8,0}, {0,8,0},
+        // Filled crosshair bars: dark border first, then the white center.
+        {-9,-2,0}, {9,-2,0}, {9,2,0}, {-9,-2,0}, {9,2,0}, {-9,2,0},
+        {-2,-9,0}, {2,-9,0}, {2,9,0}, {-2,-9,0}, {2,9,0}, {-2,9,0},
+        {-8,-1,0}, {8,-1,0}, {8,1,0}, {-8,-1,0}, {8,1,0}, {-8,1,0},
+        {-1,-8,0}, {1,-8,0}, {1,8,0}, {-1,-8,0}, {1,8,0}, {-1,8,0},
     }};
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &buffer_);
@@ -116,7 +123,7 @@ Overlay::Overlay() : shader_(overlayVertexShader, overlayFragmentShader)
     glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousBuffer);
     glBindVertexArray(vao_);
     glBindBuffer(GL_ARRAY_BUFFER, buffer_);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(lines), lines.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
     glBindVertexArray(static_cast<GLuint>(previousVao));
@@ -129,16 +136,22 @@ Overlay::~Overlay()
     glDeleteVertexArrays(1, &vao_);
 }
 
-void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height)
+void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height,
+                   float contentScale)
 {
     if (width <= 0 || height <= 0) return;
+    if (!std::isfinite(contentScale) || contentScale <= 0.0f) contentScale = 1.0f;
+    contentScale = std::clamp(contentScale, 0.5f, 4.0f);
     const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
     GLboolean depthMask = GL_TRUE;
+    std::array<GLint, 2> polygonMode{};
     GLint program = 0;
     GLint vao = 0;
     glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+    glGetIntegerv(GL_POLYGON_MODE, polygonMode.data());
 
     shader_.use();
     glBindVertexArray(vao_);
@@ -153,10 +166,17 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
         glDrawArrays(GL_LINES, 0, 24);
     }
     glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    // Triangle bars keep a readable thickness on high-DPI displays without
+    // relying on wide OpenGL lines, which core-profile drivers may not support.
     shader_.setMat4("transform", glm::scale(glm::mat4(1.0f),
-                                           {2.0f / width, 2.0f / height, 1.0f}));
+                                           {2.0f * contentScale / width,
+                                            2.0f * contentScale / height, 1.0f}));
+    shader_.setVec3("color", {0.0f, 0.0f, 0.0f});
+    glDrawArrays(GL_TRIANGLES, 24, 12);
     shader_.setVec3("color", {1.0f, 1.0f, 1.0f});
-    glDrawArrays(GL_LINES, 24, 4);
+    glDrawArrays(GL_TRIANGLES, 36, 12);
     // The overlay can be called between other passes without changing their
     // bindings or whether subsequent geometry reads/writes the depth buffer.
     glBindVertexArray(static_cast<GLuint>(vao));
@@ -164,6 +184,9 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
     if (depthTest) glEnable(GL_DEPTH_TEST);
     else glDisable(GL_DEPTH_TEST);
     glDepthMask(depthMask);
+    if (cullFace) glEnable(GL_CULL_FACE);
+    else glDisable(GL_CULL_FACE);
+    glPolygonMode(GL_FRONT_AND_BACK, polygonMode[0]);
 }
 
 } // namespace voxel
