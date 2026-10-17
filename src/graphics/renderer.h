@@ -9,6 +9,7 @@
 
 namespace voxel {
 class Camera;
+class Challenge;
 
 // Each renderer keeps its own copy of the meshed chunks, so multiple views can
 // share a world without consuming one another's pending updates.
@@ -26,6 +27,18 @@ private:
     std::optional<World> meshedWorld_;
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
+};
+
+// Bright world-space markers for the collectible crystals and return camp.
+class ObjectivesRenderer {
+public:
+    ObjectivesRenderer();
+    void draw(const Challenge& challenge, const Camera& camera, int width, int height,
+              float elapsedSeconds = 0.0f);
+
+private:
+    Shader shader_;
+    GpuMesh cube_;
 };
 
 // Draws the selected block outline and the screen-center crosshair.

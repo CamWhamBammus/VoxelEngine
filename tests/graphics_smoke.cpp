@@ -4,6 +4,7 @@
 #include "graphics/renderer.h"
 #include "graphics/window.h"
 #include "camera.h"
+#include "challenge.h"
 #include "editing.h"
 #include "game.h"
 #include "input.h"
@@ -192,6 +193,86 @@ void verifyRendererCaches(int width, int height)
     std::cout << "Renderer caches passed: multiple views, seam edits, switching and replacing worlds\n";
 }
 
+void verifyObjectiveMarkers(int width, int height)
+{
+    // Earlier fixtures may have deleted the last bound shader program.
+    glUseProgram(0);
+    World world;
+    Challenge challenge;
+    challenge.reset(world, {0.5f, 12.0f, 0.5f});
+    ObjectivesRenderer markers;
+    Camera camera;
+    glViewport(0, 0, width, height);
+    const auto sample = [&](glm::vec3 center, double clearDepth = 1.0) {
+        camera.setPosition(center - camera.forward() * 5.0f);
+        glDepthMask(GL_TRUE);
+        glClearDepth(clearDepth);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        // Markers must render solid even when another pass uses wireframe,
+        // blending, or different depth settings, and restore those settings.
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glDepthFunc(GL_GREATER);
+        glEnable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        markers.draw(challenge, camera, width, height);
+        GLboolean depthWrites = GL_TRUE;
+        GLint depthFunction = 0;
+        std::array<GLint, 2> polygonMode{};
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWrites);
+        glGetIntegerv(GL_DEPTH_FUNC, &depthFunction);
+        glGetIntegerv(GL_POLYGON_MODE, polygonMode.data());
+        if (glIsEnabled(GL_DEPTH_TEST) || depthWrites || depthFunction != GL_GREATER
+            || !glIsEnabled(GL_BLEND) || !glIsEnabled(GL_CULL_FACE)
+            || polygonMode[0] != GL_LINE || polygonMode[1] != GL_LINE) {
+            throw std::runtime_error("Objective markers changed the caller's OpenGL state");
+        }
+        std::array<unsigned char, 4> pixel{};
+        glReadPixels(width / 2, height / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel.data());
+        return pixel;
+    };
+    const auto firstCrystal = challenge.crystals()[0].position;
+    const auto cyan = sample(firstCrystal);
+    if (cyan[0] > 80 || cyan[1] < 150 || cyan[2] < 180) {
+        throw std::runtime_error("Collectible crystal did not render at its interaction position");
+    }
+    const auto hidden = sample(firstCrystal, 0.0);
+    if (hidden[0] || hidden[1] || hidden[2]) {
+        throw std::runtime_error("Objective markers ignored existing scene depth");
+    }
+    if (challenge.interact(firstCrystal) != Interaction::Collected) {
+        throw std::runtime_error("Could not collect the crystal in the graphics fixture");
+    }
+    const auto removed = sample(firstCrystal);
+    if (removed[0] || removed[1] || removed[2]) {
+        throw std::runtime_error("Collected crystal or its beacon remained visible");
+    }
+    const auto campTop = challenge.camp() + glm::vec3(0, 9, 0);
+    const auto orange = sample(campTop);
+    if (orange[0] < 150 || orange[1] < 70 || orange[1] > 160 || orange[2] > 60) {
+        throw std::runtime_error("Camp did not render its waiting color");
+    }
+    for (std::size_t index = 1; index < challenge.crystals().size(); ++index) {
+        if (challenge.interact(challenge.crystals()[index].position) != Interaction::Collected) {
+            throw std::runtime_error("Could not collect remaining graphics fixture crystals");
+        }
+    }
+    const auto green = sample(campTop);
+    if (green[0] > 90 || green[1] < 170 || green[2] < 50 || green[2] > 110) {
+        throw std::runtime_error("Camp did not turn green after collecting every crystal");
+    }
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    glClearDepth(1.0);
+    glDisable(GL_BLEND);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    checkOpenGl();
+    std::cout << "Objective markers passed: pickup visibility, camp colors, depth and state\n";
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -322,6 +403,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyCrosshair(width, height);
     verifyRenderTransitions(width, height);
     verifyRendererCaches(width, height);
+    verifyObjectiveMarkers(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
