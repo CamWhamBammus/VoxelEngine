@@ -21,6 +21,7 @@ int main()
     const std::filesystem::path directory(name.data());
     try {
         voxel::Options options;
+        options.editor = true;
         options.seed = 42;
         options.seedExplicit = true;
         options.smokeTest = true;

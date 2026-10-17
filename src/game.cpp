@@ -25,6 +25,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
             return arguments[i];
         };
         if (argument == "--help" || argument == "-h") options.help = true;
+        else if (argument == "--editor") options.editor = true;
         else if (argument == "--smoke-test") options.smokeTest = true;
         else if (argument == "--seed") {
             options.seedExplicit = true;
@@ -50,17 +51,25 @@ Options parseOptions(std::span<const std::string_view> arguments)
             throw std::invalid_argument("Unknown option: " + std::string(argument));
         }
     }
+    if (options.worldExplicit && !options.editor && !options.help) {
+        throw std::invalid_argument("Use --editor with --world; game runs start with fresh terrain");
+    }
     return options;
 }
 
 // An explicit --seed starts fresh unless an explicit existing world file was requested.
 Game::Game(const Options& options)
-    : world(options.seed), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach)
+    : world(options.seed), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach),
+      editorMode_(options.editor)
 {
     if (editReach_ < 1 || editReach_ > 64) {
         throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
     }
-    const bool loadExisting = (options.worldExplicit || (!options.smokeTest && !options.seedExplicit))
+    if (options.worldExplicit && !editorMode_) {
+        throw std::invalid_argument("Use --editor with --world");
+    }
+    const bool loadExisting = editorMode_
+        && (options.worldExplicit || (!options.smokeTest && !options.seedExplicit))
         && std::filesystem::exists(savePath_);
     if (loadExisting) {
         world = loadWorld(savePath_);
@@ -69,11 +78,25 @@ Game::Game(const Options& options)
     } else {
         status = "New world - F5 to save";
     }
+    if (!editorMode_) {
+        if (!player.spawn(world)) throw std::runtime_error("Could not find safe ground for the player");
+        camera.setPosition(player.eyePosition());
+        status = "WASD walk | SPACE jump | SHIFT sprint";
+    }
     findTarget();
 }
 
-void Game::update(const InputActions& actions)
+void Game::update(const InputActions& actions, float deltaSeconds)
 {
+    if (!editorMode_) {
+        if (!actions.active) return;
+        if (actions.respawn || player.feetPosition().y < -16.0f) {
+            if (player.spawn(world)) status = "Returned to safe ground";
+        } else {
+            player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+        }
+        camera.setPosition(player.eyePosition());
+    }
     if (actions.selectedBlock && isSolid(*actions.selectedBlock)) {
         selectedBlock = *actions.selectedBlock;
     } else if (actions.materialStep != 0) {
@@ -84,8 +107,10 @@ void Game::update(const InputActions& actions)
         const int step = actions.materialStep > 0 ? 1 : -1;
         selectedBlock = PlaceableBlocks[(index + step + count) % count];
     }
-    handleFiles(actions);
-    handleUndoRedo(actions);
+    if (editorMode_) {
+        handleFiles(actions);
+        handleUndoRedo(actions);
+    }
     findTarget();
     editTarget(actions);
 }
@@ -182,7 +207,7 @@ void Game::editTarget(const InputActions& actions)
 bool Game::hasUnsavedChanges() const
 {
     // Compare contents, not history size: undo can return exactly to the last save.
-    return !world.sameContents(savedWorld_);
+    return editorMode_ && !world.sameContents(savedWorld_);
 }
 
 std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangles,

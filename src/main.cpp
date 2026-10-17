@@ -38,7 +38,7 @@ int main(int argc, char** argv)
         voxel::WorldRenderer renderer;
         voxel::Overlay selection;
         voxel::Hud hud;
-        std::cout << game.status << "\nH: controls | F5: save | F9: reload | Q: quit\n";
+        std::cout << game.status << "\nH: controls | Q: quit\n";
 
         double previousTime = glfwGetTime();
         double sampleStart = previousTime;
@@ -52,8 +52,8 @@ int main(int argc, char** argv)
             const float deltaSeconds = static_cast<float>(now - previousTime);
             previousTime = now;
 
-            input.update(game.camera, deltaSeconds);
-            game.update(input.actions());
+            input.update(game.camera, deltaSeconds, game.editorMode());
+            game.update(input.actions(), deltaSeconds);
 
             int width, height;
             window.framebufferSize(width, height);

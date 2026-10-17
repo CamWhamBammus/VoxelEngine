@@ -11,15 +11,16 @@ int main()
         if (!ok) { std::cerr << message << '\n'; ++failures; }
     };
     const auto defaults = voxel::parseOptions({});
-    check(defaults.seed == 1337 && defaults.editReach == 8 && !defaults.smokeTest && !defaults.worldExplicit,
-          "default options preserve interactive startup");
+    check(defaults.seed == 1337 && defaults.editReach == 8 && !defaults.smokeTest && !defaults.worldExplicit
+          && !defaults.editor, "default options start a fresh game");
     const std::vector<std::string_view> complete{
-        "--seed", "4294967295", "--world", "my world.vxl", "--screenshot", "capture.ppm"};
+        "--editor", "--seed", "4294967295", "--world", "my world.vxl", "--screenshot", "capture.ppm"};
     const auto parsed = voxel::parseOptions(complete);
     check(parsed.seed == 4294967295u && parsed.seedExplicit && parsed.worldExplicit && parsed.worldPath == "my world.vxl"
-          && parsed.smokeTest && parsed.screenshot == "capture.ppm", "combined options parse");
+          && parsed.editor && parsed.smokeTest && parsed.screenshot == "capture.ppm", "combined options parse");
     for (const std::vector<std::string_view>& args : std::vector<std::vector<std::string_view>>{
             {"--world", "-h"}, {"--screenshot", "-h"},
+            {"--world", "game.vxl"},
             {"--seed"}, {"--seed", "-1"}, {"--seed", "4294967296"}, {"--seed", "1tail"},
             {"--seed", ""}, {"--seed", " 1"}, {"--world"}, {"--world", ""},
             {"--world", "--help"}, {"--screenshot"}, {"--screenshot", "--seed", "4"}, {"--unknown"},
