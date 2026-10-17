@@ -10,15 +10,19 @@ struct GLFWwindow;
 namespace voxel {
 class Camera;
 
+// Number keys show the materials used by the underground sample. Brackets
+// still cycle every placeable material, including the editor's legacy blocks.
+inline constexpr std::array UndergroundHotbar{
+    Block::Stone, Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre,
+    Block::IronOre, Block::Crystal, Block::Planks, Block::Lantern};
+
 // One-frame requests passed to Game, reset at the start of every input update.
 struct InputActions {
     bool active = false; // Focused with the mouse captured; otherwise the game pauses.
     glm::vec2 movement{0.0f}; // Right/left and forward/back, independent of camera pitch.
     bool jump = false;
     bool sprint = false;
-    bool interact = false;
     bool respawn = false;
-    bool restart = false;
     bool save = false;
     bool load = false;
     bool undo = false;
@@ -84,8 +88,6 @@ private:
         bool previousMaterial = false;
         bool nextMaterial = false;
         bool jump = false;
-        bool interact = false;
-        bool restart = false;
         bool remove = false;
         bool place = false;
         bool pick = false;

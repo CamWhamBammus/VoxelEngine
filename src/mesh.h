@@ -13,6 +13,7 @@ struct MeshVertex {
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec3 color;
+    float material = 0.0f; // Block ID; the shader patterns stay aligned to voxel coordinates.
 };
 
 struct MeshData {

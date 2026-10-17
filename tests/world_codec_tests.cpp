@@ -61,6 +61,11 @@ int main()
         source.set({0, 15, 0}, voxel::Block::Dirt);
         source.set({16, 15, 16}, voxel::Block::Stone);
         source.set({47, 15, 47}, voxel::Block::Sand);
+        for (std::size_t value = 0; value < voxel::BlockCount; ++value) {
+            const auto block = static_cast<voxel::Block>(value);
+            source.set({-32 + static_cast<int>(value), 3, -32}, block);
+            source.set({32 + static_cast<int>(value), 13, 47}, block);
+        }
         const auto bytes = encode(source);
         check(bytes.size() == 36 + 25 * 16 * 16 * 16 + 4, "snapshot must use compact fixed byte layout");
         check(static_cast<std::uint8_t>(bytes[12]) == static_cast<std::uint8_t>(seed)
@@ -70,9 +75,48 @@ int main()
         auto restored = voxel::decodeWorld(stream);
         check(restored.seed() == seed, "snapshot must retain terrain seed");
         check(encode(restored) == bytes, "all materials and negative-coordinate edits must round trip exactly");
+        for (std::size_t value = 0; value < voxel::BlockCount; ++value) {
+            const auto block = static_cast<voxel::Block>(value);
+            check(restored.get({-32 + static_cast<int>(value), 3, -32}) == block
+                  && restored.get({32 + static_cast<int>(value), 13, 47}) == block,
+                  "each material ID including bedrock round trips at opposite world edges");
+        }
         check(restored.takeDirtyChunks().size() == voxel::World::ChunkCount,
               "loaded worlds must request all mesh uploads");
         check(restored.takeDirtyChunks().empty(), "loaded dirty flags must be consumable");
+    }
+
+    // Build the original format independently of today's encoder or terrain.
+    // Old saves contain only Air=0 through Sand=4 and must retain their meaning.
+    constexpr std::size_t legacyPayloadSize = 25 * 16 * 16 * 16;
+    std::string legacy("VXWORLD\0", 8);
+    legacy.resize(36 + legacyPayloadSize + 4);
+    writeInteger(legacy, 8, 1);
+    writeInteger(legacy, 12, 2026);
+    writeInteger(legacy, 16, 16);
+    writeInteger(legacy, 20, 5);
+    writeInteger(legacy, 24, 1);
+    writeInteger(legacy, 28, 5);
+    writeInteger(legacy, 32, legacyPayloadSize);
+    for (std::size_t index = 0; index < legacyPayloadSize; ++index) {
+        legacy[36 + index] = static_cast<char>(index % 5);
+    }
+    repairChecksum(legacy);
+    std::istringstream legacyStream(legacy, std::ios::binary);
+    const auto legacyWorld = voxel::decodeWorld(legacyStream);
+    check(legacyWorld.seed() == 2026 && encode(legacyWorld) == legacy,
+          "original version-one saves remain readable and byte-for-byte stable");
+    std::size_t legacyCursor = 0;
+    for (std::size_t index = 0; index < voxel::World::ChunkCount; ++index) {
+        for (int y = 0; y < voxel::Chunk::Size; ++y) {
+            for (int z = 0; z < voxel::Chunk::Size; ++z) {
+                for (int x = 0; x < voxel::Chunk::Size; ++x) {
+                    check(legacyWorld.chunk(index).get(x, y, z)
+                              == static_cast<voxel::Block>(legacyCursor++ % 5),
+                          "legacy payload order and material IDs retain their meaning");
+                }
+            }
+        }
     }
 
     voxel::World source(42);
@@ -90,10 +134,12 @@ int main()
         repairChecksum(changed);
         check(rejects(changed), "hostile version/dimension/payload lengths must fail before allocation");
     }
-    changed = valid;
-    changed[36] = static_cast<char>(255);
-    repairChecksum(changed);
-    check(rejects(changed), "unknown materials must fail even with a valid checksum");
+    for (const auto value : {static_cast<unsigned int>(voxel::BlockCount), 255u}) {
+        changed = valid;
+        changed[36] = static_cast<char>(value);
+        repairChecksum(changed);
+        check(rejects(changed), "unknown materials must fail even with a valid checksum");
+    }
     changed = valid;
     changed[36] = changed[36] == 0 ? 1 : 0;
     check(rejects(changed), "changed voxel data must fail checksum verification");

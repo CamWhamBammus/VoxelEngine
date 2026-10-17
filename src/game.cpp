@@ -1,6 +1,7 @@
 #include "game.h"
 #include "input.h"
 #include "save.h"
+#include "scene.h"
 
 #include <algorithm>
 #include <charconv>
@@ -81,7 +82,13 @@ Game::Game(const Options& options)
         status = "New world - F5 to save";
     }
     if (!editorMode_) {
-        restartRun();
+        buildUndergroundScene(world);
+        inventory_[static_cast<std::size_t>(Block::Stone)] = 24;
+        inventory_[static_cast<std::size_t>(Block::Planks)] = 24;
+        inventory_[static_cast<std::size_t>(Block::Lantern)] = 8;
+        selectedBlock = Block::Planks;
+        if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
+        status = "Explore the village and ore tunnels. Mine blocks and try building";
     }
     findTarget();
 }
@@ -89,7 +96,7 @@ Game::Game(const Options& options)
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
     if (!editorMode_ && !updatePlay(actions, deltaSeconds)) return;
-    if (actions.selectedBlock && isSolid(*actions.selectedBlock)) {
+    if (actions.selectedBlock && isSolid(*actions.selectedBlock) && *actions.selectedBlock != Block::Bedrock) {
         selectedBlock = *actions.selectedBlock;
     } else if (actions.materialStep != 0) {
         const auto current = std::find(PlaceableBlocks.begin(), PlaceableBlocks.end(), selectedBlock);
@@ -109,68 +116,50 @@ void Game::update(const InputActions& actions, float deltaSeconds)
     editTarget(actions);
 }
 
-void Game::restartRun()
+bool Game::returnToVillage()
 {
-    world = World(world.seed());
-    inventory_ = {0, 12, 0, 0};
-    selectedBlock = Block::Dirt;
-    history.clear();
+    // Search only inside the cavern. The surface spawn helper would put us
+    // above its roof. Nearby supported spaces also handle player-built walls.
+    Player destination = player;
+    float nearest = std::numeric_limits<float>::max();
+    for (int z = static_cast<int>(std::floor(VillageSpawn.z)) - 6;
+         z <= static_cast<int>(std::floor(VillageSpawn.z)) + 6; ++z) {
+        for (int x = static_cast<int>(std::floor(VillageSpawn.x)) - 6;
+             x <= static_cast<int>(std::floor(VillageSpawn.x)) + 6; ++x) {
+            for (int y = 1; y < World::MaxExclusive.y - Player::Height; ++y) {
+                const glm::vec3 feet(x + 0.5f, static_cast<float>(y), z + 0.5f);
+                const auto offset = feet - VillageSpawn;
+                const float distance = glm::dot(offset, offset);
+                if (distance >= nearest) continue;
+                Player candidate = player;
+                if (candidate.setFeetPosition(world, feet) && candidate.grounded()) {
+                    destination = candidate;
+                    nearest = distance;
+                }
+            }
+        }
+    }
+    if (nearest == std::numeric_limits<float>::max()) return false;
+    player = destination;
     camera.reset();
-    if (!player.spawn(world)) throw std::runtime_error("Could not find safe ground for camp");
-    const glm::vec3 camp = player.feetPosition() + glm::vec3(0, 1, 0);
-    // Stand beside the beacon, rather than inside its visible stem.
-    if (!player.spawn(world, {2, 0})) throw std::runtime_error("Could not find safe ground for the player");
+    const auto facing = camera.forward();
+    camera.rotate(VillageYaw - glm::degrees(std::atan2(facing.z, facing.x)),
+                  VillagePitch - glm::degrees(std::asin(facing.y)));
     camera.setPosition(player.eyePosition());
-    challenge.reset(world, camp);
-    status = "Find the 3 colored beacons. Press E near each crystal, then return to camp";
-    findTarget();
+    return true;
 }
 
 bool Game::updatePlay(const InputActions& actions, float deltaSeconds)
 {
-    // Restart works from the end screen even when the mouse is released.
-    if (actions.restart && challenge.state() != ChallengeState::Playing) {
-        restartRun();
-        return false;
-    }
-    if (!actions.active || challenge.state() != ChallengeState::Playing) return false;
-    // Count only the time simulated by movement, even after a long frame stall.
-    deltaSeconds = std::isfinite(deltaSeconds) ? std::clamp(deltaSeconds, 0.0f, 0.1f) : 0.0f;
-    challenge.update(deltaSeconds);
-    if (challenge.state() == ChallengeState::Lost) return false;
-
-    if (!actions.respawn) {
-        player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
-    }
+    if (!actions.active) return false;
     if (actions.respawn || player.feetPosition().y < -16.0f) {
-        challenge.penalizeFall();
-        if (!player.spawn(world, {2, 0})) {
-            challenge.update(Challenge::TimeLimit);
-            status = "No safe ground remains";
-            return false;
-        }
-        status = "Respawned near camp - 20 second penalty";
+        status = returnToVillage() ? "Returned to the village - backpack kept"
+                                   : "Village entrance is blocked. Clear a space to return";
+    } else {
+        player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+        camera.setPosition(player.eyePosition());
     }
-    camera.setPosition(player.eyePosition());
-    if (challenge.state() != ChallengeState::Playing) return false;
-    if (actions.interact) {
-        switch (challenge.interact(camera.position())) {
-        case Interaction::Collected:
-            status = "Crystal collected! " + std::to_string(challenge.collectedCount()) + "/3";
-            break;
-        case Interaction::NeedCrystals:
-            status = "Camp needs all 3 crystals. Follow the colored beacons";
-            break;
-        case Interaction::Won:
-            status = "Signal restored. You made it!";
-            break;
-        case Interaction::None:
-            status = "Move within 3 blocks of a crystal or camp, then press E";
-            break;
-        case Interaction::Finished: break;
-        }
-    }
-    return challenge.state() == ChallengeState::Playing;
+    return true;
 }
 
 void Game::handleFiles(const InputActions& actions)
@@ -221,16 +210,20 @@ void Game::editTarget(const InputActions& actions)
         return;
     }
     const auto targetMaterial = world.get(target->position);
-    if (actions.pick) {
+    if (actions.pick && targetMaterial != Block::Bedrock) {
         selectedBlock = targetMaterial;
         status = "Selected " + std::string(blockName(selectedBlock));
     }
 
     bool changed = false;
     if (actions.remove) {
+        if (!editorMode_ && targetMaterial == Block::Bedrock) {
+            status = "Bedrock seals the edge of this sample. Follow the tunnels to explore";
+            return;
+        }
         changed = removeBlock(world, *target, editorMode_ ? &history : nullptr);
         if (changed) {
-            if (!editorMode_) ++inventory_[static_cast<std::size_t>(targetMaterial) - 1];
+            if (!editorMode_) ++inventory_[static_cast<std::size_t>(targetMaterial)];
             status = std::string(editorMode_ ? "Removed " : "Mined ") + std::string(blockName(targetMaterial));
         }
     } else if (actions.place) {
@@ -269,7 +262,7 @@ void Game::editTarget(const InputActions& actions)
         }
         changed = placeBlock(world, *target, selectedBlock, camera.position(), editorMode_ ? &history : nullptr);
         if (changed) {
-            if (!editorMode_) --inventory_[static_cast<std::size_t>(selectedBlock) - 1];
+            if (!editorMode_) --inventory_[static_cast<std::size_t>(selectedBlock)];
             status = "Placed " + std::string(blockName(selectedBlock));
         }
     }
@@ -284,53 +277,30 @@ bool Game::hasUnsavedChanges() const
 
 int Game::blockCount(Block block) const
 {
-    return isSolid(block) ? inventory_[static_cast<std::size_t>(block) - 1] : 0;
+    return isSolid(block) ? inventory_[static_cast<std::size_t>(block)] : 0;
 }
 
 std::string Game::playStatusText(bool captured, bool showHelp) const
 {
     std::ostringstream text;
-    text << "BEACON TRAIL | CRYSTALS " << challenge.collectedCount() << "/3 | TIME "
-         << static_cast<int>(std::ceil(challenge.timeRemaining())) << "S";
-    if (challenge.state() == ChallengeState::Won) {
-        text << "\nYOU WIN! ALL CRYSTALS RETURNED TO CAMP\nENTER PLAY AGAIN | Q QUIT";
-        return text.str();
-    }
-    if (challenge.state() == ChallengeState::Lost) {
-        text << "\nTIME'S UP! TRY A FASTER ROUTE\nENTER TRY AGAIN | Q QUIT";
-        return text.str();
-    }
+    text << "UNDERGROUND VILLAGE | EXPLORATION SAMPLE";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
-
-    glm::vec3 destination = challenge.camp();
-    std::string_view goal = "RETURN TO CAMP";
-    float nearest = std::numeric_limits<float>::max();
-    constexpr std::array<std::string_view, 3> names{"CYAN CRYSTAL", "PINK CRYSTAL", "GOLD CRYSTAL"};
-    for (std::size_t index = 0; index < challenge.crystals().size(); ++index) {
-        const auto& crystal = challenge.crystals()[index];
-        const float distance = glm::distance(camera.position(), crystal.position);
-        if (!crystal.collected && distance < nearest) {
-            nearest = distance;
-            destination = crystal.position;
-            goal = names[index];
-        }
-    }
-    text << std::fixed << std::setprecision(1)
-         << "\nNEXT " << goal << " | " << glm::distance(camera.position(), destination) << " BLOCKS"
-         << " | XZ " << static_cast<int>(std::floor(destination.x)) << ", "
-         << static_cast<int>(std::floor(destination.z))
-         << "\nSELECTED " << blockName(selectedBlock) << " | STOCK " << blockCount(selectedBlock)
-         << "\n1 GRASS " << blockCount(Block::Grass) << " | 2 DIRT " << blockCount(Block::Dirt)
-         << " | 3 STONE " << blockCount(Block::Stone) << " | 4 SAND " << blockCount(Block::Sand)
+    text << "\nSELECTED " << blockName(selectedBlock) << " x" << blockCount(selectedBlock);
+    if (captured && target) text << " | LOOKING AT " << blockName(world.get(target->position));
+    text << "\nLEFT MINE | RIGHT BUILD | 1-9 MATERIAL | [ ] MORE"
          << "\n" << status
-         << "\nWASD WALK | SPACE JUMP | E INTERACT | H HELP"
-         << "\nESC PAUSE | R RESPAWN (-20S) | Q QUIT";
+         << "\nH CONTROLS | R RETURN TO VILLAGE | ESC PAUSE | Q QUIT";
     if (showHelp) {
-        text << "\nMOUSE LOOK | SHIFT SPRINT | SCROLL ZOOM"
-             << "\nLEFT MINE | RIGHT BUILD | MIDDLE PICK MATERIAL"
-             << "\n1-4 OR [ ] SELECT MATERIAL | TAB CAPTURE MOUSE"
-             << "\nCOLLECT ALL 3 CRYSTALS, THEN PRESS E AT CAMP"
-             << "\nGAME RUNS DO NOT SAVE | --editor OPENS THE EDITOR";
+        text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
+             << "\nMIDDLE PICK MATERIAL | SCROLL ZOOM | TAB CAPTURE"
+             << "\n1 STONE | 2 LIMESTONE | 3 SLATE | 4 COAL | 5 COPPER"
+             << "\n6 IRON | 7 CRYSTAL | 8 PLANKS | 9 LANTERN"
+             << "\nBACKPACK: COAL " << blockCount(Block::CoalOre)
+             << " | COPPER " << blockCount(Block::CopperOre)
+             << " | IRON " << blockCount(Block::IronOre)
+             << " | CRYSTAL " << blockCount(Block::Crystal)
+             << "\nFOLLOW THE LANTERNS INTO THE MINES AND BACK HOME"
+             << "\nSAMPLE RESETS ON LAUNCH | UPGRADES ARE NOT IMPLEMENTED";
     }
     return text.str();
 }
@@ -367,7 +337,7 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
              << "\nSHIFT BOOST | ALT PRECISION"
              << "\nMOUSE LOOK | SCROLL ZOOM | R RESET | F WIREFRAME"
              << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK"
-             << "\n1-4 MATERIAL | [ PREVIOUS | ] NEXT"
+             << "\n1-9 MATERIAL | [ PREVIOUS | ] NEXT"
              << "\nCTRL/CMD Z UNDO | CTRL/CMD Y OR SHIFT Z REDO"
              << "\nESC RELEASE MOUSE | EDIT REACH " << editReach_ << " BLOCKS";
     }

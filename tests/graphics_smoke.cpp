@@ -4,7 +4,6 @@
 #include "graphics/renderer.h"
 #include "graphics/window.h"
 #include "camera.h"
-#include "challenge.h"
 #include "editing.h"
 #include "game.h"
 #include "input.h"
@@ -193,84 +192,88 @@ void verifyRendererCaches(int width, int height)
     std::cout << "Renderer caches passed: multiple views, seam edits, switching and replacing worlds\n";
 }
 
-void verifyObjectiveMarkers(int width, int height)
+void verifyUndergroundMaterials(int width, int height)
 {
-    // Earlier fixtures may have deleted the last bound shader program.
-    glUseProgram(0);
     World world;
-    Challenge challenge;
-    challenge.reset(world, {0.5f, 12.0f, 0.5f});
-    ObjectivesRenderer markers;
+    for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
+        for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+            for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+                world.set({x, y, z}, Block::Air);
+            }
+        }
+    }
     Camera camera;
-    glViewport(0, 0, width, height);
-    const auto sample = [&](glm::vec3 center, double clearDepth = 1.0) {
-        camera.setPosition(center - camera.forward() * 5.0f);
-        glDepthMask(GL_TRUE);
-        glClearDepth(clearDepth);
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        // Markers must render solid even when another pass uses wireframe,
-        // blending, or different depth settings, and restore those settings.
-        glDisable(GL_DEPTH_TEST);
-        glDepthMask(GL_FALSE);
-        glDepthFunc(GL_GREATER);
-        glEnable(GL_BLEND);
-        glEnable(GL_CULL_FACE);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        markers.draw(challenge, camera, width, height);
-        GLboolean depthWrites = GL_TRUE;
-        GLint depthFunction = 0;
-        std::array<GLint, 2> polygonMode{};
-        glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWrites);
-        glGetIntegerv(GL_DEPTH_FUNC, &depthFunction);
-        glGetIntegerv(GL_POLYGON_MODE, polygonMode.data());
-        if (glIsEnabled(GL_DEPTH_TEST) || depthWrites || depthFunction != GL_GREATER
-            || !glIsEnabled(GL_BLEND) || !glIsEnabled(GL_CULL_FACE)
-            || polygonMode[0] != GL_LINE || polygonMode[1] != GL_LINE) {
-            throw std::runtime_error("Objective markers changed the caller's OpenGL state");
+    camera.rotate(35, 25); // Look straight at the front of the test block.
+    camera.setPosition({0.5f, 6.5f, 6.5f});
+    WorldRenderer renderer;
+    constexpr int patchSize = 48;
+    std::array<unsigned char, patchSize * patchSize * 4> pixels{};
+    const auto sample = [&](Block material) {
+        world.set({0, 6, 0}, material);
+        renderer.render(world, camera, width, height, false, true);
+        glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
+                     patchSize, patchSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        glm::vec3 average(0);
+        for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+            average += glm::vec3(pixels[pixel], pixels[pixel + 1], pixels[pixel + 2]);
         }
-        std::array<unsigned char, 4> pixel{};
-        glReadPixels(width / 2, height / 2, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel.data());
-        return pixel;
+        return average / static_cast<float>(patchSize * patchSize);
     };
-    const auto firstCrystal = challenge.crystals()[0].position;
-    const auto cyan = sample(firstCrystal);
-    if (cyan[0] > 80 || cyan[1] < 150 || cyan[2] < 180) {
-        throw std::runtime_error("Collectible crystal did not render at its interaction position");
+    const auto stone = sample(Block::Stone);
+    if (stone.x < 40 || stone.y < 40 || stone.z < 40) {
+        throw std::runtime_error("Headlamp left nearby underground stone unreadable");
     }
-    const auto hidden = sample(firstCrystal, 0.0);
-    if (hidden[0] || hidden[1] || hidden[2]) {
-        throw std::runtime_error("Objective markers ignored existing scene depth");
+    unsigned char minimum = 255, maximum = 0;
+    for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+        minimum = std::min(minimum, pixels[pixel]);
+        maximum = std::max(maximum, pixels[pixel]);
     }
-    if (challenge.interact(firstCrystal) != Interaction::Collected) {
-        throw std::runtime_error("Could not collect the crystal in the graphics fixture");
+    if (maximum - minimum < 5) throw std::runtime_error("Stone lost its voxel-space pixel grain");
+    const auto copper = sample(Block::CopperOre);
+    const auto coal = sample(Block::CoalOre);
+    const auto planks = sample(Block::Planks);
+    const auto brick = sample(Block::Brick);
+    if (copper.x - copper.z < 5 || coal.x >= stone.x - 5
+        || planks.x - planks.z < 25 || brick.x - brick.y < 20) {
+        throw std::runtime_error("Ore, wood and brick materials lost their distinct surface colors");
     }
-    const auto removed = sample(firstCrystal);
-    if (removed[0] || removed[1] || removed[2]) {
-        throw std::runtime_error("Collected crystal or its beacon remained visible");
+    const auto lantern = sample(Block::Lantern);
+    const auto crystal = sample(Block::Crystal);
+    if (lantern.x < 220 || lantern.y < 170 || crystal.z < 170 || crystal.y < 150) {
+        throw std::runtime_error("Lantern or crystal lost its emissive surface");
     }
-    const auto campTop = challenge.camp() + glm::vec3(0, 9, 0);
-    const auto orange = sample(campTop);
-    if (orange[0] < 150 || orange[1] < 70 || orange[1] > 160 || orange[2] > 60) {
-        throw std::runtime_error("Camp did not render its waiting color");
+
+    // Light edits must refresh the source cache, even with the same renderer.
+    world.set({2, 7, 3}, Block::Lantern);
+    const auto warm = sample(Block::Stone);
+    world.set({2, 7, 3}, Block::Crystal);
+    const auto cool = sample(Block::Stone);
+    world.set({2, 7, 3}, Block::Air);
+    const auto removed = sample(Block::Stone);
+    if (warm.x < stone.x + 5 || warm.x - warm.z < stone.x - stone.z + 8
+        || cool.z < stone.z + 5 || cool.z - cool.x < stone.z - stone.x + 8
+        || glm::length(removed - stone) > 1.0f) {
+        throw std::runtime_error("Underground light colors or edit invalidation failed");
     }
-    for (std::size_t index = 1; index < challenge.crystals().size(); ++index) {
-        if (challenge.interact(challenge.crystals()[index].position) != Interaction::Collected) {
-            throw std::runtime_error("Could not collect remaining graphics fixture crystals");
-        }
+    for (int x = 1; x <= 3; ++x) {
+        for (int y = 5; y <= 8; ++y) world.set({x, y, 3}, Block::Crystal);
     }
-    const auto green = sample(campTop);
-    if (green[0] > 90 || green[1] < 170 || green[2] < 50 || green[2] > 110) {
-        throw std::runtime_error("Camp did not turn green after collecting every crystal");
+    const auto pooled = sample(Block::Stone);
+    if (pooled.x > 220 || pooled.z > 245 || pooled.z < pooled.x + 10) {
+        throw std::runtime_error("Clustered crystals washed out the surrounding rock");
     }
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LESS);
-    glClearDepth(1.0);
-    glDisable(GL_BLEND);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    std::array<unsigned char, 4> background{};
+    glReadPixels(0, height - 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, background.data());
+    if (background[0] > 20 || background[1] > 20 || background[2] > 20) {
+        throw std::runtime_error("Underground scene retained the outdoor sky");
+    }
+    renderer.render(world, camera, width, height, false);
+    glReadPixels(0, height - 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, background.data());
+    if (background[0] < 100 || background[2] < 180) {
+        throw std::runtime_error("Outdoor editor lost its sky when switching render modes");
+    }
     checkOpenGl();
-    std::cout << "Objective markers passed: pickup visibility, camp colors, depth and state\n";
+    std::cout << "Underground materials passed: grain, ores, wood, emission and cached lights\n";
 }
 
 } // namespace
@@ -303,6 +306,16 @@ void verifyGpuResources()
     }
     if (!rejected || mesh.indexCount() != 36) {
         throw std::runtime_error("Invalid mesh upload changed the existing GPU mesh");
+    }
+    for (std::size_t id = 1; id < BlockCount; ++id) {
+        chunk.set(0, 0, 0, static_cast<Block>(id));
+        const auto materialMesh = buildMesh(chunk);
+        for (const auto& vertex : materialMesh.vertices) {
+            if (vertex.material != static_cast<float>(id)) {
+                throw std::runtime_error("Voxel material ID was lost while meshing");
+            }
+        }
+        mesh.upload(materialMesh);
     }
     mesh.upload({});
     mesh.draw();
@@ -403,12 +416,11 @@ int runGraphicsSmokeTest(const Options& options)
     verifyCrosshair(width, height);
     verifyRenderTransitions(width, height);
     verifyRendererCaches(width, height);
-    verifyObjectiveMarkers(width, height);
+    verifyUndergroundMaterials(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
     WorldRenderer renderer;
-    ObjectivesRenderer objectives;
     Overlay overlay;
     Hud hud;
     bool frameVerified = false;
@@ -419,8 +431,7 @@ int runGraphicsSmokeTest(const Options& options)
         if (width <= 0 || height <= 0) {
             throw std::runtime_error("Smoke test framebuffer is empty");
         }
-        renderer.render(game.world, game.camera, width, height, false);
-        if (!game.editorMode()) objectives.draw(game.challenge, game.camera, width, height);
+        renderer.render(game.world, game.camera, width, height, false, !game.editorMode());
         float scaleX, scaleY;
         glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
         overlay.draw(game.target, game.camera, width, height, scaleY);

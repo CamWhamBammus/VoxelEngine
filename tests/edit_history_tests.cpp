@@ -44,7 +44,7 @@ int main()
         "undo dirties both chunks at a seam");
 
     check(!history.apply(world, left, Block::Grass), "no-op edit returns false");
-    for (const Block invalid : {static_cast<Block>(5), static_cast<Block>(255)}) {
+    for (const Block invalid : {static_cast<Block>(voxel::BlockCount), static_cast<Block>(255)}) {
         check(!history.apply(world, right, invalid), "invalid material is rejected");
     }
     for (const glm::ivec3 outside : {glm::ivec3(-33, 0, 0), glm::ivec3(48, 0, 0),

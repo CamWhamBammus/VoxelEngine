@@ -52,8 +52,6 @@ Input::Buttons Input::readButtons() const
         .previousMaterial = keyDown(GLFW_KEY_LEFT_BRACKET),
         .nextMaterial = keyDown(GLFW_KEY_RIGHT_BRACKET),
         .jump = keyDown(GLFW_KEY_SPACE),
-        .interact = keyDown(GLFW_KEY_E),
-        .restart = keyDown(GLFW_KEY_ENTER),
         .remove = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
         .place = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
         .pick = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
@@ -101,7 +99,6 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
     actions_.load = pressed(buttons.load, previous.load);
     actions_.undo = editActions.undo;
     actions_.redo = editActions.redo;
-    actions_.restart = pressed(buttons.restart, previous.restart);
 
     // File/history shortcuts work with the cursor released. Movement, mouse
     // editing, and material selection below require mouse capture.
@@ -113,15 +110,16 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
     };
     actions_.jump = pressed(buttons.jump, previous.jump);
     actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT);
-    actions_.interact = pressed(buttons.interact, previous.interact);
     actions_.respawn = resetCamera;
     actions_.remove = pressed(buttons.remove, previous.remove);
     actions_.place = pressed(buttons.place, previous.place);
     actions_.pick = pressed(buttons.pick, previous.pick);
     actions_.materialStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
         - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
-    for (std::size_t slot = 0; slot < PlaceableBlocks.size(); ++slot) {
-        if (keyDown(GLFW_KEY_1 + static_cast<int>(slot))) actions_.selectedBlock = PlaceableBlocks[slot];
+    for (std::size_t slot = 0; slot < UndergroundHotbar.size(); ++slot) {
+        if (keyDown(GLFW_KEY_1 + static_cast<int>(slot))) {
+            actions_.selectedBlock = editorMode ? PlaceableBlocks[slot] : UndergroundHotbar[slot];
+        }
     }
     // Reset wins over queued mouse motion, zoom, and held movement keys this frame.
     if (!resetCamera) updateCamera(camera, deltaSeconds, modifier && (editKeys.z || editKeys.y), editorMode);

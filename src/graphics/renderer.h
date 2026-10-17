@@ -6,39 +6,30 @@
 
 #include <array>
 #include <optional>
+#include <vector>
 
 namespace voxel {
 class Camera;
-class Challenge;
 
 // Each renderer keeps its own copy of the meshed chunks, so multiple views can
 // share a world without consuming one another's pending updates.
 class WorldRenderer {
 public:
     WorldRenderer();
-    void render(const World& world, const Camera& camera, int width, int height, bool wireframe);
+    void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
+                bool underground = false);
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
 
 private:
+    struct Light { glm::vec3 position; glm::vec3 color; };
     Shader shader_;
     std::array<GpuMesh, World::ChunkCount> meshes_;
     std::optional<World> meshedWorld_;
+    std::vector<Light> lights_; // Rebuilt only when world contents change.
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
-};
-
-// Bright world-space markers for the collectible crystals and return camp.
-class ObjectivesRenderer {
-public:
-    ObjectivesRenderer();
-    void draw(const Challenge& challenge, const Camera& camera, int width, int height,
-              float elapsedSeconds = 0.0f);
-
-private:
-    Shader shader_;
-    GpuMesh cube_;
 };
 
 // Draws the selected block outline and the screen-center crosshair.

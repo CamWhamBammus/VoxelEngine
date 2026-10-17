@@ -9,13 +9,23 @@
 
 namespace voxel {
 
-enum class Block : std::uint8_t { Air, Grass, Dirt, Stone, Sand };
+// IDs are stored directly in save files. Append materials without renumbering.
+enum class Block : std::uint8_t {
+    Air = 0, Grass = 1, Dirt = 2, Stone = 3, Sand = 4,
+    Limestone = 5, Slate = 6, CoalOre = 7, CopperOre = 8, IronOre = 9,
+    Crystal = 10, Timber = 11, Planks = 12, Brick = 13, Lantern = 14, Bedrock = 15
+};
 
-inline constexpr std::array PlaceableBlocks{Block::Grass, Block::Dirt, Block::Stone, Block::Sand};
+inline constexpr std::size_t BlockCount = 16;
+inline constexpr std::array PlaceableBlocks{
+    Block::Grass, Block::Dirt, Block::Stone, Block::Sand,
+    Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre, Block::IronOre,
+    Block::Crystal, Block::Timber, Block::Planks, Block::Brick, Block::Lantern
+};
 
 constexpr bool isValidBlock(Block block) noexcept
 {
-    return static_cast<std::uint8_t>(block) <= static_cast<std::uint8_t>(Block::Sand);
+    return static_cast<std::uint8_t>(block) < BlockCount;
 }
 
 constexpr std::string_view blockName(Block block) noexcept
@@ -26,6 +36,17 @@ constexpr std::string_view blockName(Block block) noexcept
     case Block::Dirt: return "Dirt";
     case Block::Stone: return "Stone";
     case Block::Sand: return "Sand";
+    case Block::Limestone: return "Limestone";
+    case Block::Slate: return "Slate";
+    case Block::CoalOre: return "Coal ore";
+    case Block::CopperOre: return "Copper ore";
+    case Block::IronOre: return "Iron ore";
+    case Block::Crystal: return "Crystal";
+    case Block::Timber: return "Timber";
+    case Block::Planks: return "Planks";
+    case Block::Brick: return "Brick";
+    case Block::Lantern: return "Lantern";
+    case Block::Bedrock: return "Bedrock";
     }
     return "Unknown";
 }
@@ -42,6 +63,17 @@ inline glm::vec3 blockColor(Block block) noexcept
     case Block::Dirt: return {0.46f, 0.29f, 0.16f};
     case Block::Stone: return {0.51f, 0.53f, 0.57f};
     case Block::Sand: return {0.85f, 0.77f, 0.50f};
+    case Block::Limestone: return {0.66f, 0.69f, 0.65f};
+    case Block::Slate: return {0.29f, 0.36f, 0.43f};
+    case Block::CoalOre: return {0.30f, 0.33f, 0.36f};
+    case Block::CopperOre: return {0.57f, 0.38f, 0.27f};
+    case Block::IronOre: return {0.48f, 0.46f, 0.42f};
+    case Block::Crystal: return {0.35f, 0.83f, 0.90f};
+    case Block::Timber: return {0.36f, 0.23f, 0.13f};
+    case Block::Planks: return {0.67f, 0.46f, 0.25f};
+    case Block::Brick: return {0.61f, 0.30f, 0.22f};
+    case Block::Lantern: return {1.0f, 0.74f, 0.30f};
+    case Block::Bedrock: return {0.16f, 0.20f, 0.24f};
     case Block::Air: return {0.0f, 0.0f, 0.0f};
     }
     return {1.0f, 0.0f, 1.0f};

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "camera.h"
-#include "challenge.h"
 #include "editing.h"
 #include "player.h"
 #include "world.h"
@@ -29,7 +28,7 @@ struct Options {
 
 inline constexpr const char* Usage =
     "Usage: VoxelEngine [options]\n\n"
-    "  --editor           Open the flying terrain editor instead of the game.\n"
+    "  --editor           Open the flying terrain editor instead of the cave sample.\n"
     "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
     "  --world path.vxl   Choose the save file (default: world.vxl).\n"
     "  --reach N          Editing distance in blocks, 1 to 64 (default: 8).\n"
@@ -37,7 +36,8 @@ inline constexpr const char* Usage =
     "  --screenshot path.ppm\n"
     "                     Run the smoke test and write a rendered image.\n"
     "  -h, --help         Show this help without opening a window.\n\n"
-    "Game runs start fresh; editor startup loads world.vxl unless --seed is given.\n"
+    "The underground village sample starts fresh on each launch.\n"
+    "Editor startup loads world.vxl unless --seed is given.\n"
     "In the editor, an explicit existing --world file takes precedence over --seed.\n"
     "Use --editor with --world; game progress is not saved to world files.\n"
     "Smoke tests only load files explicitly selected with --world.\n"
@@ -66,14 +66,13 @@ public:
     World world;
     Camera camera;
     Player player;
-    Challenge challenge;
     EditHistory history;
     Block selectedBlock = Block::Grass;
     std::optional<RayHit> target;
     std::string status;
 
 private:
-    void restartRun();
+    bool returnToVillage();
     bool updatePlay(const InputActions& actions, float deltaSeconds);
     std::string playStatusText(bool captured, bool showHelp) const;
     void handleFiles(const InputActions& actions);
@@ -85,7 +84,7 @@ private:
     std::string savePath_;
     int editReach_;
     bool editorMode_;
-    std::array<int, PlaceableBlocks.size()> inventory_{0, 12, 0, 0};
+    std::array<int, BlockCount> inventory_{};
 };
 
 } // namespace voxel

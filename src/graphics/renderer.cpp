@@ -1,13 +1,14 @@
 #include "graphics/renderer.h"
 #include "camera.h"
-#include "challenge.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <stdexcept>
+#include <string>
 
 namespace voxel {
 
@@ -17,14 +18,17 @@ constexpr const char* worldVertexShader = R"glsl(#version 410 core
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 color;
+layout(location = 3) in float material;
 uniform mat4 viewProjection;
 out vec3 worldPosition;
 out vec3 surfaceNormal;
 out vec3 surfaceColor;
+flat out int materialId;
 void main() {
     worldPosition = position;
     surfaceNormal = normal;
     surfaceColor = color;
+    materialId = int(material + 0.5);
     gl_Position = viewProjection * vec4(position, 1.0);
 }
 )glsl";
@@ -33,38 +37,106 @@ constexpr const char* worldFragmentShader = R"glsl(#version 410 core
 in vec3 worldPosition;
 in vec3 surfaceNormal;
 in vec3 surfaceColor;
+flat in int materialId;
 uniform vec3 cameraPosition;
+uniform vec3 cameraForward;
+uniform int underground;
+uniform int lightCount;
+uniform vec3 lightPositions[12];
+uniform vec3 lightColors[12];
 out vec4 fragmentColor;
-void main() {
-    float sun = max(dot(normalize(surfaceNormal), normalize(vec3(-0.6, 1.0, 0.3))), 0.0);
-    vec3 lit = surfaceColor * (0.45 + 0.55 * sun);
-    float fog = smoothstep(55.0, 150.0, distance(cameraPosition, worldPosition));
-    fragmentColor = vec4(mix(lit, vec3(0.48, 0.70, 0.90), fog), 1.0);
-}
-)glsl";
 
-constexpr const char* objectiveVertexShader = R"glsl(#version 410 core
-layout(location = 0) in vec3 position;
-layout(location = 1) in vec3 normal;
-uniform mat4 transform;
-out float brightness;
-void main() {
-    brightness = 0.78 + 0.22 * max(dot(normal, normalize(vec3(0.4, 1.0, 0.2))), 0.0);
-    gl_Position = transform * vec4(position, 1.0);
+float grain(vec3 cell) {
+    return fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))) * 43758.5453);
 }
-)glsl";
-constexpr const char* objectiveFragmentShader = R"glsl(#version 410 core
-in float brightness;
-uniform vec3 color;
-out vec4 fragmentColor;
-void main() { fragmentColor = vec4(color * brightness, 1.0); }
+
+// World-space pixels repeat per voxel, including across greedily merged faces.
+vec3 materialColor() {
+    vec2 uv = abs(surfaceNormal.y) > 0.5 ? worldPosition.xz
+        : (abs(surfaceNormal.x) > 0.5 ? worldPosition.zy : worldPosition.xy);
+    vec2 pixel = floor(uv * 16.0);
+    float noise = grain(vec3(pixel, float(materialId)));
+    vec3 cell = floor(worldPosition - surfaceNormal * 0.001);
+    vec3 color = surfaceColor * (0.89 + noise * 0.19) * (0.95 + 0.08 * grain(cell));
+    if (materialId >= 7 && materialId <= 9) {
+        float orePatch = grain(vec3(floor(uv * 4.0), float(materialId)));
+        vec3 ore = materialId == 7 ? vec3(0.065, 0.07, 0.09)
+            : (materialId == 8 ? vec3(0.82, 0.43, 0.20) : vec3(0.73, 0.70, 0.61));
+        color = (orePatch > 0.66 && noise > 0.22 ? ore : vec3(0.39, 0.41, 0.44))
+                * (0.85 + 0.24 * noise);
+    } else if (materialId == 6 || materialId == 15) {
+        color *= mod(pixel.y, 4.0) < 1.0 ? 0.77 : 1.0;
+    } else if (materialId == 11) {
+        // Timber has long bark grain; end faces show square growth rings.
+        float ring = max(abs(fract(uv.x) - 0.5), abs(fract(uv.y) - 0.5));
+        color *= abs(surfaceNormal.y) > 0.5 ? (mod(floor(ring * 24.0), 2.0) < 1.0 ? 0.7 : 1.0)
+            : (0.65 + 0.40 * grain(vec3(floor(uv.x * 12.0), floor(uv.y), 1.0)));
+    } else if (materialId == 12) {
+        float row = floor(uv.y * 4.0);
+        float joint = fract((uv.x + mod(row, 3.0) * 0.8) / 2.5);
+        float fibers = grain(vec3(floor(uv.x * 2.0), floor(uv.y * 32.0), 12.0));
+        color *= 0.83 + 0.24 * fibers;
+        if (fract(uv.y * 4.0) < 0.065 || joint < 0.012) color *= 0.45;
+    } else if (materialId == 13) {
+        float row = floor(uv.y * 4.0);
+        float joint = fract(uv.x * 2.0 + mod(row, 2.0) * 0.5);
+        bool seam = fract(uv.y * 4.0) < 0.08 || joint < 0.04;
+        if (seam) color = vec3(0.25, 0.24, 0.23);
+    } else if (materialId == 14) {
+        vec2 edge = min(fract(uv), 1.0 - fract(uv));
+        color = min(edge.x, edge.y) < 0.12 ? vec3(0.29, 0.17, 0.07)
+            : vec3(1.0, 0.72, 0.30) * (0.94 + 0.06 * noise);
+    }
+    return color;
+}
+
+void main() {
+    vec3 normal = normalize(surfaceNormal);
+    vec3 color = materialColor();
+    vec3 toCamera = cameraPosition - worldPosition;
+    float cameraDistance = length(toCamera);
+    vec3 lit;
+    vec3 fogColor;
+    float fog;
+    if (underground != 0) {
+        vec3 direction = toCamera / max(cameraDistance, 0.001);
+        float cone = smoothstep(0.2, 0.92, dot(-direction, cameraForward));
+        float headlamp = (0.25 + 0.75 * max(dot(normal, direction), 0.0))
+            * (0.45 + 0.55 * cone) / (1.0 + 0.025 * cameraDistance * cameraDistance);
+        vec3 light = vec3(0.13, 0.16, 0.21) + vec3(0.94, 0.97, 1.0) * headlamp;
+        vec3 pointLight = vec3(0.0);
+        for (int i = 0; i < lightCount; ++i) {
+            vec3 offset = lightPositions[i] - worldPosition;
+            float distanceToLight = length(offset);
+            float falloff = max(1.0 - distanceToLight / 11.0, 0.0);
+            float facing = max(dot(normal, offset / max(distanceToLight, 0.001)), 0.0);
+            pointLight += lightColors[i] * falloff * falloff * (0.25 + 1.35 * facing);
+        }
+        // Dense crystal veins should cast colored light without bleaching rock.
+        float strongest = max(pointLight.r, max(pointLight.g, pointLight.b));
+        light += pointLight / max(1.0, strongest);
+        lit = color * light;
+        fogColor = vec3(0.018, 0.026, 0.042);
+        fog = smoothstep(25.0, 90.0, cameraDistance);
+    } else {
+        float sun = max(dot(normal, normalize(vec3(-0.6, 1.0, 0.3))), 0.0);
+        lit = color * (0.45 + 0.55 * sun);
+        fogColor = vec3(0.48, 0.70, 0.90);
+        fog = smoothstep(55.0, 150.0, cameraDistance);
+    }
+    if (materialId == 14) lit = max(lit, color);
+    if (materialId == 10) lit = max(lit, color * 0.75 + vec3(0.02, 0.12, 0.16));
+    if (underground != 0) lit = pow(max(lit, vec3(0.0)), vec3(1.0 / 1.6));
+    fragmentColor = vec4(mix(lit, fogColor, fog), 1.0);
+}
 )glsl";
 
 } // namespace
 
 WorldRenderer::WorldRenderer() : shader_(worldVertexShader, worldFragmentShader) {}
 
-void WorldRenderer::render(const World& world, const Camera& camera, int width, int height, bool wireframe)
+void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
+                           bool wireframe, bool underground)
 {
     if (width <= 0 || height <= 0) return;
     std::array<bool, World::ChunkCount> rebuild{};
@@ -85,12 +157,31 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             changed = true;
         }
     }
-    if (changed) meshedWorld_ = world;
+    if (changed) {
+        lights_.clear();
+        for (std::size_t index = 0; index < World::ChunkCount; ++index) {
+            const auto origin = world.origin(index);
+            const auto& chunk = world.chunk(index);
+            for (int y = 0; y < Chunk::Size; ++y) {
+                for (int z = 0; z < Chunk::Size; ++z) {
+                    for (int x = 0; x < Chunk::Size; ++x) {
+                        const auto block = chunk.get(x, y, z);
+                        if (block != Block::Lantern && block != Block::Crystal) continue;
+                        lights_.push_back({glm::vec3(origin + glm::ivec3(x, y, z)) + 0.5f,
+                            block == Block::Lantern ? glm::vec3(1.0f, 0.62f, 0.24f)
+                                                   : glm::vec3(0.24f, 0.68f, 1.0f)});
+                    }
+                }
+            }
+        }
+        meshedWorld_ = world;
+    }
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
-    glClearColor(0.48f, 0.70f, 0.90f, 1.0f);
+    glClearColor(underground ? 0.018f : 0.48f, underground ? 0.026f : 0.70f,
+                 underground ? 0.042f : 0.90f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     shader_.use();
@@ -99,6 +190,36 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     const Frustum frustum(viewProjection);
     shader_.setMat4("viewProjection", viewProjection);
     shader_.setVec3("cameraPosition", camera.position());
+    shader_.setVec3("cameraForward", camera.forward());
+    shader_.setInt("underground", underground);
+    // Cache the light sources with the world, then select a small fixed number
+    // near the camera. Walking never rescans blocks or rebuilds geometry.
+    std::array<const Light*, 12> nearest{};
+    std::array<float, 12> distances;
+    distances.fill(std::numeric_limits<float>::max());
+    if (underground) {
+        for (const auto& light : lights_) {
+            const auto delta = light.position - camera.position();
+            const float distance = glm::dot(delta, delta);
+            if (distance >= distances.back()) continue;
+            std::size_t slot = nearest.size() - 1;
+            while (slot > 0 && distance < distances[slot - 1]) {
+                distances[slot] = distances[slot - 1];
+                nearest[slot] = nearest[slot - 1];
+                --slot;
+            }
+            distances[slot] = distance;
+            nearest[slot] = &light;
+        }
+    }
+    int lightCount = 0;
+    for (const auto* light : nearest) {
+        if (!light) break;
+        const auto index = std::to_string(lightCount++);
+        shader_.setVec3(("lightPositions[" + index + "]").c_str(), light->position);
+        shader_.setVec3(("lightColors[" + index + "]").c_str(), light->color);
+    }
+    shader_.setInt("lightCount", lightCount);
     visibleChunks_ = drawnTriangles_ = 0;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -116,84 +237,6 @@ std::size_t WorldRenderer::triangleCount() const
     std::size_t total = 0;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
     return total;
-}
-
-ObjectivesRenderer::ObjectivesRenderer() : shader_(objectiveVertexShader, objectiveFragmentShader)
-{
-    Chunk chunk;
-    chunk.set(0, 0, 0, Block::Stone);
-    GLint vao = 0, buffer = 0;
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
-    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
-    cube_.upload(buildMesh(chunk));
-    glBindVertexArray(static_cast<GLuint>(vao));
-    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer));
-}
-
-void ObjectivesRenderer::draw(const Challenge& challenge, const Camera& camera,
-                              int width, int height, float elapsedSeconds)
-{
-    if (width <= 0 || height <= 0) return;
-    const float time = std::isfinite(elapsedSeconds) ? std::fmod(elapsedSeconds, 3600.0f) : 0.0f;
-    const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
-    const GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
-    const GLboolean blend = glIsEnabled(GL_BLEND);
-    GLboolean depthMask = GL_TRUE;
-    GLint program = 0, vao = 0, depthFunction = 0;
-    std::array<GLint, 2> polygonMode{};
-    glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
-    glGetIntegerv(GL_DEPTH_FUNC, &depthFunction);
-    glGetIntegerv(GL_POLYGON_MODE, polygonMode.data());
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LESS);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_BLEND);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    shader_.use();
-
-    const glm::mat4 viewProjection = camera.projectionMatrix(static_cast<float>(width) / height)
-                                    * camera.viewMatrix();
-    const auto box = [&](glm::vec3 center, glm::vec3 size, glm::vec3 color, float spin = 0.0f) {
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), center);
-        model = glm::rotate(model, spin, glm::vec3(0, 1, 0));
-        model = glm::scale(model, size);
-        model = glm::translate(model, glm::vec3(-0.5f));
-        shader_.setMat4("transform", viewProjection * model);
-        shader_.setVec3("color", color);
-        cube_.draw();
-    };
-    constexpr float beaconHeight = 10.0f;
-    const std::array<glm::vec3, 3> colors{{{0.15f, 0.95f, 1.0f},
-                                         {1.0f, 0.25f, 0.8f}, {1.0f, 0.9f, 0.15f}}};
-    for (std::size_t index = 0; index < challenge.crystals().size(); ++index) {
-        const auto& crystal = challenge.crystals()[index];
-        if (crystal.collected) continue;
-        // Thin opaque beacons are easy to spot above the hills. The cube stays
-        // at interaction height; its animation does not move the pickup target.
-        box(crystal.position + glm::vec3(0, beaconHeight * 0.5f, 0),
-            {0.07f, beaconHeight, 0.07f}, colors[index]);
-        const float bob = 0.12f * std::sin(time * 2.0f + static_cast<float>(index));
-        box(crystal.position + glm::vec3(0, bob, 0), glm::vec3(0.65f), colors[index], time);
-    }
-    const glm::vec3 campColor = challenge.collectedCount() == 3
-        ? glm::vec3(0.25f, 1.0f, 0.35f) : glm::vec3(1.0f, 0.55f, 0.12f);
-    const auto camp = challenge.camp();
-    box(camp - glm::vec3(0, 0.9f, 0), {1.8f, 0.2f, 1.8f}, campColor);
-    box(camp + glm::vec3(0, beaconHeight * 0.5f - 1.0f, 0),
-        {0.12f, beaconHeight, 0.12f}, campColor);
-    box(camp + glm::vec3(0, beaconHeight - 1.0f, 0), glm::vec3(0.7f), campColor);
-
-    glBindVertexArray(static_cast<GLuint>(vao));
-    glUseProgram(static_cast<GLuint>(program));
-    glDepthFunc(static_cast<GLenum>(depthFunction));
-    glDepthMask(depthMask);
-    if (depthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
-    if (cullFace) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
-    if (blend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
-    glPolygonMode(GL_FRONT_AND_BACK, polygonMode[0]);
 }
 
 namespace {

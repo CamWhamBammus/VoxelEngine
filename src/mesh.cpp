@@ -29,7 +29,7 @@ void appendQuad(MeshData& mesh, glm::ivec3 origin, int axis, int sign,
     }
     const auto first = static_cast<std::uint32_t>(mesh.vertices.size());
     for (const auto corner : corners) {
-        mesh.vertices.push_back({corner, normal, blockColor(block)});
+        mesh.vertices.push_back({corner, normal, blockColor(block), static_cast<float>(block)});
     }
     for (const std::uint32_t index : {0u, 1u, 2u, 0u, 2u, 3u}) {
         mesh.indices.push_back(first + index);

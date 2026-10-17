@@ -33,10 +33,10 @@ int main()
         voxel::InputActions cycle;
         cycle.materialStep = -1;
         game.update(cycle);
-        check(game.selectedBlock == voxel::Block::Sand, "previous material wraps from grass to sand");
+        check(game.selectedBlock == voxel::PlaceableBlocks.back(), "previous material wraps to the last material");
         cycle.materialStep = 1;
         game.update(cycle);
-        check(game.selectedBlock == voxel::Block::Grass, "next material wraps from sand to grass");
+        check(game.selectedBlock == voxel::Block::Grass, "next material wraps to the first material");
         for (const auto expected : {voxel::Block::Dirt, voxel::Block::Stone, voxel::Block::Sand}) {
             game.update(cycle);
             check(game.selectedBlock == expected, "material cycling follows the numbered slots");

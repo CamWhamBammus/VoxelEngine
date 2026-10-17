@@ -36,7 +36,6 @@ int main(int argc, char** argv)
         voxel::Window window;
         voxel::Input input(window.handle());
         voxel::WorldRenderer renderer;
-        voxel::ObjectivesRenderer objectives;
         voxel::Overlay selection;
         voxel::Hud hud;
         std::cout << game.status << "\nH: controls | Q: quit\n";
@@ -62,12 +61,10 @@ int main(int argc, char** argv)
                 glfwWaitEventsTimeout(0.05); // Avoid busy-looping when minimized.
                 continue;
             }
-            renderer.render(game.world, game.camera, width, height, input.wireframe());
-            if (!game.editorMode()) objectives.draw(game.challenge, game.camera, width, height,
-                voxel::Challenge::TimeLimit - game.challenge.timeRemaining());
+            renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
-            if (input.captured() && (game.editorMode() || game.challenge.state() == voxel::ChallengeState::Playing)) {
+            if (input.captured()) {
                 selection.draw(game.target, game.camera, width, height, scaleY);
             }
 
@@ -79,7 +76,7 @@ int main(int argc, char** argv)
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
                 const char* title = game.editorMode()
-                    ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor") : "Beacon Trail";
+                    ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor") : "Underground Village";
                 glfwSetWindowTitle(window.handle(), title);
                 if (sampleSeconds >= 0.25) {
                     sampleStart = now;

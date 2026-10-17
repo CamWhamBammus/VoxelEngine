@@ -1,5 +1,6 @@
 #include "game.h"
 #include "input.h"
+#include "scene.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -7,6 +8,16 @@
 #include <fstream>
 #include <iostream>
 #include <unistd.h>
+
+namespace {
+void look(voxel::Game& game, glm::vec3 direction)
+{
+    direction = glm::normalize(direction);
+    const auto current = game.camera.forward();
+    game.camera.rotate(glm::degrees(std::atan2(direction.z, direction.x) - std::atan2(current.z, current.x)),
+                       glm::degrees(std::asin(direction.y) - std::asin(current.y)));
+}
+}
 
 int main()
 {
@@ -23,12 +34,17 @@ int main()
         options.worldPath = (directory / "world.vxl").string();
         { std::ofstream file(options.worldPath); file << "existing editor save"; }
         voxel::Game game(options);
-        check(!game.editorMode() && game.world.seed() == 42, "default mode starts a fresh game");
-        check(game.player.grounded(), "player starts standing on solid ground");
+        check(!game.editorMode() && game.world.seed() == 42, "default mode starts the underground sample");
+        check(game.player.grounded() && game.player.feetPosition() == voxel::VillageSpawn,
+              "player starts on the village floor, not on the cavern roof");
         check(game.camera.position() == game.player.eyePosition(), "camera follows the player's eyes");
+        check(game.blockCount(voxel::Block::Stone) == 24 && game.blockCount(voxel::Block::Planks) == 24
+              && game.blockCount(voxel::Block::Lantern) == 8, "sample supplies building and lighting materials");
         const auto spawn = game.player.feetPosition();
-        game.update({}, 0.1f);
+        game.update({}, 1000.0f);
         check(game.player.feetPosition() == spawn, "released mouse pauses the player");
+        check(game.statusText(0, 0, 0, 0, false, false).find("PAUSED") != std::string::npos,
+              "released mouse displays pause instructions");
 
         voxel::InputActions actions;
         actions.active = true;
@@ -38,7 +54,7 @@ int main()
         actions.jump = false;
         for (int frame = 0; frame < 120; ++frame) game.update(actions, 1.0f / 60.0f);
         check(game.player.grounded() && std::abs(game.player.feetPosition().y - spawn.y) < 0.01f,
-              "gravity lands the player back on terrain");
+              "gravity lands the player back on the village floor");
         actions.movement = {1, 0};
         game.update(actions, 0.1f);
         check(game.player.feetPosition() != spawn, "WASD drives the physical player");
@@ -49,10 +65,10 @@ int main()
         std::ifstream file(options.worldPath);
         std::string contents;
         std::getline(file, contents);
-        check(contents == "existing editor save", "game controls never overwrite or load editor saves");
-        check(!game.hasUnsavedChanges(), "temporary game edits do not claim to be an editor save");
+        check(contents == "existing editor save", "sample controls never overwrite or load editor saves");
+        check(!game.hasUnsavedChanges(), "temporary sample edits do not claim to be an editor save");
 
-        // A flat workshop makes the aimed face and player body positions explicit.
+        // Flat workshop fixtures isolate the ore inventory and placement rules.
         voxel::Game workshop(options);
         for (int z = voxel::World::Min.z; z < voxel::World::MaxExclusive.z; ++z) {
             for (int x = voxel::World::Min.x; x < voxel::World::MaxExclusive.x; ++x) {
@@ -62,110 +78,69 @@ int main()
             }
         }
         check(workshop.player.setFeetPosition(workshop.world, {0.5f, 1.0f, 0.5f}), "workshop player fits");
-        workshop.camera.rotate(125.0f, 25.0f); // Face +X horizontally.
-        workshop.world.set({3, 2, 0}, voxel::Block::Stone);
+        look(workshop, {1, 0, 0});
+        workshop.world.set({3, 2, 0}, voxel::Block::CopperOre);
         actions = {};
         actions.active = true;
         actions.remove = true;
         workshop.update(actions);
-        check(workshop.world.get({3, 2, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::Stone) == 1,
-              "mining adds exactly one block of the mined material");
-        check(workshop.history.undoCount() == 0, "game mining cannot duplicate resources through editor undo");
+        check(workshop.world.get({3, 2, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::CopperOre) == 1,
+              "mining copper adds exactly one copper ore block to the backpack");
+        check(workshop.history.undoCount() == 0, "mining cannot duplicate resources through editor undo");
         workshop.world.set({4, 2, 0}, voxel::Block::Stone);
         actions.remove = false;
         actions.place = true;
-        actions.selectedBlock = voxel::Block::Stone;
+        actions.selectedBlock = voxel::Block::CopperOre;
         workshop.update(actions);
-        check(workshop.world.get({3, 2, 0}) == voxel::Block::Stone && workshop.blockCount(voxel::Block::Stone) == 0,
-              "placing consumes exactly one available block");
+        check(workshop.world.get({3, 2, 0}) == voxel::Block::CopperOre && workshop.blockCount(voxel::Block::CopperOre) == 0,
+              "placing copper consumes exactly one available ore block");
         workshop.update(actions);
-        check(workshop.world.get({2, 2, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::Stone) == 0,
+        check(workshop.world.get({2, 2, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::CopperOre) == 0,
               "empty inventory cannot create blocks or go negative");
         workshop.world.set({1, 1, 0}, voxel::Block::Stone);
-        workshop.camera.rotate(0, -60.0f); // The adjacent side face would place into our legs.
-        actions.selectedBlock = voxel::Block::Dirt;
+        look(workshop, {0.5f, -0.8660254f, 0});
+        actions.selectedBlock = voxel::Block::Planks;
         workshop.update(actions);
-        check(workshop.world.get({0, 1, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::Dirt) == 12
+        check(workshop.world.get({0, 1, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::Planks) == 24
               && workshop.status == "Cannot place: your body is in the destination cell",
               "placing into the player's body is rejected without consuming stock");
 
-        // Complete a round by actually walking and jumping over generated terrain.
-        // This catches objectives that unit tests can pick up but a player cannot reach.
-        for (const std::uint32_t routeSeed : {42u, 1337u, 4294967295u}) {
-            auto routeOptions = options;
-            routeOptions.seed = routeSeed;
-            voxel::Game trail(routeOptions);
-            const auto walkTo = [&](glm::vec3 destination) {
-                for (int frame = 0; frame < 6000 && trail.challenge.state() == voxel::ChallengeState::Playing; ++frame) {
-                    voxel::InputActions controls;
-                    controls.active = true;
-                    if (glm::distance(trail.player.eyePosition(), destination) <= 2.5f) {
-                        controls.interact = true;
-                        trail.update(controls);
-                        return true;
-                    }
-                    const glm::vec3 direction = destination - trail.player.eyePosition();
-                    const auto forward = trail.camera.forward();
-                    const float turn = std::atan2(direction.z, direction.x) - std::atan2(forward.z, forward.x);
-                    trail.camera.rotate(glm::degrees(turn), 0.0f);
-                    controls.movement = {0, 1};
-                    controls.sprint = true;
-                    controls.jump = trail.player.grounded();
-                    trail.update(controls, 1.0f / 60.0f);
-                }
-                return false;
-            };
-            for (std::size_t index = 0; index < trail.challenge.crystals().size(); ++index) {
-                check(walkTo(trail.challenge.crystals()[index].position), "player can reach each crystal through the terrain");
-                check(trail.challenge.collectedCount() == static_cast<int>(index) + 1,
-                      "E collects the reached crystal through Game input");
-            }
-            check(walkTo(trail.challenge.camp()) && trail.challenge.state() == voxel::ChallengeState::Won,
-                  "walking home and pressing E wins the round");
-            const auto wonWorld = trail.world;
-            const auto wonFeet = trail.player.feetPosition();
-            const float wonTime = trail.challenge.timeRemaining();
-            actions = {};
-            actions.active = actions.remove = actions.jump = true;
-            actions.movement = {1, 1};
-            trail.update(actions, 10.0f);
-            check(trail.world.sameContents(wonWorld) && trail.player.feetPosition() == wonFeet
-                  && trail.challenge.timeRemaining() == wonTime, "victory freezes the timer, movement, and editing");
-            check(trail.statusText(0, 0, 0, 0, true, false).find("YOU WIN!") != std::string::npos,
-                  "victory screen explains the result");
-            actions = {};
-            actions.restart = true;
-            trail.update(actions);
-            check(trail.challenge.state() == voxel::ChallengeState::Playing && trail.challenge.collectedCount() == 0
-                  && trail.challenge.timeRemaining() == 300.0f && trail.blockCount(voxel::Block::Dirt) == 12
-                  && trail.world.sameContents(voxel::World(routeSeed)), "Enter restarts a complete fresh round while released");
+        look(workshop, {1, 0, 0});
+        workshop.world.set({3, 2, 0}, voxel::Block::Bedrock);
+        actions = {};
+        actions.active = actions.remove = true;
+        workshop.update(actions);
+        check(workshop.world.get({3, 2, 0}) == voxel::Block::Bedrock
+              && workshop.blockCount(voxel::Block::Bedrock) == 0, "bedrock cannot be mined out of the sample boundary");
+        actions.remove = false;
+        actions.selectedBlock = voxel::Block::Bedrock;
+        workshop.update(actions);
+        check(workshop.selectedBlock == voxel::Block::Planks, "bedrock cannot be selected for construction");
+        check(workshop.blockCount(static_cast<voxel::Block>(255)) == 0, "invalid materials never index the backpack");
 
-            const float beforePause = trail.challenge.timeRemaining();
-            trail.update({}, 1000.0f);
-            check(trail.challenge.timeRemaining() == beforePause, "released mouse pauses the countdown");
-            trail.challenge.interact(trail.challenge.crystals()[0].position);
-            check(trail.player.setFeetPosition(trail.world, {2.5f, -17.0f, 0.5f}), "fall fixture is below the world");
+        for (const std::uint32_t seed : {42u, 1337u, 4294967295u}) {
+            options.seed = seed;
+            voxel::Game expedition(options);
+            const auto original = expedition.world;
+            // Returning is a relocation, preserving all collected blocks and edits.
+            check(expedition.player.setFeetPosition(expedition.world, voxel::VillageSpawn + glm::vec3(0, 1, 0)),
+                  "village has vertical space for the return fixture");
+            const glm::ivec3 occupiedSpawn(glm::floor(voxel::VillageSpawn));
+            expedition.world.set(occupiedSpawn, voxel::Block::Planks);
+            const auto edited = expedition.world;
             actions = {};
-            actions.active = true;
-            trail.update(actions);
-            check(trail.player.grounded() && trail.challenge.timeRemaining() == beforePause - 20.0f
-                  && trail.challenge.collectedCount() == 1, "fall respawn charges one penalty and preserves collection");
-            trail.update(actions);
-            check(trail.challenge.timeRemaining() == beforePause - 20.0f, "respawn does not repeat the fall penalty");
-            const float beforeStall = trail.challenge.timeRemaining();
-            trail.update(actions, 1.0f);
-            check(std::abs(trail.challenge.timeRemaining() - (beforeStall - 0.1f)) < 0.001f,
-                  "a slow frame advances the timer by the same capped timestep as movement");
-            trail.challenge.update(trail.challenge.timeRemaining() - 0.05f);
-            trail.update(actions, 0.1f);
-            check(trail.challenge.state() == voxel::ChallengeState::Lost
-                  && trail.statusText(0, 0, 0, 0, true, false).find("TIME'S UP!") != std::string::npos,
-                  "elapsed play time produces a visible loss state");
-            actions = {};
-            actions.restart = true;
-            trail.update(actions);
-            check(trail.challenge.timeRemaining() == 300.0f && trail.challenge.collectedCount() == 0,
-                  "loss can restart just like victory");
+            actions.active = actions.respawn = true;
+            expedition.update(actions, 0.1f);
+            check(expedition.player.grounded() && expedition.player.feetPosition().y < voxel::World::MaxExclusive.y
+                  && !expedition.player.overlapsBlock(occupiedSpawn), "return finds safe space below the ceiling when spawn is built over");
+            check(expedition.world.sameContents(edited) && !expedition.world.sameContents(original)
+                  && expedition.blockCount(voxel::Block::Planks) == 24, "return keeps the sample edits and backpack intact");
+            actions.respawn = false;
+            const auto feet = expedition.player.feetPosition();
+            expedition.update(actions, 1000.0f);
+            check(expedition.player.feetPosition() == feet, "exploration has no challenge countdown or time limit");
+            check(expedition.statusText(0, 0, 0, 0, true, true).find("UPGRADES ARE NOT IMPLEMENTED") != std::string::npos,
+                  "sample controls accurately identify the current development scope");
         }
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
