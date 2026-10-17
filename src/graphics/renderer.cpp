@@ -1,6 +1,7 @@
 #include "graphics/renderer.h"
 #include "camera.h"
 #include "graphics/cave_details.h"
+#include "graphics/materials.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -34,7 +35,7 @@ void main() {
 }
 )glsl";
 
-constexpr const char* worldFragmentShader = R"glsl(#version 410 core
+const std::string worldFragmentShader = std::string(R"glsl(#version 410 core
 in vec3 worldPosition;
 in vec3 surfaceNormal;
 in vec3 surfaceColor;
@@ -51,163 +52,7 @@ uniform sampler3D occupancy;
 uniform vec3 worldMinimum;
 out vec4 fragmentColor;
 
-struct MaterialSurface { vec3 albedo; vec3 normal; float roughness; float emission; };
-float materialHash(vec2 p) {
-    vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
-    q += dot(q, q.yzx + 33.33);
-    return fract((q.x + q.y) * q.z);
-}
-float materialNoise(vec2 p) {
-    vec2 cell = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(materialHash(cell), materialHash(cell + vec2(1, 0)), f.x),
-               mix(materialHash(cell + vec2(0, 1)), materialHash(cell + 1.0), f.x), f.y);
-}
-// One evaluation supplies color, shallow relief, roughness, and luminous glass.
-// Correlated shapes are sampled on a 32-pixel grid, not random bright checkers.
-MaterialSurface evaluateMaterial() {
-    vec3 n = normalize(surfaceNormal);
-    if (decorative != 0) {
-        float brush = floor(materialNoise(worldPosition.xz * 2.0 + worldPosition.y) * 4.0) / 4.0;
-        vec3 color = surfaceColor * (0.87 + 0.18 * brush);
-        if (materialId == 10) color = min(color * vec3(0.55, 1.0, 1.0), vec3(0.96));
-        return MaterialSurface(color, n,
-            materialId == 10 ? 0.24 : 0.88, materialId == 10 ? 0.38 : 0.0);
-    }
-    bool top = abs(n.y) > 0.5, sideX = abs(n.x) > 0.5;
-    vec3 u = top || !sideX ? vec3(1, 0, 0) : vec3(0, 0, 1);
-    vec3 v = top ? vec3(0, 0, 1) : vec3(0, 1, 0);
-    vec2 uv = vec2(dot(worldPosition, u), dot(worldPosition, v));
-    vec2 p = (floor(uv * 32.0) + 0.5) / 32.0, local = fract(p);
-    vec3 cell = floor(worldPosition - n * 0.001);
-    float seed = dot(cell * abs(n), vec3(17, 37, 57)) + float(materialId) * 19.0;
-    float broad = materialNoise(p * 1.7 + seed);
-    float chips = materialNoise(p * 5.5 + seed + 8.0);
-    float fine = materialHash(floor(p * 32.0) + seed) - 0.5;
-    vec3 color = surfaceColor * (0.86 + 0.18 * broad + 0.06 * chips + 0.035 * fine);
-    vec2 slope = vec2(0.0);
-    float roughness = 0.90, emission = 0.0;
-    if (materialId == 3 || materialId == 5 || materialId == 6 || materialId == 15
-        || (materialId >= 7 && materialId <= 9)) {
-        bool shale = materialId == 6 || materialId == 15;
-        // Irregular mineral plates give stone broad painted planes and chipped
-        // edges rather than the repeating wavy lines of a noise-only surface.
-        vec2 plate = p * vec2(0.95, shale ? 2.4 : 1.15);
-        vec2 tile = floor(plate), within = fract(plate);
-        float nearest = 10.0, second = 10.0, plateColor = 0.0;
-        vec2 plane = vec2(0.0);
-        for (int y = -1; y <= 1; ++y) {
-            for (int x = -1; x <= 1; ++x) {
-                vec2 offset = vec2(x, y);
-                float h = materialHash(tile + offset + seed);
-                vec2 center = offset + 0.18 + 0.64 * vec2(h, fract(h * 17.73));
-                vec2 delta = within - center;
-                float distance = dot(delta, delta);
-                if (distance < nearest) {
-                    second = nearest; nearest = distance; plane = delta; plateColor = h;
-                } else second = min(second, distance);
-            }
-        }
-        float edge = sqrt(second) - sqrt(nearest);
-        float crack = 1.0 - smoothstep(0.018, 0.065, edge);
-        float brush = floor((dot(plane, vec2(-0.65, 0.35)) + 0.8) * 5.0) / 5.0;
-        if (materialId >= 7 && materialId <= 9) color = vec3(0.40, 0.44, 0.47);
-        color *= (0.75 + 0.24 * plateColor + 0.15 * brush) * (1.0 - 0.42 * crack);
-        color *= mix(vec3(0.78, 0.88, 1.12), vec3(1.04, 0.98, 0.83), plateColor);
-        color += vec3(0.035, 0.055, 0.065) * (1.0 - smoothstep(0.06, 0.12, edge))
-                 * step(0.0, plane.y);
-        slope = plane * (shale ? 0.12 : 0.18);
-        if (materialId >= 7 && materialId <= 9) {
-            vec2 mineralCell = floor(p * 3.0);
-            float h = materialHash(mineralCell + seed), h2 = materialHash(mineralCell + seed + 11.0);
-            vec2 q = fract(p * 3.0) - vec2(0.35 + 0.30 * h, 0.35 + 0.30 * h2);
-            q = mat2(0.8, -0.6, 0.6, 0.8) * q;
-            float shape = max(abs(q.x) * 0.83 + abs(q.y) * 0.66, max(abs(q.x), abs(q.y)) * 0.94);
-            float radius = 0.21 + 0.16 * h2;
-            if (h > 0.48 && shape < radius + 0.035) {
-                vec3 ore = materialId == 7 ? vec3(0.065, 0.080, 0.095)
-                    : (materialId == 8 ? vec3(0.68, 0.34, 0.16) : vec3(0.58, 0.57, 0.50));
-                if (materialId == 8 && h2 > 0.77) ore = mix(ore, vec3(0.20, 0.42, 0.34), 0.58);
-                float facet = q.x + q.y * 0.7 > 0.0 ? 1.17 : 0.78;
-                color = shape > radius ? vec3(0.16, 0.19, 0.20) : ore * facet;
-                if (shape < radius && q.y > radius * 0.40) color += vec3(0.07, 0.065, 0.05);
-                roughness = materialId == 7 ? 0.64 : 0.48;
-                slope += vec2(sign(q.x), sign(q.y)) * 0.12;
-            }
-        }
-    } else if (materialId == 11 || materialId == 12) {
-        bool timber = materialId == 11;
-        if (timber && top) {
-            vec2 q = local - vec2(0.46, 0.52);
-            float radius = length(q * vec2(1.0, 1.12)) + chips * 0.025;
-            float ring = smoothstep(0.68, 0.87, fract(radius * 13.0));
-            color *= 1.12 - 0.29 * ring;
-            if (abs(q.x + q.y * 0.25) < 0.018 && radius > 0.12) color *= 0.72;
-        } else {
-            vec2 along = timber ? p.yx : p.xy;
-            float fibers = materialNoise(along * vec2(1.2, 25.0) + seed);
-            float bend = materialNoise(along * vec2(0.7, 4.0) + seed + 2.0);
-            color *= 0.84 + 0.20 * fibers + 0.12 * bend;
-            vec2 knotCell = floor(along / vec2(2.0, 1.0));
-            float knotSeed = materialHash(knotCell + seed);
-            vec2 q = fract(along / vec2(2.0, 1.0)) - vec2(0.25 + knotSeed * 0.5, 0.5);
-            float knot = length(q * vec2(2.8, 7.0));
-            if (knotSeed > 0.45 && knot < 0.65) {
-                color *= 0.65 + 0.29 * smoothstep(0.2, 0.5, knot);
-                color *= 0.88 + 0.12 * sin(knot * 32.0);
-            }
-            slope = (timber ? vec2(fibers - 0.5, 0.0) : vec2(0.0, fibers - 0.5)) * 0.09;
-        }
-        if (!timber) {
-            float row = floor(p.y * 2.0);
-            vec2 board = vec2(p.x / 2.0 + mod(row, 3.0) / 3.0, p.y * 2.0);
-            vec2 f = fract(board), edge = min(f, 1.0 - f) * vec2(2.0, 0.5);
-            color *= 0.92 + 0.12 * materialHash(floor(board) + seed);
-            if (min(edge.x, edge.y) < 0.023) color *= 0.43;
-            else slope += sign(f - 0.5) * (1.0 - smoothstep(vec2(0.025), vec2(0.06), edge)) * 0.22;
-        }
-        roughness = 0.78;
-    } else if (materialId == 13) {
-        float row = floor(p.y * 2.0);
-        vec2 brick = vec2(p.x + mod(row, 2.0) * 0.5, p.y * 2.0);
-        vec2 f = fract(brick), edge = min(f, 1.0 - f) * vec2(1.0, 0.5);
-        color *= 0.88 + 0.22 * materialHash(floor(brick) + seed);
-        if (min(edge.x, edge.y) < 0.024) color = vec3(0.24, 0.225, 0.20) * (0.94 + chips * 0.09);
-        else {
-            slope = sign(f - 0.5) * (1.0 - smoothstep(vec2(0.025), vec2(0.065), edge)) * 0.28;
-            color *= 0.91 + 0.09 * smoothstep(0.025, 0.06, min(edge.x, edge.y));
-        }
-    } else if (materialId == 10) {
-        vec2 center = 0.41 + 0.18 * fract(vec2(dot(cell, vec3(0.73, 0.41, 0.67)),
-                                                 dot(cell, vec3(0.37, 0.83, 0.53))));
-        vec2 q = local - center;
-        bool vertical = abs(q.y) > abs(q.x);
-        float facet = vertical ? (q.y > 0.0 ? 1.12 : 0.62) : (q.x > 0.0 ? 0.87 : 0.72);
-        color = mix(vec3(0.015, 0.26, 0.48), vec3(0.04, 0.76, 0.93), facet)
-                * (0.91 + 0.09 * broad);
-        float ridge = min(abs(q.x - q.y), abs(q.x + q.y));
-        color += vec3(0.015, 0.13, 0.16) * (1.0 - smoothstep(0.015, 0.045, ridge));
-        color = min(color, vec3(0.96));
-        slope = vertical ? vec2(0.0, sign(q.y) * 0.32) : vec2(sign(q.x) * 0.32, 0.0);
-        roughness = 0.23; emission = 0.38;
-    } else if (materialId == 14) {
-        vec2 edge = min(local, 1.0 - local);
-        bool metal = min(edge.x, edge.y) < 0.095 || abs(local.x - 0.5) < 0.027
-            || abs(local.y - 0.72) < 0.025 || (top && abs(local.y - 0.5) < 0.04);
-        if (metal) {
-            color = vec3(0.16, 0.13, 0.09) * (0.85 + chips * 0.23);
-            roughness = 0.48;
-        } else {
-            float glow = 1.0 - smoothstep(0.05, 0.55, length((local - vec2(0.5, 0.4)) * vec2(1.2, 1.0)));
-            color = mix(vec3(0.81, 0.36, 0.075), vec3(1.0, 0.72, 0.26), glow);
-            roughness = 0.22; emission = 1.0;
-        }
-        slope = sign(local - 0.5) * (1.0 - smoothstep(vec2(0.07), vec2(0.14), edge)) * 0.20;
-    } else if (materialId == 1 && !top) {
-        float grass = step(0.78 + chips * 0.12, local.y);
-        color = mix(vec3(0.39, 0.27, 0.15) * (0.90 + 0.14 * broad), color, grass);
-    }
-    return MaterialSurface(max(color, vec3(0.0)), normalize(n + u * slope.x + v * slope.y), roughness, emission);
-}
+)glsl") + materialShader + R"glsl(
 
 bool solid(ivec3 cell) {
     ivec3 local = cell - ivec3(worldMinimum);
@@ -253,6 +98,19 @@ float visibleLight(vec3 start, vec3 end) {
     return 0.0;
 }
 
+float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence, int index) {
+    float centerVisibility = visibleLight(start, center);
+    // Only the three closest, visibly influential lights get area samples.
+    // All endpoints stay inside the emitting voxel, so fully blocked walls
+    // remain dark while nearby shadow edges gain a narrow penumbra.
+    if (index >= 3 || influence < 0.035) return centerVisibility;
+    vec3 axis = abs(direction.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+    vec3 tangent = normalize(cross(direction, axis));
+    vec3 offset = tangent * 0.22 + cross(direction, tangent) * 0.12;
+    return centerVisibility * 0.4 + 0.3 * visibleLight(start, center + offset)
+         + 0.3 * visibleLight(start, center - offset);
+}
+
 void main() {
     MaterialSurface surface = evaluateMaterial();
     vec3 normal = normalize(surface.normal);
@@ -281,7 +139,8 @@ void main() {
             vec3 direction = offset / max(distanceToLight, 0.001);
             float facing = max(dot(normal, direction), 0.0);
             if (falloff <= 0.0 || facing <= 0.0 || dot(surfaceNormal, direction) <= 0.0) continue;
-            float strength = falloff * falloff * visibleLight(start, lightPositions[i]);
+            float strength = falloff * falloff
+                * lightVisibility(start, lightPositions[i], direction, falloff * falloff * facing, i);
             if (strength <= 0.0) continue;
             pointLight += lightColors[i] * strength * 1.65 * facing;
             vec3 halfDirection = direction + viewDirection;
@@ -301,17 +160,23 @@ void main() {
         fogColor = vec3(0.48, 0.70, 0.90);
         fog = smoothstep(55.0, 150.0, cameraDistance);
     }
-    lit = max(lit, color * surface.emission * (materialId == 10 ? 2.0 : 1.0));
-    // Keep turquoise pigment and facet contrast under overlapping crystal lights.
-    if (materialId == 10) lit = min(lit, color);
-    if (underground != 0) lit = pow(max(lit, vec3(0.0)), vec3(1.0 / 1.6));
-    fragmentColor = vec4(mix(lit, fogColor, fog), 1.0);
+    if (underground != 0) {
+        // HDR composition owns exposure and gamma. Alpha marks luminous
+        // surfaces so bloom cannot turn every bright stone surface into haze.
+        lit += color * surface.emission * (materialId == 14 ? 2.8 : 2.2);
+        fragmentColor = vec4(mix(max(lit, vec3(0.0)), fogColor, fog),
+                             clamp(surface.emission, 0.0, 1.0) * (1.0 - fog));
+    } else {
+        lit = max(lit, color * surface.emission * (materialId == 10 ? 2.0 : 1.0));
+        if (materialId == 10) lit = min(lit, color);
+        fragmentColor = vec4(mix(lit, fogColor, fog), 1.0);
+    }
 }
 )glsl";
 
 } // namespace
 
-WorldRenderer::WorldRenderer() : shader_(worldVertexShader, worldFragmentShader)
+WorldRenderer::WorldRenderer() : shader_(worldVertexShader, worldFragmentShader.c_str())
 {
     glGenTextures(1, &occupancy_);
     if (!occupancy_) throw std::runtime_error("Failed to allocate voxel lighting texture");
@@ -396,11 +261,13 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         meshedWorld_ = world;
     }
     glViewport(0, 0, width, height);
+    if (underground) postProcess_.begin(width, height);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
     glCullFace(GL_BACK);
     glClearColor(underground ? 0.025f : 0.48f, underground ? 0.026f : 0.70f,
-                 underground ? 0.065f : 0.90f, 1.0f);
+                 underground ? 0.065f : 0.90f, underground ? 0.0f : 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     shader_.use();
@@ -461,6 +328,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         }
     }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    if (underground) postProcess_.finish();
     glBindTexture(GL_TEXTURE_3D, static_cast<GLuint>(previousTexture));
     glActiveTexture(static_cast<GLenum>(activeTexture));
 }

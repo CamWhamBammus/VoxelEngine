@@ -8,9 +8,11 @@ This version is an explorable **underground village sample**. Village upgrades, 
 
 Launch normally to start inside a large enclosed cavern. Timber-and-brick buildings surround a lantern-lit village square. Moss, mineral outcrops, and crystal growths bring color to the rock. Follow the supported mine passages into the ore chambers, then return to the village. There is no timer or crystal collection challenge.
 
-The cave palette includes **stone, pale limestone, dark slate, coal ore, copper ore, iron ore, and glowing crystal**. Buildings use **timber, planks, brick, and lanterns**. The art direction is colorful fantasy: turquoise crystals and mossy greens against blue-violet rock shadows and amber village lights. Block surfaces have broad painted mineral shapes, embedded ore flecks, wood grain, recessed plank seams, brick mortar, and crystal facets generated directly in the shader. Solid blocks occlude local lights, contact shading darkens corners, and distance mist separates the cavern's layers. A restrained headlamp keeps nearby rock readable away from the village.
+The cave palette includes **stone, pale limestone, dark slate, coal ore, copper ore, iron ore, and glowing crystal**. Buildings use **timber, planks, brick, and lanterns**. The art direction is colorful fantasy: turquoise crystals and mossy greens against blue-violet rock shadows and amber village lights. Block surfaces have painted mineral planes, chipped stone edges, embedded ore flecks, wood grain, recessed plank seams, brick mortar, and elongated crystal facets generated directly in the shader. Solid blocks occlude local lights, nearby light sources cast softened shadows, contact shading darkens corners, and distance mist separates the cavern's layers. A restrained headlamp keeps nearby rock readable away from the village.
 
-Small crystal shards, ceiling formations, and grass tufts are decorative meshes attached to exposed blocks. Mining their supporting block removes them. These details have no collision or separate inventory items; the underlying blocks still define mining, placement, and movement.
+Underground rendering uses HDR color, multisample antialiasing, and a small bloom pass for visible luminous surfaces. The final exposure and color pass keeps bright lanterns and crystals colorful while smoothing their glow. The selection outline and HUD are drawn afterwards, keeping them sharp. The surface editor retains its direct rendering path.
+
+Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. Mining their supporting block removes them. These details have no collision or separate inventory items; the underlying blocks still define mining, placement, and movement.
 
 **WASD** walks, **mouse** looks, **Space** jumps, and **Shift** sprints. Left click mines into your backpack; right click places the selected block; middle click picks a material. You start with **24 Stone, 24 Planks, and 8 Lanterns** to try building and lighting your own passage. Placing a lantern adds a light; mining it removes the light.
 
@@ -29,7 +31,7 @@ The layout is a handcrafted sample, with seeded variations in rock and ore. It r
 
 Start with [src/main.cpp](src/main.cpp). It opens the window and repeats three steps: **read input → update the game → draw the frame**.
 
-Each module has a `.h` file that declares its types and functions, and a matching `.cpp` file that implements them. Related code stays together:
+Most modules have a `.h` file that declares their types and functions, and a matching `.cpp` file that implements them. `materials.h` contains the shared material shader text. Related code stays together:
 
 ```text
 src/
@@ -46,7 +48,9 @@ src/
   graphics/
     window.h/.cpp   Open and close the GLFW window
     opengl.h/.cpp   Compile shaders and upload mesh data to the GPU
-    renderer.h/.cpp Draw block materials, cave lighting, and selection outlines
+    renderer.h/.cpp Draw the world, cave lighting, shadows, and selection outlines
+    materials.h    Procedural block paint, grain, facets, and moss
+    post_process.h/.cpp Smooth edges, luminous bloom, exposure, and color
     cave_details.h/.cpp Build cosmetic crystal shards, ceiling formations, and tufts
     hud.h/.cpp      Draw text on the screen
 tests/              Behavior tests and graphics smoke checks
@@ -65,6 +69,8 @@ For one frame, `Input::update` handles looking and fills an `InputActions` value
 
 Each renderer remembers the chunk contents it last drew. It rebuilds changed chunks and their neighbors, so switching worlds or opening another view cannot lose mesh updates. This uses a small world snapshot and straightforward comparisons; no global cache or event system is needed. The renderer also uploads the solid cells to a small 3D texture when the world changes. Cave lighting samples it for contact shading and short shadow rays, so mining a wall or placing a lantern updates the lighting too. Decorative meshes reuse the block materials but do not enter that solid-cell texture or cast their own shadows.
 
+`PostProcess::begin` provides the underground world with an HDR color/depth target. `finish` resolves the smooth edges, blurs only emissive color at quarter resolution, and combines it with the scene. It returns the image and depth to the original framebuffer, so block outlines still hide correctly behind walls. Its buffers resize with the window and are reused between frames.
+
 Use this map when changing something:
 
 | I want to change… | Start here |
@@ -81,7 +87,9 @@ Use this map when changing something:
 | The order of player actions | [game.cpp](src/game.cpp) |
 | Placement rules or undo behavior | [editing.cpp](src/editing.cpp) |
 | HUD words and controls text | `Game::statusText` and `playStatusText` in [game.cpp](src/game.cpp) |
-| Material textures, lantern lighting, or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
+| Material textures, wood grain, or crystal colors | [graphics/materials.h](src/graphics/materials.h) |
+| Lantern lighting, shadows, or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
+| Glow, antialiasing, exposure, or final color | [graphics/post_process.cpp](src/graphics/post_process.cpp) |
 | Decorative crystal shards, ceiling formations, or moss tufts | [graphics/cave_details.cpp](src/graphics/cave_details.cpp) |
 
 You can learn the game logic before reading `graphics/`, the greedy meshing algorithm, or the binary save format. Those details are contained in their own modules. The `VoxelCore` build target and its tests work without an OpenGL window.
@@ -228,7 +236,7 @@ ctest --test-dir build-sanitize --output-on-failure
 
 Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
-Player tests cover collision, jumping, safe spawning, and falling through mined ground. Scene tests cover sealed boundaries, walkable routes, ore deposits, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors are mined or covered. Game tests verify ore inventory, body-safe placement, bedrock protection, pause, and returning inside the cavern while preserving edits. Save tests round-trip every material and retain compatibility with original version 1 saves. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks.
+Player tests cover collision, jumping, safe spawning, and falling through mined ground. Scene tests cover sealed boundaries, walkable routes, ore deposits, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors are mined or covered. Game tests verify ore inventory, body-safe placement, bedrock protection, pause, and returning inside the cavern while preserving edits. Save tests round-trip every material and retain compatibility with original version 1 saves. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
 
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 

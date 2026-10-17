@@ -29,18 +29,17 @@ void triangle(MeshData& mesh, glm::vec3 a, glm::vec3 b, glm::vec3 c, Block mater
 }
 
 void shard(MeshData& mesh, glm::vec3 base, glm::vec3 normal, glm::vec3 across,
-           float height, float radius, std::uint32_t variation)
+           float height, float radius, glm::vec3 lean, std::uint32_t variation)
 {
     constexpr int sides = 5;
     const auto up = glm::cross(normal, across);
-    const auto lean = across * (variation % 2 ? 0.06f : -0.04f);
     const auto tip = base + normal * height + lean;
     std::array<glm::vec3, sides> bottom, shoulder;
     for (int side = 0; side < sides; ++side) {
         const float angle = (side + 0.15f) * 6.2831853f / sides;
         const auto radial = across * std::cos(angle) + up * std::sin(angle);
         bottom[side] = base + radial * radius;
-        shoulder[side] = base + normal * height * 0.62f + radial * radius * 0.85f + lean * 0.5f;
+        shoulder[side] = base + normal * height * 0.72f + radial * radius * 0.82f + lean * 0.72f;
     }
     constexpr std::array<glm::vec3, 5> colors{{
         {0.12f, 0.80f, 0.92f}, {0.18f, 0.63f, 0.98f}, {0.30f, 0.92f, 0.96f},
@@ -71,19 +70,39 @@ void stalactite(MeshData& mesh, glm::ivec3 cell, Block material, std::uint32_t v
     }
 }
 
-void grassTuft(MeshData& mesh, glm::ivec3 cell, std::uint32_t variation)
+void grassTuft(MeshData& mesh, glm::ivec3 cell, std::uint32_t variation, bool flowering)
 {
     const glm::vec3 base = glm::vec3(cell) + glm::vec3(0.5f, 0.99f, 0.5f);
+    glm::vec3 flowerCenter{};
     for (int blade = 0; blade < 4; ++blade) {
-        const float angle = blade * 1.7f + (variation % 7) * 0.2f;
+        const float angle = blade * 2.3f + (variation % 11) * 0.37f;
         const glm::vec3 across{std::cos(angle), 0, std::sin(angle)};
-        const auto center = base + across * 0.12f;
-        const auto tip = center + across * 0.18f + glm::vec3(0, 0.30f + blade * 0.065f, 0);
-        const auto a = center - across * 0.075f, b = center + across * 0.075f;
-        const glm::vec3 color{0.24f + blade * 0.025f, 0.64f + blade * 0.035f, 0.19f};
+        const auto root = base + across * 0.06f;
+        const float height = 0.30f + ((variation >> (blade * 3)) % 5) * 0.04f;
+        const auto shoulder = root + across * 0.06f + glm::vec3(0, height * 0.55f, 0);
+        const auto tip = root + across * 0.18f + glm::vec3(0, height, 0);
+        const auto a = shoulder - across * 0.09f, b = shoulder + across * 0.09f;
+        const glm::vec3 color{0.20f + blade * 0.035f, 0.55f + blade * 0.045f, 0.13f + blade * 0.02f};
+        if (blade == 0) flowerCenter = tip;
+        // Broad bent leaves taper at both ends, rather than identical spikes.
+        triangle(mesh, root, a, tip, Block::Grass, color);
+        triangle(mesh, root, tip, b, Block::Grass, color * 0.88f);
         // Back faces are explicit because the shared world renderer culls them.
-        triangle(mesh, a, b, tip, Block::Grass, color);
-        triangle(mesh, b, a, tip, Block::Grass, color);
+        triangle(mesh, root, tip, a, Block::Grass, color);
+        triangle(mesh, root, b, tip, Block::Grass, color * 0.88f);
+    }
+    if (flowering) {
+        const glm::vec3 color = variation % 2 ? glm::vec3(0.86f, 0.35f, 0.72f) : glm::vec3(0.95f, 0.73f, 0.25f);
+        for (int petal = 0; petal < 4; ++petal) {
+            const float angle = petal * 1.5707963f;
+            const glm::vec3 along{std::cos(angle), 0, std::sin(angle)};
+            const glm::vec3 across{-along.z, 0, along.x};
+            const auto a = flowerCenter - across * 0.035f;
+            const auto b = flowerCenter + along * 0.13f + glm::vec3(0, 0.015f, 0);
+            const auto c = flowerCenter + across * 0.035f;
+            triangle(mesh, a, b, c, Block::Grass, color);
+            triangle(mesh, c, b, a, Block::Grass, color);
+        }
     }
 }
 
@@ -94,7 +113,9 @@ MeshData buildCaveDetails(const World& world, std::size_t chunkIndex)
     const auto& chunk = world.chunk(chunkIndex);
     const auto origin = world.origin(chunkIndex);
     MeshData mesh;
-    int shards = 0, stones = 0, tufts = 0;
+    // Independent caps reserve the silhouette budget for upright clusters.
+    // 24 top + 4 wall shards, 10 stones, 12 tufts, 3 flowers = 696 triangles.
+    int topShards = 0, wallShards = 0, stones = 0, tufts = 0, flowers = 0;
     for (int y = 0; y < Chunk::Size; ++y) {
         for (int z = 0; z < Chunk::Size; ++z) {
             for (int x = 0; x < Chunk::Size; ++x) {
@@ -105,28 +126,41 @@ MeshData buildCaveDetails(const World& world, std::size_t chunkIndex)
                     return World::contains(neighbor) && world.get(neighbor) == Block::Air;
                 };
                 if (material == Block::Crystal) {
-                    for (int axis = 0; axis < 3 && shards < 32; ++axis) {
-                        for (const int sign : {-1, 1}) {
-                            glm::ivec3 face(0);
-                            face[axis] = sign;
-                            if (shards == 32 || !air(cell + face)) continue;
-                            // Alternate exposed faces keep large deposits from becoming hedgehogs.
-                            if ((variation + axis + (sign > 0)) % 3 == 0) continue;
+                    if (topShards < 24 && air(cell + glm::ivec3(0, 1, 0))) {
+                        const float angle = (variation % 17) * 0.37f;
+                        const glm::vec3 across{std::cos(angle), 0, std::sin(angle)};
+                        const auto base = glm::vec3(cell) + glm::vec3(0.5f, 0.985f, 0.5f);
+                        // One tall mineral and a smaller companion share an uneven base.
+                        shard(mesh, base - across * 0.13f, {0, 1, 0}, across,
+                              0.78f + (variation % 4) * 0.05f, 0.14f + (variation % 3) * 0.025f,
+                              -across * 0.10f, variation);
+                        shard(mesh, base + across * 0.24f, {0, 1, 0}, across,
+                              0.40f + ((variation >> 3) % 4) * 0.05f, 0.09f + ((variation >> 5) % 3) * 0.015f,
+                              across * 0.08f, variation + 2);
+                        topShards += 2;
+                    }
+                    // A few stubby upward-leaning wall minerals break the outline.
+                    // Never decorate the underside or repeat a spike on every face.
+                    if (wallShards < 4 && variation % 7 == 0) {
+                        constexpr std::array<glm::ivec3, 4> faces{{{1, 0, 0}, {0, 0, 1}, {-1, 0, 0}, {0, 0, -1}}};
+                        const auto face = faces[(variation >> 4) % faces.size()];
+                        if (air(cell + face)) {
                             const glm::vec3 normal(face);
-                            glm::vec3 across(0);
-                            across[(axis + 1) % 3] = 1.0f;
-                            const auto base = glm::vec3(cell) + glm::vec3(0.5f) + normal * 0.485f;
-                            shard(mesh, base, normal, across, 0.55f + (variation % 4) * 0.08f,
-                                  0.14f + (variation % 3) * 0.025f, variation);
-                            ++shards;
+                            const auto across = glm::cross(glm::vec3(0, 1, 0), normal);
+                            const auto base = glm::vec3(cell) + glm::vec3(0.5f, 0.32f, 0.5f) + normal * 0.485f;
+                            shard(mesh, base, normal, across, 0.28f + (variation % 3) * 0.06f,
+                                  0.11f, {0, 0.20f, 0}, variation);
+                            ++wallShards;
                         }
                     }
                 } else if (stones < 10 && y >= 10 && variation % 13 == 0 && air(cell + glm::ivec3(0, -1, 0))
                            && (material == Block::Stone || material == Block::Limestone || material == Block::Slate)) {
                     stalactite(mesh, cell, material, variation);
                     ++stones;
-                } else if (tufts < 16 && material == Block::Grass && air(cell + glm::ivec3(0, 1, 0))) {
-                    grassTuft(mesh, cell, variation);
+                } else if (tufts < 12 && material == Block::Grass && air(cell + glm::ivec3(0, 1, 0))) {
+                    const bool flowering = flowers < 3 && variation % 5 == 0;
+                    grassTuft(mesh, cell, variation, flowering);
+                    flowers += flowering;
                     ++tufts;
                 }
             }

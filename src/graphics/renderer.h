@@ -1,6 +1,7 @@
 #pragma once
 
 #include "graphics/opengl.h"
+#include "graphics/post_process.h"
 #include "world.h"
 #include "editing.h"
 
@@ -26,6 +27,7 @@ public:
 private:
     struct Light { glm::vec3 position; glm::vec3 color; float radius; };
     Shader shader_;
+    PostProcess postProcess_;
     std::array<GpuMesh, World::ChunkCount> meshes_;
     std::array<GpuMesh, World::ChunkCount> details_;
     std::optional<World> meshedWorld_;

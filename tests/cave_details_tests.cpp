@@ -36,7 +36,7 @@ bool same(const voxel::MeshData& first, const voxel::MeshData& second)
 
 void validate(const voxel::MeshData& mesh, glm::ivec3 origin)
 {
-    check(mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= 668,
+    check(mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= 696,
           "detail triangle count is valid and bounded per chunk");
     for (const auto& vertex : mesh.vertices) {
         for (int axis = 0; axis < 3; ++axis) {
@@ -85,6 +85,8 @@ int main()
     check(!mesh.indices.empty() && world.sameContents(before), "crystal decoration is cosmetic and leaves voxels intact");
     check(same(mesh, voxel::buildCaveDetails(world, centerChunk)), "identical world and seed produce identical details");
     validate(mesh, world.origin(centerChunk));
+    bool tallTip = false;
+    int topVertices = 0, wallVertices = 0;
     for (const auto& vertex : mesh.vertices) {
         const glm::ivec3 cell{static_cast<int>(std::floor(vertex.position.x)),
                               static_cast<int>(std::floor(vertex.position.y)),
@@ -93,9 +95,19 @@ int main()
         check(offset.x + offset.y + offset.z <= 1, "shards remain within their anchor and one adjacent cell");
         check(vertex.material == static_cast<float>(Block::Crystal), "crystal shards keep the crystal material");
         check(vertex.color.b > 0.8f && vertex.color.g > 0.6f, "crystals use saturated cyan and blue facets");
-        check(glm::dot(vertex.normal, vertex.position - (glm::vec3(crystal) + glm::vec3(0.5f))) > 0,
-              "crystal triangles face outward from the solid anchor");
+        check(vertex.position.y >= crystal.y, "crystals never grow downward spikes");
+        tallTip |= vertex.position.y > crystal.y + 1.7f;
+        topVertices += vertex.position.y >= crystal.y + 0.98f;
+        wallVertices += vertex.position.y < crystal.y + 0.98f;
     }
+    check(tallTip && topVertices >= 90 && wallVertices <= 45,
+          "an isolated crystal favors a tall upright pair over at most one short wall mineral");
+
+    World anotherSeed(43);
+    clear(anotherSeed);
+    anotherSeed.set(crystal, Block::Crystal);
+    check(!same(mesh, voxel::buildCaveDetails(anotherSeed, centerChunk)),
+          "seeds vary mineral lean, height, thickness, and facet colors");
 
     // Neighbors across chunk boundaries must suppress decoration just like local neighbors.
     for (const auto direction : directions) world.set(crystal + direction, Block::Stone);
@@ -115,14 +127,24 @@ int main()
     world.set(crystal, Block::Air);
     check(voxel::buildCaveDetails(world, centerChunk).indices.empty(), "mining the anchor removes its decorations");
 
+    for (int x = 0; x < 16; ++x) {
+        for (int y = 4; y <= 8; ++y) world.set({x, y, 7}, Block::Crystal);
+        world.set({x, 9, 7}, Block::Stone); // Cover the tops so only wall growth is eligible.
+    }
+    const auto crystalWall = voxel::buildCaveDetails(world, centerChunk);
+    check(!crystalWall.indices.empty() && crystalWall.indices.size() / 3 <= 60,
+          "even a large crystal wall grows only a few small minerals instead of repeated spikes");
+    validate(crystalWall, world.origin(centerChunk));
+    clear(world);
+
     world.set({5, 3, 5}, Block::Grass);
     const auto grass = voxel::buildCaveDetails(world, centerChunk);
-    check(grass.indices.size() == 24, "one exposed grass block grows a small two-sided tuft");
+    check(grass.indices.size() == 48 || grass.indices.size() == 72,
+          "one exposed grass block grows broad two-sided leaves with an optional small flower");
     validate(grass, world.origin(centerChunk));
     for (const auto& vertex : grass.vertices) {
-        check(vertex.position.y >= 3.99f && vertex.position.y < 4.6f
-              && vertex.color.g > vertex.color.r && vertex.color.g > vertex.color.b,
-              "grass stays short with healthy green blades");
+        check(vertex.position.y >= 3.99f && vertex.position.y < 4.6f,
+              "leaves and flowers stay short and attached to the grass block");
     }
     world.set({5, 4, 5}, Block::Stone);
     check(voxel::buildCaveDetails(world, centerChunk).indices.empty(), "covering grass removes tufts");
@@ -153,7 +175,16 @@ int main()
             world.set({x, 12, z}, Block::Slate);
         }
     }
-    validate(voxel::buildCaveDetails(world, centerChunk), world.origin(centerChunk));
+    const auto crowded = voxel::buildCaveDetails(world, centerChunk);
+    validate(crowded, world.origin(centerChunk));
+    int flowerVertices = 0, leafVertices = 0;
+    for (const auto& vertex : crowded.vertices) {
+        if (vertex.material != static_cast<float>(Block::Grass)) continue;
+        if (vertex.color.g > vertex.color.r && vertex.color.g > vertex.color.b) ++leafVertices;
+        else ++flowerVertices;
+    }
+    check(leafVertices > 0 && flowerVertices > 0 && flowerVertices <= 3 * 24,
+          "green leaf groups include only a few pink or gold cave flowers");
     bool threw = false;
     try { voxel::buildCaveDetails(world, World::ChunkCount); }
     catch (const std::out_of_range&) { threw = true; }

@@ -1,6 +1,7 @@
 #include "graphics_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
+#include "graphics/post_process.h"
 #include "graphics/renderer.h"
 #include "graphics/window.h"
 #include "camera.h"
@@ -12,12 +13,14 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace voxel {
@@ -29,6 +32,187 @@ void checkOpenGl()
     if (error != GL_NO_ERROR) {
         throw std::runtime_error("OpenGL smoke test error: " + std::to_string(error));
     }
+}
+
+void verifyPostProcessing()
+{
+    constexpr int width = 320, height = 180;
+    Shader callerProgram("#version 410 core\nvoid main() { gl_Position = vec4(0); }",
+                         "#version 410 core\nout vec4 color; void main() { color = vec4(1); }");
+    PostProcess post;
+    GLuint frame = 0, color = 0, depth = 0, vao = 0;
+    std::array<GLuint, 3> callerTextures{};
+    glGenFramebuffers(1, &frame);
+    glGenTextures(1, &color);
+    glGenRenderbuffers(1, &depth);
+    glGenVertexArrays(1, &vao);
+    glGenTextures(3, callerTextures.data());
+    const auto cleanup = [&] {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glBindVertexArray(0);
+        glUseProgram(0);
+        for (int unit = 0; unit < 3; ++unit) {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+        glActiveTexture(GL_TEXTURE0);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_FRAMEBUFFER_SRGB);
+        glEnable(GL_MULTISAMPLE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDeleteFramebuffers(1, &frame);
+        glDeleteTextures(1, &color);
+        glDeleteRenderbuffers(1, &depth);
+        glDeleteVertexArrays(1, &vao);
+        glDeleteTextures(3, callerTextures.data());
+    };
+    try {
+        glBindFramebuffer(GL_FRAMEBUFFER, frame);
+        glBindTexture(GL_TEXTURE_2D, color);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA,
+                     GL_UNSIGNED_BYTE, nullptr);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+        glBindRenderbuffer(GL_RENDERBUFFER, depth);
+        // A different depth format catches accidental framebuffer depth blits.
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, width, height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depth);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            throw std::runtime_error("Post-processing test framebuffer is incomplete");
+        }
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        callerProgram.use();
+        glBindVertexArray(vao);
+        GLint expectedProgram = 0;
+        glGetIntegerv(GL_CURRENT_PROGRAM, &expectedProgram);
+        for (int unit = 0; unit < 3; ++unit) {
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glBindTexture(GL_TEXTURE_2D, callerTextures[unit]);
+        }
+        glActiveTexture(GL_TEXTURE3);
+        glViewport(7, 9, 123, 87);
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glDepthFunc(GL_GREATER);
+        glEnable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_SCISSOR_TEST);
+        glEnable(GL_FRAMEBUFFER_SRGB);
+        glDisable(GL_MULTISAMPLE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        const auto checkState = [&] {
+            const std::array<std::pair<GLenum, GLint>, 7> bindings{{
+                {GL_DRAW_FRAMEBUFFER_BINDING, static_cast<GLint>(frame)},
+                {GL_READ_FRAMEBUFFER_BINDING, 0}, {GL_CURRENT_PROGRAM, expectedProgram},
+                {GL_VERTEX_ARRAY_BINDING, static_cast<GLint>(vao)},
+                {GL_RENDERBUFFER_BINDING, static_cast<GLint>(depth)},
+                {GL_ACTIVE_TEXTURE, GL_TEXTURE3}, {GL_DEPTH_FUNC, GL_GREATER}}};
+            for (const auto& [name, expected] : bindings) {
+                GLint actual = 0;
+                glGetIntegerv(name, &actual);
+                if (actual != expected) throw std::runtime_error("Post-processing changed an OpenGL binding");
+            }
+            std::array<GLint, 4> viewport{};
+            std::array<GLint, 2> polygon{};
+            GLboolean depthWrite = GL_TRUE;
+            glGetIntegerv(GL_VIEWPORT, viewport.data());
+            glGetIntegerv(GL_POLYGON_MODE, polygon.data());
+            glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWrite);
+            if (viewport != std::array<GLint, 4>{7, 9, 123, 87}
+                || polygon[0] != GL_LINE || polygon[1] != GL_LINE || depthWrite
+                || glIsEnabled(GL_DEPTH_TEST) || glIsEnabled(GL_MULTISAMPLE)
+                || !glIsEnabled(GL_CULL_FACE) || !glIsEnabled(GL_BLEND)
+                || !glIsEnabled(GL_SCISSOR_TEST) || !glIsEnabled(GL_FRAMEBUFFER_SRGB)) {
+                throw std::runtime_error("Post-processing changed the caller's rendering state");
+            }
+            for (int unit = 0; unit < 3; ++unit) {
+                GLint texture = 0;
+                glActiveTexture(GL_TEXTURE0 + unit);
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+                if (texture != static_cast<GLint>(callerTextures[unit])) {
+                    throw std::runtime_error("Post-processing changed a texture binding");
+                }
+            }
+            glActiveTexture(GL_TEXTURE3);
+            checkOpenGl();
+        };
+        const auto draw = [&](float emission, int renderWidth = width, int renderHeight = height) {
+            post.begin(renderWidth, renderHeight);
+            GLint samples = 0, maximumSamples = 0;
+            glGetIntegerv(GL_SAMPLES, &samples);
+            glGetIntegerv(GL_MAX_SAMPLES, &maximumSamples);
+            if (samples < 2 || samples != std::min(4, maximumSamples)
+                || !glIsEnabled(GL_MULTISAMPLE)) {
+                throw std::runtime_error("HDR scene target did not enable multisample antialiasing");
+            }
+            const std::array<float, 4> background{0, 0, 0, 0};
+            const std::array<float, 4> glowing{2.5f, 0.6f, 0.1f, emission};
+            const float farDepth = 1, surfaceDepth = 0.4f;
+            glClearBufferfv(GL_COLOR, 0, background.data());
+            glClearBufferfv(GL_DEPTH, 0, &farDepth);
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(renderWidth / 2 - 32, renderHeight / 2 - 32, 64, 64);
+            glClearBufferfv(GL_COLOR, 0, glowing.data());
+            glClearBufferfv(GL_DEPTH, 0, &surfaceDepth);
+            post.finish();
+            checkState();
+        };
+        const auto read = [&](int x, int y) {
+            std::array<unsigned char, 4> pixel{};
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, frame);
+            glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel.data());
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            return pixel;
+        };
+        draw(0);
+        const auto unlitOutside = read(width / 2 + 40, height / 2);
+        const auto unlitCenter = read(width / 2, height / 2);
+        draw(1);
+        const auto glowingOutside = read(width / 2 + 40, height / 2);
+        const auto glowingCenter = read(width / 2, height / 2);
+        if (unlitOutside[0] > 1 || glowingOutside[0] < unlitOutside[0] + 8
+            || glowingOutside[0] <= glowingOutside[2] || unlitCenter[0] < 200
+            || glowingCenter[0] < unlitCenter[0]) {
+            throw std::runtime_error("Emission-tagged HDR surfaces did not produce a warm, bounded bloom");
+        }
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, frame);
+        float centerDepth = 0, outsideDepth = 0;
+        glReadPixels(width / 2, height / 2, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &centerDepth);
+        glReadPixels(0, 0, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &outsideDepth);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        if (std::abs(centerDepth - 0.4f) > 0.001f || std::abs(outsideDepth - 1) > 0.001f) {
+            throw std::runtime_error("HDR composition did not preserve scene depth for selection outlines");
+        }
+        const auto rejects = [&](const auto& action) {
+            bool rejected = false;
+            try { action(); } catch (const std::logic_error&) { rejected = true; }
+            if (!rejected) throw std::runtime_error("Post-processing accepted an invalid frame transition");
+        };
+        rejects([&] { post.finish(); });
+        rejects([&] { post.begin(0, height); });
+        rejects([&] { post.begin(width, -1); });
+        GLint maximumSize = 0;
+        glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maximumSize);
+        rejects([&] { post.begin(maximumSize + 1, height); });
+        checkState();
+        post.begin(width, height);
+        rejects([&] { post.begin(width, height); });
+        post.finish();
+        checkState();
+        draw(1, width / 2, height / 2);
+        draw(1);
+        checkOpenGl();
+    } catch (...) {
+        cleanup();
+        throw;
+    }
+    cleanup();
+    std::cout << "HDR processing passed: emission bloom, scene depth, resize, guards and GL state\n";
 }
 
 void verifyOverlayState()
@@ -216,6 +400,7 @@ void verifyUndergroundMaterials(int width, int height)
     const auto sample = [&](Block material) {
         world.set({0, 6, 0}, material);
         renderer.render(world, camera, width, height, false, true);
+        checkOpenGl();
         GLint activeTexture = 0, texture = 0;
         glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
         glActiveTexture(GL_TEXTURE0);
@@ -263,11 +448,13 @@ void verifyUndergroundMaterials(int width, int height)
             + " coal, wood contrast " + std::to_string(planks.x - planks.z)
             + ", brick contrast " + std::to_string(brick.x - brick.y));
     }
-    sample(Block::Lantern);
+    const auto lantern = sample(Block::Lantern);
     std::size_t glass = 0, metal = 0;
     for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
         glass += pixels[pixel] > 220 && pixels[pixel + 1] > 150 && pixels[pixel + 2] < 150;
-        metal += pixels[pixel] < 100 && pixels[pixel + 1] < 100 && pixels[pixel + 2] < 100;
+        // Bloom lifts the grille slightly; it must retain strong contrast
+        // against the glass rather than meet a pre-HDR absolute byte value.
+        metal += pixels[pixel] < lantern.x - 100;
     }
     const auto crystal = sample(Block::Crystal);
     if (renderer.triangleCount() <= 12) {
@@ -275,7 +462,11 @@ void verifyUndergroundMaterials(int width, int height)
     }
     if (glass < patchSize || metal < patchSize || crystal.z < 120 || crystal.y < 100
         || crystal.z - crystal.x < 30) {
-        throw std::runtime_error("Lantern or crystal lost its emissive surface");
+        throw std::runtime_error("Lantern or crystal lost its emissive surface: glass "
+            + std::to_string(glass) + ", metal " + std::to_string(metal)
+            + ", lantern RGB " + std::to_string(lantern.x) + "/" + std::to_string(lantern.y)
+            + "/" + std::to_string(lantern.z) + ", crystal RGB " + std::to_string(crystal.x)
+            + "/" + std::to_string(crystal.y) + "/" + std::to_string(crystal.z));
     }
     sample(Block::Stone);
     if (renderer.triangleCount() != 12) {
@@ -328,7 +519,10 @@ void verifyUndergroundMaterials(int width, int height)
     }
     std::array<unsigned char, 4> background{};
     glReadPixels(0, height - 1, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, background.data());
-    if (background[0] > 20 || background[1] > 20 || background[2] > 20) {
+    // Linear cave color is tone-mapped and gamma encoded; it should still be
+    // dark violet-blue, clearly separate from the editor's daylight sky.
+    if (background[0] > 80 || background[1] > 80 || background[2] > 80
+        || background[2] < background[0] + 8) {
         throw std::runtime_error("Underground scene retained the outdoor sky");
     }
     renderer.render(world, camera, width, height, false);
@@ -355,6 +549,17 @@ void verifyGpuResources()
         rejected = std::string(error.what()).find("compilation failed") != std::string::npos;
     }
     if (!rejected) throw std::runtime_error("Invalid shader was not diagnosed");
+
+    // A destroyed bound program must not remain pending deletion: another
+    // pass cannot safely save it, bind a new program, then restore the old ID.
+    {
+        Shader temporary("#version 410 core\nvoid main() { gl_Position = vec4(0); }",
+                         "#version 410 core\nout vec4 color; void main() { color = vec4(1); }");
+        temporary.use();
+    }
+    GLint currentProgram = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    if (currentProgram != 0) throw std::runtime_error("Destroyed shader remained bound for a later rendering pass");
 
     GpuMesh mesh;
     mesh.upload({});
@@ -478,6 +683,7 @@ int runGraphicsSmokeTest(const Options& options)
     Window window(false);
     std::cout << "OpenGL: " << glGetString(GL_VERSION) << '\n';
     verifyGpuResources();
+    verifyPostProcessing();
     int width, height;
     window.framebufferSize(width, height);
     verifyCrosshair(width, height);

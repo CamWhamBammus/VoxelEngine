@@ -41,6 +41,7 @@ if(VOXEL_BUILD_APP)
         src/input.cpp
         src/graphics/window.cpp
         src/graphics/opengl.cpp
+        src/graphics/post_process.cpp
         src/graphics/renderer.cpp
         src/graphics/hud.cpp
         tests/graphics_smoke.cpp

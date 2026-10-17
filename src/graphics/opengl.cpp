@@ -104,6 +104,11 @@ Shader::Shader(const char* vertexSource, const char* fragmentSource)
 
 Shader::~Shader()
 {
+    // Deleting a bound program only marks it for later deletion. Unbind our
+    // own program so another pass cannot save and restore that expired ID.
+    GLint currentProgram = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    if (currentProgram == static_cast<GLint>(program_)) glUseProgram(0);
     glDeleteProgram(program_);
 }
 
