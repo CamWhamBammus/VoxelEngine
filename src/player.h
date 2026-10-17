@@ -25,6 +25,8 @@ public:
     // Movement x is right and y is forward. Looking up/down never changes speed.
     void update(const World& world, glm::vec2 movement, glm::vec3 forward,
                 bool jump, bool sprint, float deltaSeconds);
+    // Stand on the nearest solid column. An empty world leaves the player unchanged.
+    bool spawn(const World& world, glm::ivec2 preferred = glm::ivec2(0));
 
 private:
     void moveAxis(const World& world, int axis, float distance);

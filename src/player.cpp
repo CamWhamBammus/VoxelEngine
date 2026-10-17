@@ -178,4 +178,34 @@ void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
     }
 }
 
+bool Player::spawn(const World& world, glm::ivec2 preferred)
+{
+    preferred.x = std::clamp(preferred.x, World::Min.x, World::MaxExclusive.x - 1);
+    preferred.y = std::clamp(preferred.y, World::Min.z, World::MaxExclusive.z - 1);
+    bool found = false;
+    glm::vec3 destination{};
+    int nearestSquared = std::numeric_limits<int>::max();
+    for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+        for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+            const int dx = x - preferred.x;
+            const int dz = z - preferred.y;
+            const int distanceSquared = dx * dx + dz * dz;
+            if (distanceSquared >= nearestSquared) continue;
+
+            for (int y = World::MaxExclusive.y - 1; y >= World::Min.y; --y) {
+                if (!isSolid(world.get({x, y, z}))) continue;
+                const glm::vec3 candidate{x + 0.5f, y + 1.0f, z + 0.5f};
+                // Spawn above the highest solid, with room for the entire body.
+                if (!collides(world, candidate)) {
+                    destination = candidate;
+                    nearestSquared = distanceSquared;
+                    found = true;
+                }
+                break;
+            }
+        }
+    }
+    return found && setFeetPosition(world, destination);
+}
+
 } // namespace voxel

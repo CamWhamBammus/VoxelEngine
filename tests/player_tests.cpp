@@ -186,6 +186,53 @@ int main()
         check(player.feetPosition() == beforeInvalidUpdate, "invalid frame time does not move the player");
     }
 
+    World terrain(42);
+    check(player.spawn(terrain), "generated terrain has a safe spawn");
+    check(near(player.feetPosition().x, 0.5f) && near(player.feetPosition().z, 0.5f)
+        && near(player.feetPosition().y, voxel::terrainHeight(0, 0, 42) + 1.0f)
+        && player.grounded(), "default spawn stands on the preferred column's surface");
+    check(player.spawn(terrain, {-17, -1}) && near(player.feetPosition().x, -16.5f)
+        && near(player.feetPosition().z, -0.5f)
+        && near(player.feetPosition().y, voxel::terrainHeight(-17, -1, 42) + 1.0f),
+        "spawn works across negative chunk boundaries");
+
+    check(player.spawn(world, {20, 20}), "missing support searches neighboring columns");
+    check(near(player.feetPosition().x, 20.5f) && near(player.feetPosition().z, 19.5f),
+        "equal-distance spawn choices use deterministic z-then-x order");
+    const auto nearbySpawn = player.feetPosition();
+    player.spawn(world, {20, 20});
+    check(player.feetPosition() == nearbySpawn, "repeated spawn chooses the same safe location");
+    world.set({20, 15, 20}, Block::Stone);
+    check(player.spawn(world, {20, 20}) && near(player.feetPosition().y, 16.0f)
+        && player.grounded(), "spawn can stand above a player-built column at maximum world height");
+    check(!player.overlapsBlock({20, 15, 20}), "spawned body touches support without intersecting it");
+
+    player.spawn(world, {10, 30});
+    player.update(world, {}, forward, true, false, 0.1f);
+    player.spawn(world, {10, 30});
+    player.update(world, {}, forward, false, false, 0.1f);
+    check(near(player.feetPosition().y, 1.0f) && player.grounded(),
+        "respawning clears airborne velocity");
+    player.update(world, {}, forward, true, false, 0.1f);
+    check(player.feetPosition().y > 1.0f, "respawning permits a fresh jump");
+
+    World empty;
+    for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
+        for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+            for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+                empty.set({x, y, z}, Block::Air);
+            }
+        }
+    }
+    const auto beforeFailedSpawn = player.feetPosition();
+    const bool previouslyGrounded = player.grounded();
+    check(!player.spawn(empty) && player.feetPosition() == beforeFailedSpawn
+        && player.grounded() == previouslyGrounded, "empty world cannot spawn or alter the player");
+    empty.set({-32, 5, -32}, Block::Stone);
+    check(player.spawn(empty, {std::numeric_limits<int>::max(), std::numeric_limits<int>::min()})
+        && player.feetPosition() == glm::vec3(-31.5f, 6.0f, -31.5f) && player.grounded(),
+        "extreme preferred coordinates safely find the only supported spawn");
+
     if (failures == 0) std::cout << "Player tests passed\n";
     return failures == 0 ? 0 : 1;
 }
