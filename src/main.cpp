@@ -36,6 +36,7 @@ int main(int argc, char** argv)
         voxel::Window window;
         voxel::Input input(window.handle());
         voxel::WorldRenderer renderer;
+        voxel::ObjectivesRenderer objectives;
         voxel::Overlay selection;
         voxel::Hud hud;
         std::cout << game.status << "\nH: controls | Q: quit\n";
@@ -62,9 +63,13 @@ int main(int argc, char** argv)
                 continue;
             }
             renderer.render(game.world, game.camera, width, height, input.wireframe());
+            if (!game.editorMode()) objectives.draw(game.challenge, game.camera, width, height,
+                voxel::Challenge::TimeLimit - game.challenge.timeRemaining());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
-            if (input.captured()) selection.draw(game.target, game.camera, width, height, scaleY);
+            if (input.captured() && (game.editorMode() || game.challenge.state() == voxel::ChallengeState::Playing)) {
+                selection.draw(game.target, game.camera, width, height, scaleY);
+            }
 
             // Refresh text four times per second; draw the cached text every frame.
             ++sampleFrames;
@@ -73,7 +78,9 @@ int main(int argc, char** argv)
                 const double fps = sampleSeconds >= 0.25 ? sampleFrames / sampleSeconds : 0.0;
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
-                glfwSetWindowTitle(window.handle(), game.hasUnsavedChanges() ? "Voxel Engine *" : "Voxel Engine");
+                const char* title = game.editorMode()
+                    ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor") : "Beacon Trail";
+                glfwSetWindowTitle(window.handle(), title);
                 if (sampleSeconds >= 0.25) {
                     sampleStart = now;
                     sampleFrames = 0;

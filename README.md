@@ -1,6 +1,16 @@
 # VoxelEngine
 
-A C++20 voxel terrain editor for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. It generates a finite terrain world, supports undoable block editing and world saves, and uses greedy meshing and view-frustum culling to reduce rendering work.
+A small C++20 voxel game for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. The default mode is **Beacon Trail**: collect three crystals and return to camp before time runs out. The original terrain editor is available with `--editor`.
+
+## Play Beacon Trail
+
+You have **five minutes of active game time** to collect all three colored crystals and bring them back to the orange camp beacon. Follow the tall colored beams, walk close to a crystal, and press **E**. Once you have all three, camp turns green; return and press **E** to win. The HUD shows the nearest remaining objective, its coordinates, and distance.
+
+Use **WASD** to walk, **mouse** to look, **Space** to jump, and **Shift** to sprint. You collide with terrain and cannot walk through blocks. Jump up hills or mine a route. Left click mines a block into your inventory; right click places one of your selected blocks. You start with **12 Dirt blocks** for building. Select materials with **1–4** or **[ / ]**.
+
+**Escape** releases the mouse and pauses the run; **Tab** captures it again. **R** returns you to safe ground near camp and costs **20 seconds**. Falling through a mined hole below the world also costs 20 seconds and respawns you. When you win or run out of time, press **Enter** to restart the same seed or **Q** to quit.
+
+Game runs start fresh and do not load or overwrite editor saves. World edits, inventory, timer, and crystal progress last only for the current run. Use `--seed N` to explore different terrain.
 
 ## Understand the code
 
@@ -11,7 +21,9 @@ Each module has a `.h` file that declares its types and functions, and a matchin
 ```text
 src/
   main.cpp          Startup and the main loop
-  game.h/.cpp       Game state, player actions, and status text
+  game.h/.cpp       Game/editor modes, inventory, player actions, and HUD text
+  player.h/.cpp     Player body, terrain collision, walking, jumping, and spawning
+  challenge.h/.cpp  Crystal objectives, timer, victory, and loss
   input.h/.cpp      Keyboard and mouse controls
   camera.h/.cpp     Camera movement, view math, and visibility checks
   world.h/.cpp      Blocks, chunks, world storage, and terrain generation
@@ -21,7 +33,7 @@ src/
   graphics/
     window.h/.cpp   Open and close the GLFW window
     opengl.h/.cpp   Compile shaders and upload mesh data to the GPU
-    renderer.h/.cpp Draw terrain and the selected block's outline
+    renderer.h/.cpp Draw terrain, objective beacons, and selection outlines
     hud.h/.cpp      Draw text on the screen
 tests/              Behavior tests and graphics smoke checks
 CMakeLists.txt      List the source files and build targets
@@ -32,9 +44,10 @@ Read these first:
 1. [main.cpp](src/main.cpp) shows how everything connects.
 2. [game.h](src/game.h) names the current world, camera, selected material, and edit history. [Game::update in game.cpp](src/game.cpp) handles the player's actions in order.
 3. [world.h](src/world.h) explains the data: a `Block` is a material, a `Chunk` stores a 16×16×16 cube of blocks, and a `World` holds the chunks.
-4. [editing.cpp](src/editing.cpp) shows how aiming and editing work. `raycast` follows the camera's viewing direction through blocks to find a hit.
+4. [player.cpp](src/player.cpp) handles the body and movement; [challenge.cpp](src/challenge.cpp) handles the goal and timer.
+5. [editing.cpp](src/editing.cpp) shows how aiming and editing work. `raycast` follows the camera's viewing direction through blocks to find a hit.
 
-For one frame, `Input::update` moves the camera and fills an `InputActions` value. `Game::update` uses those actions to save, load, undo, or edit. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
+For one frame, `Input::update` handles looking and fills an `InputActions` value. In play mode, `Game::update` moves the `Player` and follows its eyes with the camera; `Player` resolves movement against solid voxels. `Challenge` owns collection and timer rules. `Game::update` uses those actions to save, load, undo, or edit. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
 
 Each renderer remembers the chunk contents it last drew. It rebuilds changed chunks and their neighbors, so switching worlds or opening another view cannot lose mesh updates. This uses a small world snapshot and straightforward comparisons; no global cache or event system is needed.
 
@@ -42,15 +55,18 @@ Use this map when changing something:
 
 | I want to change… | Start here |
 | --- | --- |
-| Keys, mouse sensitivity, or movement speed | [input.cpp](src/input.cpp) |
-| Starting camera position and direction | [camera.h](src/camera.h) |
+| Keys, mouse sensitivity, or editor flight speed | [input.cpp](src/input.cpp) |
+| Walking speed, jumping, or collision | [player.cpp](src/player.cpp) |
+| Crystal locations, time limit, or win conditions | [challenge.cpp](src/challenge.cpp) and [challenge.h](src/challenge.h) |
+| Editor starting camera position and view direction | [camera.h](src/camera.h) |
+| Game spawn and starter inventory | `Game::restartRun` in [game.cpp](src/game.cpp) |
 | Zoom limits | [camera.cpp](src/camera.cpp) |
 | Block colors and names | [world.h](src/world.h) |
 | Terrain shape | `terrainHeight` and `generateTerrain` in [world.cpp](src/world.cpp) |
 | Default editing reach | `Options` in [game.h](src/game.h), or the `--reach` flag |
 | The order of player actions | [game.cpp](src/game.cpp) |
 | Placement rules or undo behavior | [editing.cpp](src/editing.cpp) |
-| HUD words and controls text | `Game::statusText` in [game.cpp](src/game.cpp) |
+| HUD words and controls text | `Game::statusText` and `playStatusText` in [game.cpp](src/game.cpp) |
 | Lighting or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
 
 You can learn the game logic before reading `graphics/`, the greedy meshing algorithm, or the binary save format. Those details are contained in their own modules. The `VoxelCore` build target and its tests work without an OpenGL window.
@@ -84,7 +100,9 @@ The viewer needs a display and a driver supporting OpenGL 4.1 core.
 
 Run `./build/VoxelEngine --help` (or `-h`) for options, startup rules, and examples. Help works without a display and does not read or write world files.
 
-## Controls
+## Editor controls
+
+Run `./build/VoxelEngine --editor` for unlimited blocks, free flight, undo/redo, and world files. The controls below apply to the editor. Press **H** in either mode for its controls.
 
 | Input | Action |
 | --- | --- |
@@ -109,7 +127,7 @@ Run `./build/VoxelEngine --help` (or `-h`) for options, startup rules, and examp
 | Tab | Toggle cursor capture |
 | Q | Quit |
 
-Movement uses a flying camera with no collision or gravity. Editing works while the cursor is captured, within eight blocks of the camera by default. Use `--reach N` to choose a whole-number distance from 1 to 64 blocks, such as `./build/VoxelEngine --reach 16`. Reach is a session setting; it does not change the save format. The targeted block has a yellow outline; placement cannot fill the camera's current cell. Undo history keeps the latest 256 edits for this session. A new edit after undo clears the redo branch.
+Movement uses a flying camera with no collision or gravity. Editing works while the cursor is captured, within eight blocks of the camera by default. Use `--reach N` to choose a whole-number distance from 1 to 64 blocks, such as `./build/VoxelEngine --editor --reach 16`. Reach is a session setting; it does not change the save format. The targeted block has a yellow outline; placement cannot fill the camera's current cell. Undo history keeps the latest 256 edits for this session. A new edit after undo clears the redo branch.
 
 The HUD shows the selected material, seed, camera position, zoom, undo/redo counts, visible chunks, submitted/total triangles, and average frame rate. `UNSAVED` and a title-bar `*` indicate changes from the loaded or last-saved contents; undoing back to that state clears them. FPS appears after the first sampling interval.
 
@@ -121,12 +139,12 @@ The crosshair and HUD scale with the display. The crosshair has a dark border so
 
 ## Save and reload
 
-By default, startup loads `world.vxl` from the current working directory if it exists, or creates new terrain. Press **F5 before quitting** to keep edits; there is no automatic save on exit. Press **F9** to reload the file, discarding unsaved edits and clearing undo history only if loading succeeds. File errors appear in the HUD and terminal, and leave the current session available.
+In **editor mode**, startup loads `world.vxl` from the current working directory if it exists, or creates new terrain. Press **F5 before quitting** to keep edits; there is no automatic save on exit. Press **F9** to reload the file, discarding unsaved edits and clearing undo history only if loading succeeds. File errors appear in the HUD and terminal, and leave the current session available.
 
 Choose another save file:
 
 ```sh
-./build/VoxelEngine --world my-world.vxl
+./build/VoxelEngine --editor --world my-world.vxl
 ```
 
 A missing file starts a new world and is created on the first F5 save. Its parent directory must already exist. Saves store the seed and every block; camera state and edit history are not saved. The versioned format validates dimensions, materials, and a checksum before replacing the active world. Saving writes and flushes a temporary sibling file, then atomically replaces the destination on macOS/Linux. Failed writes do not delete the old save. This is not a backup system: keep copies of worlds you want to preserve.
@@ -134,10 +152,10 @@ A missing file starts a new world and is created on the first F5 save. Its paren
 World files (`*.vxl`) are ignored by Git. To start fresh from a seed without automatically loading the default save:
 
 ```sh
-./build/VoxelEngine --seed 42
+./build/VoxelEngine --editor --seed 42
 ```
 
-If both `--world` and `--seed` are provided, an existing world's saved seed takes precedence; a missing world uses the requested seed. F5 writes to the chosen path, including `world.vxl` when no path was provided.
+With `--editor`, if both `--world` and `--seed` are provided, an existing world's saved seed takes precedence; a missing world uses the requested seed. F5 writes to the chosen path, including `world.vxl` when no path was provided.
 
 ## Terrain and command-line options
 
@@ -163,7 +181,7 @@ Hidden-window tests still require a functioning OpenGL context. On a Linux machi
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a ./build/VoxelEngine --smoke-test
 ```
 
-Smoke tests never implicitly load or save `world.vxl`. Add `--world path.vxl` to explicitly render an existing save. A fully empty saved world fails the terrain-presence check. Screenshots include the HUD and use portable binary PPM format. Run `--help` to list options.
+Smoke tests never implicitly load or save `world.vxl`. They render the game by default; add `--editor` for the overview camera, or `--editor --world path.vxl` to render an existing save. A fully empty saved world fails the terrain-presence check. Screenshots include the HUD and use portable binary PPM format. Run `--help` to list options.
 
 ## Tests
 
@@ -195,6 +213,8 @@ ctest --test-dir build-sanitize --output-on-failure
 
 Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
+Player tests cover collisions, jumping, safe spawning, and falling through mined ground. Game tests verify inventory accounting, body-safe placement, pause, penalties, victory, loss, and restart. A simulated player walks and jumps through complete crystal routes on three seeds. Graphics checks verify crystal visibility, disappearing pickups, and the camp's ready color.
+
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 
-Terrain is finite; chunk streaming, collision, and gravity are not implemented.
+Terrain is finite; chunk streaming, enemies, crafting, and persistent game progress are not implemented yet.

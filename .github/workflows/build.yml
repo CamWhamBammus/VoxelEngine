@@ -37,6 +37,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: "1"
         run: |
           xvfb-run -a ./build/VoxelEngine --smoke-test
+          xvfb-run -a ./build/VoxelEngine --editor --smoke-test
           xvfb-run -a ./build/VoxelEngine --seed 4294967295 --screenshot build/terrain.ppm
 
       - name: Configure core without graphics dependencies

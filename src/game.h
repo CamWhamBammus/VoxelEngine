@@ -1,6 +1,7 @@
 #pragma once
 
 #include "camera.h"
+#include "challenge.h"
 #include "editing.h"
 #include "player.h"
 #include "world.h"
@@ -65,12 +66,16 @@ public:
     World world;
     Camera camera;
     Player player;
+    Challenge challenge;
     EditHistory history;
     Block selectedBlock = Block::Grass;
     std::optional<RayHit> target;
     std::string status;
 
 private:
+    void restartRun();
+    bool updatePlay(const InputActions& actions, float deltaSeconds);
+    std::string playStatusText(bool captured, bool showHelp) const;
     void handleFiles(const InputActions& actions);
     void handleUndoRedo(const InputActions& actions);
     void findTarget();

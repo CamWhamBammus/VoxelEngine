@@ -408,6 +408,7 @@ int runGraphicsSmokeTest(const Options& options)
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
     WorldRenderer renderer;
+    ObjectivesRenderer objectives;
     Overlay overlay;
     Hud hud;
     bool frameVerified = false;
@@ -419,6 +420,7 @@ int runGraphicsSmokeTest(const Options& options)
             throw std::runtime_error("Smoke test framebuffer is empty");
         }
         renderer.render(game.world, game.camera, width, height, false);
+        if (!game.editorMode()) objectives.draw(game.challenge, game.camera, width, height);
         float scaleX, scaleY;
         glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
         overlay.draw(game.target, game.camera, width, height, scaleY);

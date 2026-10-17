@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cmath>
+#include <limits>
 #include <stdexcept>
 #include <filesystem>
 #include <iomanip>
@@ -79,25 +81,14 @@ Game::Game(const Options& options)
         status = "New world - F5 to save";
     }
     if (!editorMode_) {
-        selectedBlock = Block::Dirt;
-        if (!player.spawn(world)) throw std::runtime_error("Could not find safe ground for the player");
-        camera.setPosition(player.eyePosition());
-        status = "WASD walk | SPACE jump | SHIFT sprint";
+        restartRun();
     }
     findTarget();
 }
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
-    if (!editorMode_) {
-        if (!actions.active) return;
-        if (actions.respawn || player.feetPosition().y < -16.0f) {
-            if (player.spawn(world)) status = "Returned to safe ground";
-        } else {
-            player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
-        }
-        camera.setPosition(player.eyePosition());
-    }
+    if (!editorMode_ && !updatePlay(actions, deltaSeconds)) return;
     if (actions.selectedBlock && isSolid(*actions.selectedBlock)) {
         selectedBlock = *actions.selectedBlock;
     } else if (actions.materialStep != 0) {
@@ -116,6 +107,70 @@ void Game::update(const InputActions& actions, float deltaSeconds)
     }
     findTarget();
     editTarget(actions);
+}
+
+void Game::restartRun()
+{
+    world = World(world.seed());
+    inventory_ = {0, 12, 0, 0};
+    selectedBlock = Block::Dirt;
+    history.clear();
+    camera.reset();
+    if (!player.spawn(world)) throw std::runtime_error("Could not find safe ground for camp");
+    const glm::vec3 camp = player.feetPosition() + glm::vec3(0, 1, 0);
+    // Stand beside the beacon, rather than inside its visible stem.
+    if (!player.spawn(world, {2, 0})) throw std::runtime_error("Could not find safe ground for the player");
+    camera.setPosition(player.eyePosition());
+    challenge.reset(world, camp);
+    status = "Find the 3 colored beacons. Press E near each crystal, then return to camp";
+    findTarget();
+}
+
+bool Game::updatePlay(const InputActions& actions, float deltaSeconds)
+{
+    // Restart works from the end screen even when the mouse is released.
+    if (actions.restart && challenge.state() != ChallengeState::Playing) {
+        restartRun();
+        return false;
+    }
+    if (!actions.active || challenge.state() != ChallengeState::Playing) return false;
+    // Count only the time simulated by movement, even after a long frame stall.
+    deltaSeconds = std::isfinite(deltaSeconds) ? std::clamp(deltaSeconds, 0.0f, 0.1f) : 0.0f;
+    challenge.update(deltaSeconds);
+    if (challenge.state() == ChallengeState::Lost) return false;
+
+    if (!actions.respawn) {
+        player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+    }
+    if (actions.respawn || player.feetPosition().y < -16.0f) {
+        challenge.penalizeFall();
+        if (!player.spawn(world, {2, 0})) {
+            challenge.update(Challenge::TimeLimit);
+            status = "No safe ground remains";
+            return false;
+        }
+        status = "Respawned near camp - 20 second penalty";
+    }
+    camera.setPosition(player.eyePosition());
+    if (challenge.state() != ChallengeState::Playing) return false;
+    if (actions.interact) {
+        switch (challenge.interact(camera.position())) {
+        case Interaction::Collected:
+            status = "Crystal collected! " + std::to_string(challenge.collectedCount()) + "/3";
+            break;
+        case Interaction::NeedCrystals:
+            status = "Camp needs all 3 crystals. Follow the colored beacons";
+            break;
+        case Interaction::Won:
+            status = "Signal restored. You made it!";
+            break;
+        case Interaction::None:
+            status = "Move within 3 blocks of a crystal or camp, then press E";
+            break;
+        case Interaction::Finished: break;
+        }
+    }
+    return challenge.state() == ChallengeState::Playing;
 }
 
 void Game::handleFiles(const InputActions& actions)
@@ -232,10 +287,59 @@ int Game::blockCount(Block block) const
     return isSolid(block) ? inventory_[static_cast<std::size_t>(block) - 1] : 0;
 }
 
+std::string Game::playStatusText(bool captured, bool showHelp) const
+{
+    std::ostringstream text;
+    text << "BEACON TRAIL | CRYSTALS " << challenge.collectedCount() << "/3 | TIME "
+         << static_cast<int>(std::ceil(challenge.timeRemaining())) << "S";
+    if (challenge.state() == ChallengeState::Won) {
+        text << "\nYOU WIN! ALL CRYSTALS RETURNED TO CAMP\nENTER PLAY AGAIN | Q QUIT";
+        return text.str();
+    }
+    if (challenge.state() == ChallengeState::Lost) {
+        text << "\nTIME'S UP! TRY A FASTER ROUTE\nENTER TRY AGAIN | Q QUIT";
+        return text.str();
+    }
+    if (!captured) text << "\nPAUSED | TAB TO RESUME";
+
+    glm::vec3 destination = challenge.camp();
+    std::string_view goal = "RETURN TO CAMP";
+    float nearest = std::numeric_limits<float>::max();
+    constexpr std::array<std::string_view, 3> names{"CYAN CRYSTAL", "PINK CRYSTAL", "GOLD CRYSTAL"};
+    for (std::size_t index = 0; index < challenge.crystals().size(); ++index) {
+        const auto& crystal = challenge.crystals()[index];
+        const float distance = glm::distance(camera.position(), crystal.position);
+        if (!crystal.collected && distance < nearest) {
+            nearest = distance;
+            destination = crystal.position;
+            goal = names[index];
+        }
+    }
+    text << std::fixed << std::setprecision(1)
+         << "\nNEXT " << goal << " | " << glm::distance(camera.position(), destination) << " BLOCKS"
+         << " | XZ " << static_cast<int>(std::floor(destination.x)) << ", "
+         << static_cast<int>(std::floor(destination.z))
+         << "\nSELECTED " << blockName(selectedBlock) << " | STOCK " << blockCount(selectedBlock)
+         << "\n1 GRASS " << blockCount(Block::Grass) << " | 2 DIRT " << blockCount(Block::Dirt)
+         << " | 3 STONE " << blockCount(Block::Stone) << " | 4 SAND " << blockCount(Block::Sand)
+         << "\n" << status
+         << "\nWASD WALK | SPACE JUMP | E INTERACT | H HELP"
+         << "\nESC PAUSE | R RESPAWN (-20S) | Q QUIT";
+    if (showHelp) {
+        text << "\nMOUSE LOOK | SHIFT SPRINT | SCROLL ZOOM"
+             << "\nLEFT MINE | RIGHT BUILD | MIDDLE PICK MATERIAL"
+             << "\n1-4 OR [ ] SELECT MATERIAL | TAB CAPTURE MOUSE"
+             << "\nCOLLECT ALL 3 CRYSTALS, THEN PRESS E AT CAMP"
+             << "\nGAME RUNS DO NOT SAVE | --editor OPENS THE EDITOR";
+    }
+    return text.str();
+}
+
 std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                              std::size_t totalTriangles, double fps,
                              bool captured, bool showHelp) const
 {
+    if (!editorMode_) return playStatusText(captured, showHelp);
     const auto position = camera.position();
     std::ostringstream text;
     text << std::fixed << std::setprecision(1)

@@ -30,7 +30,7 @@ target_include_directories(VoxelCore PUBLIC src)
 target_link_libraries(VoxelCore PUBLIC glm::glm)
 voxel_warnings(VoxelCore)
 
-option(VOXEL_BUILD_APP "Build the OpenGL terrain viewer" ON)
+option(VOXEL_BUILD_APP "Build the voxel game and editor" ON)
 if(VOXEL_BUILD_APP)
     find_package(OpenGL REQUIRED)
     find_package(glfw3 REQUIRED)
