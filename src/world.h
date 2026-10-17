@@ -76,6 +76,8 @@ private:
 int terrainHeight(int worldX, int worldZ, std::uint32_t seed);
 
 // Replaces every voxel, using world coordinates so adjacent chunks agree.
+// Throws std::out_of_range before changing the chunk if any voxel coordinate
+// from origin through origin + Chunk::Size - 1 cannot be represented by an int.
 void generateTerrain(Chunk& chunk, glm::ivec3 origin, std::uint32_t seed);
 
 // A fixed 5-by-5 grid of chunks, one chunk high.

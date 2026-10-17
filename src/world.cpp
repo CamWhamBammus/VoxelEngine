@@ -1,6 +1,7 @@
 #include "world.h"
 
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 
@@ -72,6 +73,11 @@ int terrainHeight(int worldX, int worldZ, std::uint32_t seed)
 
 void generateTerrain(Chunk& chunk, glm::ivec3 origin, std::uint32_t seed)
 {
+    for (int axis = 0; axis < 3; ++axis) {
+        if (origin[axis] > std::numeric_limits<int>::max() - (Chunk::Size - 1)) {
+            throw std::out_of_range("Terrain chunk extends beyond integer voxel coordinates");
+        }
+    }
     for (int z = 0; z < Chunk::Size; ++z) {
         for (int x = 0; x < Chunk::Size; ++x) {
             const int height = terrainHeight(origin.x + x, origin.z + z, seed);

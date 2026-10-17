@@ -3,6 +3,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <stdexcept>
 
 int main()
 {
@@ -76,6 +77,38 @@ int main()
             for (int x = 0; x < voxel::Chunk::Size; ++x) {
                 check(chunk.get(x, y, z) == voxel::Block::Air,
                       "regenerating an above-ground chunk must clear every old voxel");
+            }
+        }
+    }
+    voxel::Chunk preserved;
+    voxel::generateTerrain(preserved, glm::ivec3(0), seed);
+    const voxel::Chunk beforeInvalid = preserved;
+    for (int axis = 0; axis < 3; ++axis) {
+        for (const int coordinate : {std::numeric_limits<int>::max(),
+                                      std::numeric_limits<int>::max() - voxel::Chunk::Size + 2}) {
+            glm::ivec3 invalidOrigin(0);
+            invalidOrigin[axis] = coordinate;
+            bool rejected = false;
+            try {
+                voxel::generateTerrain(preserved, invalidOrigin, seed);
+            } catch (const std::out_of_range&) {
+                rejected = true;
+            }
+            check(rejected && preserved == beforeInvalid,
+                  "unrepresentable terrain extents must fail before changing any voxel");
+        }
+    }
+    for (const int coordinate : {std::numeric_limits<int>::min(),
+                                  std::numeric_limits<int>::max() - voxel::Chunk::Size + 1}) {
+        voxel::Chunk extreme;
+        const glm::ivec3 extremeOrigin(coordinate, 0, coordinate);
+        voxel::generateTerrain(extreme, extremeOrigin, seed);
+        for (int z = 0; z < voxel::Chunk::Size; ++z) {
+            for (int x = 0; x < voxel::Chunk::Size; ++x) {
+                const int height = voxel::terrainHeight(coordinate + x, coordinate + z, seed);
+                check(voxel::isSolid(extreme.get(x, height, z))
+                      && extreme.get(x, height + 1, z) == voxel::Block::Air,
+                      "nearest representable terrain extents must generate correct absolute heights");
             }
         }
     }

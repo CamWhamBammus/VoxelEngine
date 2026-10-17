@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <stdexcept>
 
 namespace voxel {
 
@@ -39,6 +41,12 @@ void appendQuad(MeshData& mesh, glm::ivec3 origin, int axis, int sign,
 MeshData buildMesh(const Chunk& chunk, glm::ivec3 origin,
                    const std::function<Block(glm::ivec3)>& sampleOutside)
 {
+    for (int axis = 0; axis < 3; ++axis) {
+        if (origin[axis] < std::numeric_limits<int>::min() + 1
+            || origin[axis] > std::numeric_limits<int>::max() - Chunk::Size) {
+            throw std::out_of_range("Mesh neighbors extend beyond integer voxel coordinates");
+        }
+    }
     MeshData mesh;
     // Sweep slices along X, Y, and Z, once for each face direction. Each
     // slice records exposed materials, then merges matching rectangles.

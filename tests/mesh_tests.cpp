@@ -1,7 +1,10 @@
 #include "mesh.h"
 
+#include <algorithm>
 #include <glm/geometric.hpp>
 #include <iostream>
+#include <limits>
+#include <stdexcept>
 
 int main()
 {
@@ -89,5 +92,42 @@ int main()
     const auto enclosed = voxel::buildMesh(full, origin, [](glm::ivec3) { return voxel::Block::Stone; });
     check(enclosed.vertices.empty() && enclosed.indices.empty(),
           "fully enclosed chunk must emit no geometry");
+
+    for (int axis = 0; axis < 3; ++axis) {
+        for (const int coordinate : {std::numeric_limits<int>::min(),
+                                      std::numeric_limits<int>::max() - voxel::Chunk::Size + 1}) {
+            glm::ivec3 invalidOrigin(0);
+            invalidOrigin[axis] = coordinate;
+            int samples = 0;
+            bool rejected = false;
+            try {
+                static_cast<void>(voxel::buildMesh(full, invalidOrigin, [&](glm::ivec3) {
+                    ++samples;
+                    return voxel::Block::Air;
+                }));
+            } catch (const std::out_of_range&) {
+                rejected = true;
+            }
+            check(rejected && samples == 0,
+                  "unrepresentable mesh neighbors must fail before invoking the sampler");
+        }
+        for (const int coordinate : {std::numeric_limits<int>::min() + 1,
+                                      std::numeric_limits<int>::max() - voxel::Chunk::Size}) {
+            glm::ivec3 edgeOrigin(0);
+            edgeOrigin[axis] = coordinate;
+            int samples = 0;
+            int smallest = std::numeric_limits<int>::max();
+            int largest = std::numeric_limits<int>::min();
+            static_cast<void>(voxel::buildMesh(full, edgeOrigin, [&](glm::ivec3 position) {
+                ++samples;
+                smallest = std::min(smallest, position[axis]);
+                largest = std::max(largest, position[axis]);
+                return voxel::Block::Stone;
+            }));
+            check(samples == 6 * voxel::Chunk::Size * voxel::Chunk::Size
+                  && smallest == coordinate - 1 && largest == coordinate + voxel::Chunk::Size,
+                  "nearest representable mesh extents must sample exact boundary coordinates");
+        }
+    }
     return failures == 0 ? 0 : 1;
 }
