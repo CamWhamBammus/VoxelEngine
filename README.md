@@ -111,6 +111,8 @@ Movement uses a flying camera with no collision or gravity. Editing works while 
 
 The HUD shows the selected material, seed, camera position, zoom, undo/redo counts, visible chunks, submitted/total triangles, and average frame rate. `UNSAVED` and a title-bar `*` indicate changes from the loaded or last-saved contents; undoing back to that state clears them. FPS appears after the first sampling interval.
 
+The target row identifies the block under the crosshair, its world coordinates, and its distance compared with your editing reach. It shows `TARGET NONE` when nothing is in range and `TARGET PAUSED` while the mouse is released.
+
 Editing messages confirm the material placed, removed, or picked. If placement fails, the HUD explains why—for example, the destination is outside the world or contains the camera. Rejected edits do not create undo entries.
 
 The crosshair and HUD scale with the display. The crosshair has a dark border so it remains visible over bright terrain and sky.

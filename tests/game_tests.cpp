@@ -64,6 +64,14 @@ int main()
         game.camera.setPosition({0.5f, height + 3.5f, 0.5f});
         game.update({});
         check(game.target && game.target->position == surface, "game finds the block under the crosshair");
+        const auto inspected = game.statusText(24, 100, 120, 60, true, false);
+        const auto targetDescription = "TARGET " + std::string(voxel::blockName(original))
+            + " | XYZ 0, " + std::to_string(height) + ", 0";
+        check(inspected.find(targetDescription) != std::string::npos
+              && inspected.find("DIST 2.5/8 BLOCKS") != std::string::npos,
+              "HUD identifies the aimed block and distance within the configured reach");
+        check(game.statusText(24, 100, 120, 60, false, false).find("TARGET PAUSED") != std::string::npos,
+              "released mouse describes targeting as paused");
 
         voxel::InputActions actions;
         actions.remove = true;
@@ -163,6 +171,8 @@ int main()
         feedback.update(actions);
         check(feedback.status == "No block within editing reach" && feedback.history.undoCount() == 0,
               "editing empty space explains why nothing changed");
+        check(feedback.statusText(0, 0, 0, 0, true, false).find("TARGET NONE | REACH 8 BLOCKS")
+                  != std::string::npos, "HUD distinguishes empty aim from paused targeting");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         ++failures;

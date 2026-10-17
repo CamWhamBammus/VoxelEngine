@@ -199,8 +199,17 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
     if (fps > 0.0) text << " | FPS " << fps << " | " << 1000.0 / fps << " MS";
     text << "\nXYZ " << position.x << ", " << position.y << ", " << position.z
          << " | FOV " << camera.fieldOfView() << " | UNDO " << history.undoCount()
-         << " REDO " << history.redoCount()
-         << "\n" << status << "\nH HELP | F5 SAVE | F9 RELOAD | TAB MOUSE | Q QUIT";
+         << " REDO " << history.redoCount();
+    if (!captured) {
+        text << "\nTARGET PAUSED | TAB TO CAPTURE MOUSE";
+    } else if (target) {
+        text << "\nTARGET " << blockName(world.get(target->position))
+             << " | XYZ " << target->position.x << ", " << target->position.y << ", " << target->position.z
+             << " | DIST " << target->distance << "/" << editReach_ << " BLOCKS";
+    } else {
+        text << "\nTARGET NONE | REACH " << editReach_ << " BLOCKS";
+    }
+    text << "\n" << status << "\nH HELP | F5 SAVE | F9 RELOAD | TAB MOUSE | Q QUIT";
     if (!captured) text << " | MOUSE RELEASED";
     if (showHelp) {
         text << "\nWASD FLY | SPACE/CTRL UP/DOWN"
