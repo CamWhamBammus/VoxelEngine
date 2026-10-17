@@ -79,6 +79,7 @@ Game::Game(const Options& options)
         status = "New world - F5 to save";
     }
     if (!editorMode_) {
+        selectedBlock = Block::Dirt;
         if (!player.spawn(world)) throw std::runtime_error("Could not find safe ground for the player");
         camera.setPosition(player.eyePosition());
         status = "WASD walk | SPACE jump | SHIFT sprint";
@@ -110,6 +111,8 @@ void Game::update(const InputActions& actions, float deltaSeconds)
     if (editorMode_) {
         handleFiles(actions);
         handleUndoRedo(actions);
+    } else if (actions.save || actions.load || actions.undo || actions.redo) {
+        status = "Save and undo are editor tools. Launch with --editor to use them";
     }
     findTarget();
     editTarget(actions);
@@ -170,9 +173,16 @@ void Game::editTarget(const InputActions& actions)
 
     bool changed = false;
     if (actions.remove) {
-        changed = removeBlock(world, *target, &history);
-        if (changed) status = "Removed " + std::string(blockName(targetMaterial));
+        changed = removeBlock(world, *target, editorMode_ ? &history : nullptr);
+        if (changed) {
+            if (!editorMode_) ++inventory_[static_cast<std::size_t>(targetMaterial) - 1];
+            status = std::string(editorMode_ ? "Removed " : "Mined ") + std::string(blockName(targetMaterial));
+        }
     } else if (actions.place) {
+        if (!editorMode_ && blockCount(selectedBlock) == 0) {
+            status = "No " + std::string(blockName(selectedBlock)) + " blocks - mine some first";
+            return;
+        }
         const auto placement = checkPlacement(world, *target, selectedBlock, camera.position());
         switch (placement.failure) {
         case PlacementFailure::None: break;
@@ -198,8 +208,15 @@ void Game::editTarget(const InputActions& actions)
             status = "Cannot place: reset the camera with R";
             return;
         }
-        changed = placeBlock(world, *target, selectedBlock, camera.position(), &history);
-        if (changed) status = "Placed " + std::string(blockName(selectedBlock));
+        if (!editorMode_ && player.overlapsBlock(placement.position)) {
+            status = "Cannot place: your body is in the destination cell";
+            return;
+        }
+        changed = placeBlock(world, *target, selectedBlock, camera.position(), editorMode_ ? &history : nullptr);
+        if (changed) {
+            if (!editorMode_) --inventory_[static_cast<std::size_t>(selectedBlock) - 1];
+            status = "Placed " + std::string(blockName(selectedBlock));
+        }
     }
     if (changed) findTarget();
 }
@@ -208,6 +225,11 @@ bool Game::hasUnsavedChanges() const
 {
     // Compare contents, not history size: undo can return exactly to the last save.
     return editorMode_ && !world.sameContents(savedWorld_);
+}
+
+int Game::blockCount(Block block) const
+{
+    return isSolid(block) ? inventory_[static_cast<std::size_t>(block) - 1] : 0;
 }
 
 std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangles,

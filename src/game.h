@@ -6,6 +6,7 @@
 #include "world.h"
 
 #include <cstdint>
+#include <array>
 #include <span>
 #include <string>
 #include <string_view>
@@ -55,6 +56,7 @@ public:
     explicit Game(const Options& options);
     void update(const InputActions& actions, float deltaSeconds = 0.0f);
     bool editorMode() const { return editorMode_; }
+    int blockCount(Block block) const;
     bool hasUnsavedChanges() const;
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
@@ -78,6 +80,7 @@ private:
     std::string savePath_;
     int editReach_;
     bool editorMode_;
+    std::array<int, PlaceableBlocks.size()> inventory_{0, 12, 0, 0};
 };
 
 } // namespace voxel
