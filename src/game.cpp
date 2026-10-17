@@ -2,6 +2,7 @@
 #include "input.h"
 #include "save.h"
 
+#include <algorithm>
 #include <charconv>
 #include <stdexcept>
 #include <filesystem>
@@ -75,6 +76,13 @@ void Game::update(const InputActions& actions)
 {
     if (actions.selectedBlock && isSolid(*actions.selectedBlock)) {
         selectedBlock = *actions.selectedBlock;
+    } else if (actions.materialStep != 0) {
+        const auto current = std::find(PlaceableBlocks.begin(), PlaceableBlocks.end(), selectedBlock);
+        const int count = static_cast<int>(PlaceableBlocks.size());
+        const int index = current == PlaceableBlocks.end() ? 0
+            : static_cast<int>(current - PlaceableBlocks.begin());
+        const int step = actions.materialStep > 0 ? 1 : -1;
+        selectedBlock = PlaceableBlocks[(index + step + count) % count];
     }
     handleFiles(actions);
     handleUndoRedo(actions);
@@ -162,7 +170,8 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
     if (showHelp) {
         text << "\nWASD FLY | SPACE/CTRL UP/DOWN | SHIFT BOOST"
              << "\nMOUSE LOOK | SCROLL ZOOM | R RESET | F WIREFRAME"
-             << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK | 1-4 MATERIAL"
+             << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK"
+             << "\n1-4 MATERIAL | [ PREVIOUS | ] NEXT"
              << "\nCTRL/CMD Z UNDO | CTRL/CMD Y OR SHIFT Z REDO"
              << "\nESC RELEASE MOUSE | EDIT REACH " << editReach_ << " BLOCKS";
     }

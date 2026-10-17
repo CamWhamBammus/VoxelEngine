@@ -19,6 +19,7 @@ struct InputActions {
     bool place = false;
     bool pick = false;
     std::optional<Block> selectedBlock;
+    int materialStep = 0; // Previous (-1) or next (+1), unless a number key selects directly.
 };
 
 struct EditShortcutKeys {
@@ -72,6 +73,8 @@ private:
         bool load = false;
         bool resetCamera = false;
         bool help = false;
+        bool previousMaterial = false;
+        bool nextMaterial = false;
         bool remove = false;
         bool place = false;
         bool pick = false;

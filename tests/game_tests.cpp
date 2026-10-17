@@ -29,6 +29,23 @@ int main()
         voxel::Game game(options);
         check(game.world.seed() == 42 && !game.hasUnsavedChanges(), "new game uses requested seed");
 
+        voxel::InputActions cycle;
+        cycle.materialStep = -1;
+        game.update(cycle);
+        check(game.selectedBlock == voxel::Block::Sand, "previous material wraps from grass to sand");
+        cycle.materialStep = 1;
+        game.update(cycle);
+        check(game.selectedBlock == voxel::Block::Grass, "next material wraps from sand to grass");
+        for (const auto expected : {voxel::Block::Dirt, voxel::Block::Stone, voxel::Block::Sand}) {
+            game.update(cycle);
+            check(game.selectedBlock == expected, "material cycling follows the numbered slots");
+        }
+        cycle.selectedBlock = voxel::Block::Grass;
+        game.update(cycle);
+        check(game.selectedBlock == voxel::Block::Grass, "number selection wins over cycling in the same frame");
+        check(!game.hasUnsavedChanges() && game.history.undoCount() == 0,
+              "material selection does not modify the world or history");
+
         const int height = voxel::terrainHeight(0, 0, options.seed);
         const glm::ivec3 surface(0, height, 0);
         const auto original = game.world.get(surface);

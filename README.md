@@ -96,6 +96,7 @@ Run `./build/VoxelEngine --help` (or `-h`) for options, startup rules, and examp
 | Right click | Place the selected material beside the targeted block |
 | Middle click | Pick the targeted block's material |
 | 1 / 2 / 3 / 4 | Select Grass / Dirt / Stone / Sand |
+| [ / ] | Cycle to the previous / next material |
 | F | Toggle wireframe |
 | Ctrl/Cmd + Z | Undo the last edit |
 | Ctrl/Cmd + Y or Ctrl/Cmd + Shift + Z | Redo an edit |

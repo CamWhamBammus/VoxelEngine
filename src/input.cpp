@@ -49,6 +49,8 @@ Input::Buttons Input::readButtons() const
         .load = keyDown(GLFW_KEY_F9),
         .resetCamera = keyDown(GLFW_KEY_R),
         .help = keyDown(GLFW_KEY_H),
+        .previousMaterial = keyDown(GLFW_KEY_LEFT_BRACKET),
+        .nextMaterial = keyDown(GLFW_KEY_RIGHT_BRACKET),
         .remove = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
         .place = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
         .pick = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
@@ -103,6 +105,8 @@ void Input::update(Camera& camera, float deltaSeconds)
     actions_.remove = pressed(buttons.remove, previous.remove);
     actions_.place = pressed(buttons.place, previous.place);
     actions_.pick = pressed(buttons.pick, previous.pick);
+    actions_.materialStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
+        - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
     for (std::size_t slot = 0; slot < PlaceableBlocks.size(); ++slot) {
         if (keyDown(GLFW_KEY_1 + static_cast<int>(slot))) actions_.selectedBlock = PlaceableBlocks[slot];
     }
