@@ -46,6 +46,21 @@ private:
     std::deque<Edit> redo_;
 };
 
+enum class PlacementFailure {
+    None, InvalidMaterial, MissingTarget, InvalidFace, InvalidCamera,
+    OutsideWorld, Occupied, CameraOverlap
+};
+
+struct PlacementCheck {
+    glm::ivec3 position{0};
+    PlacementFailure failure = PlacementFailure::None;
+};
+
+// Inspect placement without changing the world or history. On success, position
+// is the cell that placeBlock will fill; otherwise failure explains rejection.
+PlacementCheck checkPlacement(const World& world, const RayHit& hit, Block block,
+                               glm::vec3 cameraPosition);
+
 bool removeBlock(World& world, const RayHit& hit, EditHistory* history = nullptr);
 bool placeBlock(World& world, const RayHit& hit, Block block, glm::vec3 cameraPosition,
                 EditHistory* history = nullptr);

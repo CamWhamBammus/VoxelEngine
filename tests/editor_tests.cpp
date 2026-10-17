@@ -91,5 +91,52 @@ int main()
           "editor placement can be undone");
     check(history.redo(trackedWorld) && trackedWorld.get({0, 15, 0}) == voxel::Block::Sand,
           "editor placement can be redone with its material");
+
+    using voxel::PlacementFailure;
+    voxel::World previewWorld;
+    const voxel::RayHit previewHit{{-1, 14, 1}, {0, 1, 0}, 1.0f};
+    previewWorld.set(previewHit.position, voxel::Block::Stone);
+    previewWorld.takeDirtyChunks();
+    const voxel::World beforePreview = previewWorld;
+    const glm::vec3 previewCamera{5, 15, 5};
+    const auto preview = voxel::checkPlacement(previewWorld, previewHit, voxel::Block::Sand, previewCamera);
+    check(preview.failure == PlacementFailure::None && preview.position == glm::ivec3(-1, 15, 1),
+          "placement preview returns the exact editable destination");
+    for (const auto invalid : {voxel::Block::Air, static_cast<voxel::Block>(255)}) {
+        check(voxel::checkPlacement(previewWorld, previewHit, invalid, previewCamera).failure
+                  == PlacementFailure::InvalidMaterial, "preview explains invalid materials");
+    }
+    check(voxel::checkPlacement(previewWorld, {{2, 15, 2}, {0, 1, 0}, 1.0f},
+                                voxel::Block::Sand, previewCamera).failure == PlacementFailure::MissingTarget,
+          "preview explains an absent or stale target");
+    for (const auto normal : {glm::ivec3(0), glm::ivec3(1, 1, 0), glm::ivec3(2, 0, 0)}) {
+        const voxel::RayHit invalid{previewHit.position, normal, 1.0f};
+        check(voxel::checkPlacement(previewWorld, invalid, voxel::Block::Sand, previewCamera).failure
+                  == PlacementFailure::InvalidFace, "preview explains invalid target faces");
+    }
+    check(voxel::checkPlacement(previewWorld, previewHit, voxel::Block::Sand,
+                                {0, std::numeric_limits<float>::quiet_NaN(), 0}).failure
+              == PlacementFailure::InvalidCamera, "preview rejects nonfinite camera positions");
+    check(voxel::checkPlacement(previewWorld, {{0, 0, 0}, {0, -1, 0}, 1.0f},
+                                voxel::Block::Sand, previewCamera).failure == PlacementFailure::OutsideWorld,
+          "preview distinguishes outside-world air from editable air");
+    check(voxel::checkPlacement(previewWorld, {{0, 0, 0}, {0, 1, 0}, 1.0f},
+                                voxel::Block::Sand, previewCamera).failure == PlacementFailure::Occupied,
+          "preview explains occupied destination cells");
+    check(voxel::checkPlacement(previewWorld, previewHit, voxel::Block::Sand,
+                                {-0.25f, 15.5f, 1.5f}).failure == PlacementFailure::CameraOverlap,
+          "preview explains camera overlap with correct negative-coordinate rounding");
+    check(previewWorld.sameContents(beforePreview) && previewWorld.takeDirtyChunks().empty(),
+          "successful and rejected previews never edit blocks or dirty meshes");
+    voxel::EditHistory previewHistory;
+    check(voxel::placeBlock(previewWorld, previewHit, voxel::Block::Sand, previewCamera, &previewHistory)
+          && previewWorld.get(preview.position) == voxel::Block::Sand && previewHistory.undoCount() == 1,
+          "actual placement uses the validated position and records exactly one edit");
+    const auto afterPlacement = previewWorld;
+    previewWorld.takeDirtyChunks();
+    check(!voxel::placeBlock(previewWorld, previewHit, voxel::Block::Grass, previewCamera, &previewHistory)
+          && previewWorld.sameContents(afterPlacement) && previewHistory.undoCount() == 1
+          && previewWorld.takeDirtyChunks().empty(),
+          "rejected placement leaves contents, history, and mesh state unchanged");
     return failures == 0 ? 0 : 1;
 }
