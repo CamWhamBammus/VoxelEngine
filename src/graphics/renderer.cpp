@@ -46,12 +46,28 @@ void main() {
 
 WorldRenderer::WorldRenderer() : shader_(worldVertexShader, worldFragmentShader) {}
 
-void WorldRenderer::render(World& world, const Camera& camera, int width, int height, bool wireframe)
+void WorldRenderer::render(const World& world, const Camera& camera, int width, int height, bool wireframe)
 {
     if (width <= 0 || height <= 0) return;
-    for (const auto index : world.takeDirtyChunks()) {
-        meshes_[index].upload(buildMesh(world, index));
+    std::array<bool, World::ChunkCount> rebuild{};
+    for (std::size_t index = 0; index < meshes_.size(); ++index) {
+        if (meshedWorld_ && world.chunk(index) == meshedWorld_->chunk(index)) continue;
+        rebuild[index] = true;
+        // Neighbor faces can change too. Comparing chunk contents also handles
+        // switching worlds or assigning a saved world to the same object.
+        if (index % World::Width > 0) rebuild[index - 1] = true;
+        if (index % World::Width + 1 < World::Width) rebuild[index + 1] = true;
+        if (index >= World::Width) rebuild[index - World::Width] = true;
+        if (index + World::Width < meshes_.size()) rebuild[index + World::Width] = true;
     }
+    bool changed = false;
+    for (std::size_t index = 0; index < meshes_.size(); ++index) {
+        if (rebuild[index]) {
+            meshes_[index].upload(buildMesh(world, index));
+            changed = true;
+        }
+    }
+    if (changed) meshedWorld_ = world;
     glViewport(0, 0, width, height);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);

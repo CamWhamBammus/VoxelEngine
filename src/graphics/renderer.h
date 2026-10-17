@@ -10,11 +10,12 @@
 namespace voxel {
 class Camera;
 
-// Keeps one GPU mesh per chunk and rebuilds it only when the world marks it dirty.
+// Each renderer keeps its own copy of the meshed chunks, so multiple views can
+// share a world without consuming one another's pending updates.
 class WorldRenderer {
 public:
     WorldRenderer();
-    void render(World& world, const Camera& camera, int width, int height, bool wireframe);
+    void render(const World& world, const Camera& camera, int width, int height, bool wireframe);
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -22,6 +23,7 @@ public:
 private:
     Shader shader_;
     std::array<GpuMesh, World::ChunkCount> meshes_;
+    std::optional<World> meshedWorld_;
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
 };

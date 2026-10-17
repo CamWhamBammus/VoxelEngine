@@ -36,6 +36,8 @@ Read these first:
 
 For one frame, `Input::update` moves the camera and fills an `InputActions` value. `Game::update` uses those actions to save, load, undo, or edit. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
 
+Each renderer remembers the chunk contents it last drew. It rebuilds changed chunks and their neighbors, so switching worlds or opening another view cannot lose mesh updates. This uses a small world snapshot and straightforward comparisons; no global cache or event system is needed.
+
 Use this map when changing something:
 
 | I want to change… | Start here |

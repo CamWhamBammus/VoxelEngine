@@ -99,7 +99,7 @@ public:
     }
 
     explicit World(std::uint32_t seed = 1337);
-    // Renderer dirty flags are not part of the saved world contents.
+    // Change-tracking flags are not part of the saved world contents.
     bool sameContents(const World& other) const
     {
         return seed_ == other.seed_ && chunks_ == other.chunks_;
@@ -112,7 +112,8 @@ public:
     Block get(glm::ivec3 worldPosition) const;
     // Returns true only when an existing voxel actually changes.
     bool set(glm::ivec3 worldPosition, Block block);
-    // Returns and clears the chunks whose meshes must be rebuilt after edits.
+    // Returns and clears changed chunks, including their affected seam neighbors.
+    // Renderers track their own snapshots, so consuming this list cannot hide edits.
     std::vector<std::size_t> takeDirtyChunks();
 
 private:

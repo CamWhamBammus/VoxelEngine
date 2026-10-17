@@ -147,6 +147,51 @@ void verifyCrosshair(int width, int height)
     checkOpenGl();
 }
 
+void verifyRendererCaches(int width, int height)
+{
+    World world;
+    Camera camera;
+    WorldRenderer first;
+    first.render(world, camera, width, height, false);
+    const auto originalTriangles = first.triangleCount();
+    if (world.takeDirtyChunks().size() != World::ChunkCount) {
+        throw std::runtime_error("Renderer consumed the world's pending chunk updates");
+    }
+    WorldRenderer second;
+    second.render(world, camera, width, height, false);
+    if (second.triangleCount() != originalTriangles) {
+        throw std::runtime_error("Second renderer failed to build an already-rendered world");
+    }
+    const auto checkBoth = [&](const World& scene, std::size_t triangles) {
+        first.render(scene, camera, width, height, false);
+        second.render(scene, camera, width, height, false);
+        if (first.triangleCount() != triangles || second.triangleCount() != triangles) {
+            throw std::runtime_error("Independent renderers did not refresh their cached chunk meshes");
+        }
+    };
+
+    // These isolated blocks straddle x=0. Their shared face must disappear in
+    // both chunk meshes, then reappear when either block is removed.
+    world.set({-1, 15, 0}, Block::Stone);
+    world.takeDirtyChunks();
+    checkBoth(world, originalTriangles + 12);
+    world.set({0, 15, 0}, Block::Stone);
+    checkBoth(world, originalTriangles + 20);
+    world.set({-1, 15, 0}, Block::Air);
+    checkBoth(world, originalTriangles + 12);
+
+    World replacement = world;
+    replacement.set({0, 15, 0}, Block::Air);
+    replacement.takeDirtyChunks();
+    checkBoth(replacement, originalTriangles);
+    checkBoth(world, originalTriangles + 12);
+    world = replacement;
+    checkBoth(world, originalTriangles);
+    checkBoth(world, originalTriangles);
+    checkOpenGl();
+    std::cout << "Renderer caches passed: multiple views, seam edits, switching and replacing worlds\n";
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -276,6 +321,7 @@ int runGraphicsSmokeTest(const Options& options)
     window.framebufferSize(width, height);
     verifyCrosshair(width, height);
     verifyRenderTransitions(width, height);
+    verifyRendererCaches(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
