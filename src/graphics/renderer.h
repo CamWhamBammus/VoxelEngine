@@ -26,12 +26,15 @@ public:
 
 private:
     struct Light { glm::vec3 position; glm::vec3 color; float radius; };
+    void uploadLights(const World& world);
     Shader shader_;
     PostProcess postProcess_;
     std::array<GpuMesh, World::ChunkCount> meshes_;
     std::array<GpuMesh, World::ChunkCount> details_;
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.
+    std::array<int, World::ChunkCount> lightOffsets_{}, lightCounts_{};
+    GLuint lightTexture_ = 0; // Per-chunk candidates: position/radius, then color.
     GLuint occupancy_ = 0; // One byte per voxel for contact shading and light occlusion.
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;

@@ -390,10 +390,13 @@ void verifyUndergroundMaterials(int width, int height)
     camera.rotate(35, 25); // Look straight at the front of the test block.
     camera.setPosition({0.5f, 6.5f, 6.5f});
     WorldRenderer renderer;
-    GLuint callerTexture = 0;
+    GLuint callerTexture = 0, callerLightTexture = 0;
     glGenTextures(1, &callerTexture);
+    glGenTextures(1, &callerLightTexture);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, callerTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, callerLightTexture);
     glActiveTexture(GL_TEXTURE3);
     constexpr int patchSize = 128;
     std::array<unsigned char, patchSize * patchSize * 4> pixels{};
@@ -401,12 +404,15 @@ void verifyUndergroundMaterials(int width, int height)
         world.set({0, 6, 0}, material);
         renderer.render(world, camera, width, height, false, true);
         checkOpenGl();
-        GLint activeTexture = 0, texture = 0;
+        GLint activeTexture = 0, texture = 0, lightTexture = 0;
         glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
         glActiveTexture(GL_TEXTURE0);
         glGetIntegerv(GL_TEXTURE_BINDING_3D, &texture);
+        glActiveTexture(GL_TEXTURE1);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &lightTexture);
         glActiveTexture(GL_TEXTURE3);
-        if (activeTexture != GL_TEXTURE3 || texture != static_cast<GLint>(callerTexture)) {
+        if (activeTexture != GL_TEXTURE3 || texture != static_cast<GLint>(callerTexture)
+            || lightTexture != static_cast<GLint>(callerLightTexture)) {
             throw std::runtime_error("Voxel lighting changed the caller's texture bindings");
         }
         glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
@@ -533,8 +539,105 @@ void verifyUndergroundMaterials(int width, int height)
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, 0);
     glDeleteTextures(1, &callerTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDeleteTextures(1, &callerLightTexture);
+    glActiveTexture(GL_TEXTURE0);
     checkOpenGl();
     std::cout << "Underground materials passed: grain, ores, wood, emission, wall shadows and light edits\n";
+}
+
+void verifyStableWorldLighting(int width, int height)
+{
+    // Repeat across a chunk boundary: the second target is x=15 and its lamp
+    // is x=17, so visible lighting must also include neighboring chunk sources.
+    for (const int originX : {0, Chunk::Size - 1}) {
+        World world;
+        for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
+            for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+                for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+                    world.set({x, y, z}, Block::Air);
+                }
+            }
+        }
+        const glm::ivec3 origin(originX, 0, 0);
+        const glm::ivec3 lamp = origin + glm::ivec3(2, 7, 3);
+        world.set(origin + glm::ivec3(0, 6, 0), Block::Stone);
+        world.set(lamp, Block::Lantern);
+        // These sources compete with the lamp when selection follows the
+        // viewer. At camera z=6.75 the lamp and last crystal are equidistant.
+        const std::array<glm::ivec3, 6> competitors{{{-3,6,7}, {0,9,7}, {3,6,7},
+                                                    {0,3,7}, {0,7,9}, {-2,8,9}}};
+        for (const auto position : competitors) {
+            world.set(origin + position, Block::Crystal);
+        }
+        if (originX != 0) {
+            // Many distant sources must neither consume this surface's lights
+            // nor break packed light storage when its data spans multiple rows.
+            for (int x = -31; x <= -17; x += 2) {
+                for (int z = -31; z <= -17; z += 2) {
+                    for (int y : {2, 5, 8, 11}) world.set({x, y, z}, Block::Lantern);
+                }
+            }
+        }
+        Camera camera;
+        camera.rotate(35, 25); // Keep the same front-face center in view.
+        WorldRenderer renderer;
+        constexpr int patchSize = 24;
+        std::array<unsigned char, patchSize * patchSize * 4> pixels{};
+        const auto sample = [&](float distance) {
+            camera.setPosition({originX + 0.5f, 6.5f, distance});
+            renderer.render(world, camera, width, height, false, true);
+            glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
+                         patchSize, patchSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            checkOpenGl();
+            glm::vec3 average(0);
+            for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+                average += glm::vec3(pixels[pixel], pixels[pixel + 1], pixels[pixel + 2]);
+            }
+            return average / static_cast<float>(patchSize * patchSize);
+        };
+        const auto beforeStep = sample(6.74f);
+        const auto afterStep = sample(6.76f);
+        const auto distant = sample(20.5f);
+        world.set(lamp, Block::Air);
+        const auto distantUnlit = sample(20.5f);
+        const auto nearUnlit = sample(6.76f);
+        const auto movement = glm::abs(afterStep - beforeStep);
+        const auto nearContribution = afterStep - nearUnlit;
+        const auto distantContribution = distant - distantUnlit;
+        if (std::max({movement.x, movement.y, movement.z}) > 4
+            || nearContribution.x < 10 || nearContribution.x - nearContribution.z < 8
+            || distantContribution.x < 10 || distantContribution.x - distantContribution.z < 8) {
+            throw std::runtime_error("World light changed with the viewer or vanished at distance: target x="
+                + std::to_string(originX) + ", step RGB drift " + std::to_string(movement.x)
+                + "/" + std::to_string(movement.y) + "/" + std::to_string(movement.z)
+                + ", lamp red contribution near=" + std::to_string(nearContribution.x)
+                + ", distant=" + std::to_string(distantContribution.x));
+        }
+        if (originX == 0) {
+            for (const auto position : competitors) world.set(position, Block::Air);
+            // All six lanterns are closer to the sampled surface than the
+            // lantern, but this wall blocks them. The seventh source must still
+            // contribute; ranking a fixed number before shadows loses its light.
+            for (int y = 5; y <= 7; ++y) {
+                for (int z = 2; z <= 3; ++z) world.set({-2, y, z}, Block::Lantern);
+            }
+            for (int y = 4; y <= 8; ++y) {
+                for (int z = 1; z <= 3; ++z) world.set({-1, y, z}, Block::Stone);
+            }
+            world.set({3, 6, 4}, Block::Lantern);
+            const auto seventhLit = sample(6.5f);
+            world.set({3, 6, 4}, Block::Air);
+            const auto seventhUnlit = sample(6.5f);
+            const auto contribution = seventhLit - seventhUnlit;
+            if (contribution.x < 10 || contribution.x - contribution.z < 8) {
+                throw std::runtime_error("Six blocked sources suppressed a farther visible lantern: red contribution "
+                    + std::to_string(contribution.x));
+            }
+        }
+    }
+    std::cout << "World lighting passed: camera steps, distant views, chunk neighbors and many sources\n";
 }
 
 } // namespace
@@ -690,6 +793,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyRenderTransitions(width, height);
     verifyRendererCaches(width, height);
     verifyUndergroundMaterials(width, height);
+    verifyStableWorldLighting(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.

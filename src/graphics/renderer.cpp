@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -45,14 +44,19 @@ uniform vec3 cameraForward;
 uniform int underground;
 uniform int decorative;
 uniform int lightCount;
-uniform vec3 lightPositions[6];
-uniform vec3 lightColors[6];
-uniform float lightRadii[6];
+uniform int lightOffset;
+uniform sampler2D lightSources;
 uniform sampler3D occupancy;
 uniform vec3 worldMinimum;
 out vec4 fragmentColor;
 
 )glsl") + materialShader + R"glsl(
+
+vec4 lightData(int index, int part) {
+    int address = (lightOffset + index) * 2 + part;
+    int width = textureSize(lightSources, 0).x;
+    return texelFetch(lightSources, ivec2(address % width, address / width), 0);
+}
 
 bool solid(ivec3 cell) {
     ivec3 local = cell - ivec3(worldMinimum);
@@ -98,17 +102,18 @@ float visibleLight(vec3 start, vec3 end) {
     return 0.0;
 }
 
-float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence, int index) {
+float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) {
     float centerVisibility = visibleLight(start, center);
-    // Only the three closest, visibly influential lights get area samples.
+    // Fade in area samples for influential lights without a hard rank cutoff.
     // All endpoints stay inside the emitting voxel, so fully blocked walls
     // remain dark while nearby shadow edges gain a narrow penumbra.
-    if (index >= 3 || influence < 0.035) return centerVisibility;
+    float softness = 0.3 * smoothstep(0.035, 0.08, influence);
+    if (softness == 0.0) return centerVisibility;
     vec3 axis = abs(direction.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
     vec3 tangent = normalize(cross(direction, axis));
     vec3 offset = tangent * 0.22 + cross(direction, tangent) * 0.12;
-    return centerVisibility * 0.4 + 0.3 * visibleLight(start, center + offset)
-         + 0.3 * visibleLight(start, center - offset);
+    return centerVisibility * (1.0 - 2.0 * softness) + softness * visibleLight(start, center + offset)
+         + softness * visibleLight(start, center - offset);
 }
 
 void main() {
@@ -132,21 +137,28 @@ void main() {
         vec3 pointLight = vec3(0.0);
         vec3 highlight = vec3(0.0);
         vec3 start = worldPosition + surfaceNormal * 0.03;
+        // Every source that reaches this surface contributes. A nearest-light
+        // cap would cause visible boundaries wherever the source ranking swaps,
+        // even if the ranking were based on world position instead of the camera.
         for (int i = 0; i < lightCount; ++i) {
-            vec3 offset = lightPositions[i] - worldPosition;
-            float distanceToLight = length(offset);
-            float falloff = max(1.0 - distanceToLight / lightRadii[i], 0.0);
+            vec4 source = lightData(i, 0);
+            vec3 offset = source.xyz - worldPosition;
+            float distanceSquared = dot(offset, offset);
+            if (distanceSquared >= source.w * source.w || dot(surfaceNormal, offset) <= 0.0) continue;
+            vec3 lightColor = lightData(i, 1).rgb;
+            float distanceToLight = sqrt(distanceSquared);
+            float falloff = max(1.0 - distanceToLight / source.w, 0.0);
             vec3 direction = offset / max(distanceToLight, 0.001);
             float facing = max(dot(normal, direction), 0.0);
-            if (falloff <= 0.0 || facing <= 0.0 || dot(surfaceNormal, direction) <= 0.0) continue;
+            if (facing <= 0.0) continue;
             float strength = falloff * falloff
-                * lightVisibility(start, lightPositions[i], direction, falloff * falloff * facing, i);
+                * lightVisibility(start, source.xyz, direction, falloff * falloff * facing);
             if (strength <= 0.0) continue;
-            pointLight += lightColors[i] * strength * 1.65 * facing;
+            pointLight += lightColor * strength * 1.65 * facing;
             vec3 halfDirection = direction + viewDirection;
             halfDirection /= max(length(halfDirection), 0.001);
             float shine = pow(max(dot(normal, halfDirection), 0.0), mix(64.0, 8.0, surface.roughness));
-            highlight += lightColors[i] * strength * shine * (1.0 - surface.roughness) * 0.14;
+            highlight += lightColor * strength * shine * (1.0 - surface.roughness) * 0.14;
         }
         float strongest = max(pointLight.r, max(pointLight.g, pointLight.b));
         light += pointLight / max(1.0, strongest) * mix(0.65, 1.0, ao);
@@ -179,12 +191,52 @@ void main() {
 WorldRenderer::WorldRenderer() : shader_(worldVertexShader, worldFragmentShader.c_str())
 {
     glGenTextures(1, &occupancy_);
-    if (!occupancy_) throw std::runtime_error("Failed to allocate voxel lighting texture");
+    glGenTextures(1, &lightTexture_);
+    if (!occupancy_ || !lightTexture_) {
+        glDeleteTextures(1, &occupancy_);
+        glDeleteTextures(1, &lightTexture_);
+        throw std::runtime_error("Failed to allocate voxel lighting textures");
+    }
 }
 
 WorldRenderer::~WorldRenderer()
 {
     glDeleteTextures(1, &occupancy_);
+    glDeleteTextures(1, &lightTexture_);
+}
+
+void WorldRenderer::uploadLights(const World& world)
+{
+    std::vector<glm::vec4> data;
+    for (std::size_t index = 0; index < World::ChunkCount; ++index) {
+        // Details can extend one cell beyond their chunk. Include every source
+        // whose radius touches these bounds; never truncate a chunk's list.
+        const glm::vec3 minimum = glm::vec3(world.origin(index)) - 1.0f;
+        const glm::vec3 maximum = minimum + float(Chunk::Size + 2);
+        lightOffsets_[index] = static_cast<int>(data.size() / 2);
+        for (const auto& light : lights_) {
+            const auto delta = light.position - glm::clamp(light.position, minimum, maximum);
+            if (glm::dot(delta, delta) >= light.radius * light.radius) continue;
+            data.emplace_back(light.position, light.radius);
+            data.emplace_back(light.color, 0.0f);
+        }
+        lightCounts_[index] = static_cast<int>(data.size() / 2) - lightOffsets_[index];
+    }
+    // A packed image avoids a fixed shader uniform limit when players place
+    // more lights. Two texels hold one candidate; rows only affect storage.
+    GLint maximumSize = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximumSize);
+    const int width = std::min(1024, maximumSize);
+    const int height = std::max(1, static_cast<int>((data.size() + width - 1) / width));
+    if (height > maximumSize) throw std::runtime_error("Too many voxel light candidates for the GPU");
+    data.resize(static_cast<std::size_t>(width) * height, glm::vec4(0));
+    glActiveTexture(GL_TEXTURE1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glActiveTexture(GL_TEXTURE0);
 }
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
@@ -212,8 +264,11 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             changed = true;
         }
     }
-    GLint activeTexture = 0, previousTexture = 0;
+    GLint activeTexture = 0, previousTexture = 0, previousLights = 0;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+    glActiveTexture(GL_TEXTURE1);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousLights);
+    glBindTexture(GL_TEXTURE_2D, lightTexture_);
     glActiveTexture(GL_TEXTURE0);
     glGetIntegerv(GL_TEXTURE_BINDING_3D, &previousTexture);
     glBindTexture(GL_TEXTURE_3D, occupancy_);
@@ -221,6 +276,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         lights_.clear();
         constexpr auto size = World::MaxExclusive - World::Min;
         std::vector<unsigned char> voxels(size.x * size.y * size.z);
+        std::vector<bool> crystalCovered(voxels.size());
         for (std::size_t index = 0; index < World::ChunkCount; ++index) {
             const auto origin = world.origin(index);
             const auto& chunk = world.chunk(index);
@@ -239,6 +295,23 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                             exposed |= !isSolid(world.get(position + offset));
                         }
                         if (!exposed) continue;
+                        if (block == Block::Crystal) {
+                            // Adjacent crystal blocks share a fixed source at an
+                            // actual exposed block, keeping dense veins cheap.
+                            // This world-order grouping never follows the camera;
+                            // every lantern still keeps its own light.
+                            if (crystalCovered[local.x + size.x * (local.y + size.y * local.z)]) continue;
+                            for (int dz = -1; dz <= 1; ++dz) {
+                                for (int dy = -1; dy <= 1; ++dy) {
+                                    for (int dx = -1; dx <= 1; ++dx) {
+                                        const auto neighbor = local + glm::ivec3(dx, dy, dz);
+                                        if (World::contains(position + glm::ivec3(dx, dy, dz))) {
+                                            crystalCovered[neighbor.x + size.x * (neighbor.y + size.y * neighbor.z)] = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         lights_.push_back({glm::vec3(position) + 0.5f,
                             block == Block::Lantern ? glm::vec3(1.15f, 0.58f, 0.18f)
                                                    : glm::vec3(0.10f, 0.85f, 1.15f),
@@ -258,6 +331,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
+        uploadLights(world);
         meshedWorld_ = world;
     }
     glViewport(0, 0, width, height);
@@ -280,43 +354,16 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("underground", underground);
     shader_.setInt("decorative", 0);
     shader_.setInt("occupancy", 0);
+    shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
-    // Cache the light sources with the world, then select a small fixed number
-    // near the camera, spreading them out so one dense vein cannot take every
-    // slot. Walking never rescans blocks or rebuilds geometry.
-    std::array<const Light*, 6> nearest{};
-    if (underground) {
-        for (std::size_t slot = 0; slot < nearest.size(); ++slot) {
-            float closest = std::numeric_limits<float>::max();
-            for (const auto& light : lights_) {
-                bool clustered = false;
-                for (std::size_t prior = 0; prior < slot; ++prior) {
-                    const auto offset = light.position - nearest[prior]->position;
-                    clustered |= glm::dot(offset, offset) < 4.0f;
-                }
-                if (clustered) continue;
-                const auto offset = light.position - camera.position();
-                const float distance = glm::dot(offset, offset);
-                if (distance < closest) { closest = distance; nearest[slot] = &light; }
-            }
-            if (!nearest[slot]) break;
-        }
-    }
-    int lightCount = 0;
-    for (const auto* light : nearest) {
-        if (!light) break;
-        const auto index = std::to_string(lightCount++);
-        shader_.setVec3(("lightPositions[" + index + "]").c_str(), light->position);
-        shader_.setVec3(("lightColors[" + index + "]").c_str(), light->color);
-        shader_.setFloat(("lightRadii[" + index + "]").c_str(), light->radius);
-    }
-    shader_.setInt("lightCount", lightCount);
     visibleChunks_ = drawnTriangles_ = 0;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
         const float margin = underground && details_[index].indexCount() != 0 ? 1.0f : 0.0f;
         if (meshes_[index].indexCount() == 0
             || !frustum.intersects(minimum - margin, minimum + glm::vec3(Chunk::Size + margin))) continue;
+        shader_.setInt("lightOffset", lightOffsets_[index]);
+        shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
         meshes_[index].draw();
         ++visibleChunks_;
         drawnTriangles_ += meshes_[index].indexCount() / 3;
@@ -330,6 +377,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     if (underground) postProcess_.finish();
     glBindTexture(GL_TEXTURE_3D, static_cast<GLuint>(previousTexture));
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousLights));
     glActiveTexture(static_cast<GLenum>(activeTexture));
 }
 
