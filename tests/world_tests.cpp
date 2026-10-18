@@ -29,8 +29,8 @@ int main()
     using voxel::World;
     World world;
 
-    check(World::Min == glm::ivec3(-32, 0, -32)
-          && World::MaxExclusive == glm::ivec3(48, 16, 48), "world bounds describe the entire chunk grid");
+    check(World::Min == glm::ivec3(-64, 0, -64)
+          && World::MaxExclusive == glm::ivec3(80, 64, 80), "world bounds describe the entire chunk grid");
     for (const int x : {World::Min.x, World::MaxExclusive.x - 1}) {
         for (const int y : {World::Min.y, World::MaxExclusive.y - 1}) {
             for (const int z : {World::Min.z, World::MaxExclusive.z - 1}) {
@@ -54,9 +54,14 @@ int main()
         check(initiallyDirty[index] == index, "dirty chunks use stable ascending indices");
     }
     check(world.takeDirtyChunks().empty(), "taking dirty chunks clears them");
-    check(world.origin(0) == glm::ivec3(-32, 0, -32), "first chunk origin");
-    check(world.origin(12) == glm::ivec3(0), "center chunk origin");
-    check(world.origin(24) == glm::ivec3(32, 0, 32), "last chunk origin");
+    check(world.origin(0) == glm::ivec3(-64, 0, -64), "first chunk origin");
+    check(world.origin(40) == glm::ivec3(0), "center chunk origin");
+    check(world.origin(World::ChunkCount - 1) == glm::ivec3(64, 48, 64), "last chunk origin");
+
+    check(sizeof(World) < 4096, "world voxel storage lives on the heap rather than the stack");
+    check(world.origin(81) == glm::ivec3(-64, 16, -64), "vertical layers follow each complete horizontal grid");
+    check(world.get({0, 16, 0}) == Block::Air && world.get({0, 63, 0}) == Block::Air,
+          "new upper layers start above generated terrain");
 
     World repeated;
     bool identical = true;
@@ -79,11 +84,11 @@ int main()
         check(world.set(position, replacement), "negative and zero coordinate writes succeed");
         check(world.get(position) == replacement, "world coordinates round trip across negative boundaries");
     }
-    check(world.chunk(5).get(15, 7, 15) == world.get({-17, 7, -1}),
+    check(world.chunk(29).get(15, 7, 15) == world.get({-17, 7, -1}),
         "minus seventeen maps to chunk minus two");
-    check(world.chunk(6).get(0, 7, 15) == world.get({-16, 7, -1}),
+    check(world.chunk(30).get(0, 7, 15) == world.get({-16, 7, -1}),
         "minus sixteen maps to chunk minus one");
-    check(world.chunk(1).get(15, 7, 15) == world.get({-1, 7, -17}),
+    check(world.chunk(21).get(15, 7, 15) == world.get({-1, 7, -17}),
         "negative z uses floor division");
     world.takeDirtyChunks();
 
@@ -91,35 +96,44 @@ int main()
         return world.set(position, differentBlock(world.get(position)));
     };
     edit({1, 7, 1});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>{12},
+    check(world.takeDirtyChunks() == std::vector<std::size_t>{40},
         "interior edit dirties only its chunk");
     edit({0, 7, 1});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({11, 12}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({39, 40}),
         "negative x boundary dirties both neighbors");
     edit({15, 7, 1});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({12, 13}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({40, 41}),
         "positive x boundary dirties both neighbors");
     edit({1, 7, 0});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({7, 12}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({31, 40}),
         "negative z boundary dirties both neighbors");
     edit({1, 7, 15});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({12, 17}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({40, 49}),
         "positive z boundary dirties both neighbors");
+    edit({1, 15, 1});
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({40, 121}),
+        "upper y boundary dirties the chunk above");
+    edit({1, 16, 1});
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({40, 121}),
+        "lower y boundary dirties the chunk below");
+    edit({0, 16, 0});
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({40, 112, 120, 121}),
+        "three-dimensional corner dirties only its three face neighbors");
     edit({0, 7, 0});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({7, 11, 12}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({31, 39, 40}),
         "corner edit does not dirty diagonal neighbor");
-    edit({-32, 0, -32});
+    edit(World::Min);
     check(world.takeDirtyChunks() == std::vector<std::size_t>{0},
         "outer and vertical boundaries skip missing chunks");
-    edit({47, 15, 47});
-    edit({47, 15, 47});
-    check(world.takeDirtyChunks() == std::vector<std::size_t>{24},
+    edit(World::MaxExclusive - glm::ivec3(1));
+    edit(World::MaxExclusive - glm::ivec3(1));
+    check(world.takeDirtyChunks() == std::vector<std::size_t>{World::ChunkCount - 1},
         "dirty indices are unique across repeated edits");
 
     check(!world.set({1, 7, 1}, world.get({1, 7, 1})), "no-op write returns false");
-    for (const auto position : {glm::ivec3(-33, 0, 0), glm::ivec3(48, 0, 0),
-             glm::ivec3(0, -1, 0), glm::ivec3(0, 16, 0),
-             glm::ivec3(0, 0, -33), glm::ivec3(0, 0, 48),
+    for (const auto position : {glm::ivec3(-65, 0, 0), glm::ivec3(80, 0, 0),
+             glm::ivec3(0, -1, 0), glm::ivec3(0, 64, 0),
+             glm::ivec3(0, 0, -65), glm::ivec3(0, 0, 80),
              glm::ivec3(std::numeric_limits<int>::min()),
              glm::ivec3(std::numeric_limits<int>::max())}) {
         check(world.get(position) == Block::Air, "outside world reads return air");
@@ -129,23 +143,29 @@ int main()
     check(world.takeDirtyChunks().empty(), "no-op and outside writes do not dirty chunks");
 
     // Clear the generated world to isolate exactly two solids on a chunk seam.
-    for (int y = 0; y < Chunk::Size; ++y) {
-        for (int z = -32; z < 48; ++z) {
-            for (int x = -32; x < 48; ++x) {
+    for (int y = 0; y < World::MaxExclusive.y; ++y) {
+        for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+            for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
                 world.set({x, y, z}, Block::Air);
             }
         }
     }
+    world.set({2, 15, 2}, Block::Stone);
+    world.set({2, 16, 2}, Block::Stone);
+    check(voxel::buildMesh(world, 40).indices.size() == 30 && voxel::buildMesh(world, 121).indices.size() == 30,
+          "world mesh culls both faces at a vertical chunk seam");
+    world.set({2, 15, 2}, Block::Air);
+    world.set({2, 16, 2}, Block::Air);
     world.set({-1, 5, 1}, Block::Stone);
     world.set({0, 5, 1}, Block::Stone);
-    const auto leftMesh = voxel::buildMesh(world, 11);
-    const auto rightMesh = voxel::buildMesh(world, 12);
+    const auto leftMesh = voxel::buildMesh(world, 39);
+    const auto rightMesh = voxel::buildMesh(world, 40);
     check(leftMesh.indices.size() == 30 && rightMesh.indices.size() == 30,
         "world mesh culls both faces at negative chunk seam");
-    check(voxel::buildMesh(world.chunk(11), world.origin(11)).indices.size() == 36,
+    check(voxel::buildMesh(world.chunk(39), world.origin(39)).indices.size() == 36,
         "isolated meshing retains the seam face");
     world.set({0, 5, 1}, Block::Air);
-    check(voxel::buildMesh(world, 11).indices.size() == 36 && voxel::buildMesh(world, 12).indices.empty(),
+    check(voxel::buildMesh(world, 39).indices.size() == 36 && voxel::buildMesh(world, 40).indices.empty(),
         "removing a seam voxel exposes its neighbor face");
 
     bool rejectedInvalidIndex = false;

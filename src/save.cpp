@@ -18,8 +18,10 @@ namespace voxel {
 namespace {
 
 constexpr std::array<char, 8> Magic{'V', 'X', 'W', 'O', 'R', 'L', 'D', '\0'};
-constexpr std::uint32_t Version = 1;
+constexpr std::uint32_t Version = 2;
 constexpr std::uint32_t PayloadSize = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size;
+constexpr std::uint32_t LegacyWidth = 5;
+constexpr std::uint32_t LegacyPayloadSize = LegacyWidth * LegacyWidth * Chunk::Size * Chunk::Size * Chunk::Size;
 constexpr std::uint32_t ChecksumOffset = 2166136261u;
 
 void hashByte(std::uint32_t& checksum, std::uint8_t byte)
@@ -62,7 +64,7 @@ void encodeWorld(const World& world, std::ostream& output)
     writeInteger(output, world.seed(), checksum);
     writeInteger(output, Chunk::Size, checksum);
     writeInteger(output, World::Width, checksum);
-    writeInteger(output, 1, checksum); // One vertical layer of chunks.
+    writeInteger(output, World::Height, checksum);
     writeInteger(output, World::Width, checksum);
     writeInteger(output, PayloadSize, checksum);
     std::vector<char> payload;
@@ -105,16 +107,20 @@ World decodeWorld(std::istream& input)
     const auto height = readInteger(input, checksum);
     const auto depth = readInteger(input, checksum);
     const auto payloadSize = readInteger(input, checksum);
-    if (version != Version) {
+    if (version != Version && version != 1) {
         throw std::runtime_error("Unsupported world snapshot version");
     }
-    if (chunkSize != Chunk::Size || width != World::Width || height != 1
-        || depth != World::Width || payloadSize != PayloadSize) {
+    const bool legacy = version == 1;
+    const auto expectedWidth = legacy ? LegacyWidth : World::Width;
+    const auto expectedHeight = legacy ? 1u : World::Height;
+    const auto expectedPayload = legacy ? LegacyPayloadSize : PayloadSize;
+    if (chunkSize != Chunk::Size || width != expectedWidth || height != expectedHeight
+        || depth != expectedWidth || payloadSize != expectedPayload) {
         throw std::runtime_error("World snapshot dimensions do not match this engine");
     }
 
     // Never allocate from untrusted metadata; this format has a fixed bound.
-    std::vector<char> payload(PayloadSize);
+    std::vector<char> payload(expectedPayload);
     if (!input.read(payload.data(), static_cast<std::streamsize>(payload.size()))) {
         throw std::runtime_error("Truncated world snapshot voxel data");
     }
@@ -136,8 +142,14 @@ World decodeWorld(std::istream& input)
     // Validate everything before constructing a replacement for the caller.
     World world(seed);
     std::size_t cursor = 0;
-    for (std::size_t index = 0; index < World::ChunkCount; ++index) {
-        const glm::ivec3 origin = world.origin(index);
+    const std::size_t chunkCount = width * depth * height;
+    for (std::size_t index = 0; index < chunkCount; ++index) {
+        // Version one stored a centered 5x1x5 region. Keep those coordinates
+        // exactly; newly available chunks retain the seed's generated terrain.
+        const int chunkX = static_cast<int>(index % width) - static_cast<int>(width / 2);
+        const int chunkZ = static_cast<int>((index / width) % depth) - static_cast<int>(depth / 2);
+        const int chunkY = static_cast<int>(index / (width * depth));
+        const glm::ivec3 origin = glm::ivec3(chunkX, chunkY, chunkZ) * Chunk::Size;
         for (int y = 0; y < Chunk::Size; ++y) {
             for (int z = 0; z < Chunk::Size; ++z) {
                 for (int x = 0; x < Chunk::Size; ++x) {

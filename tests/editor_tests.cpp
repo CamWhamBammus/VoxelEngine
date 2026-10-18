@@ -59,12 +59,12 @@ int main()
           "starting-solid hits must not supply an arbitrary placement face");
 
     for (const auto boundary : {
-             voxel::RayHit{{-32, 0, 0}, {-1, 0, 0}, 1.0f},
-             voxel::RayHit{{47, 0, 0}, {1, 0, 0}, 1.0f},
-             voxel::RayHit{{0, 0, -32}, {0, 0, -1}, 1.0f},
-             voxel::RayHit{{0, 0, 47}, {0, 0, 1}, 1.0f},
+             voxel::RayHit{{-64, 0, 0}, {-1, 0, 0}, 1.0f},
+             voxel::RayHit{{79, 0, 0}, {1, 0, 0}, 1.0f},
+             voxel::RayHit{{0, 0, -64}, {0, 0, -1}, 1.0f},
+             voxel::RayHit{{0, 0, 79}, {0, 0, 1}, 1.0f},
              voxel::RayHit{{0, 0, 0}, {0, -1, 0}, 1.0f},
-             voxel::RayHit{{0, 15, 0}, {0, 1, 0}, 1.0f}}) {
+             voxel::RayHit{{0, 63, 0}, {0, 1, 0}, 1.0f}}) {
         world.set(boundary.position, voxel::Block::Stone);
         check(!voxel::placeBlock(world, boundary, voxel::Block::Grass, camera),
               "placement outside each finite world boundary must fail");
@@ -138,5 +138,20 @@ int main()
           && previewWorld.sameContents(afterPlacement) && previewHistory.undoCount() == 1
           && previewWorld.takeDirtyChunks().empty(),
           "rejected placement leaves contents, history, and mesh state unchanged");
+    voxel::World waterWorld;
+    voxel::EditHistory waterHistory;
+    const voxel::RayHit bank{{2, 20, 2}, {0, 1, 0}, 1.0f};
+    waterWorld.set(bank.position, voxel::Block::Stone);
+    const glm::vec3 waterCamera(2.5f, 21.5f, 2.5f);
+    check(voxel::placeBlock(waterWorld, bank, voxel::Block::Water, waterCamera, &waterHistory),
+          "water can be placed even in the camera cell because it has no collision");
+    check(!voxel::placeBlock(waterWorld, bank, voxel::Block::Stone, {5, 25, 5}),
+          "water is occupied editor content and cannot be silently overwritten");
+    const auto waterHit = voxel::raycast({2.5f, 24, 2.5f}, {0, -1, 0}, 5,
+        [&waterWorld](glm::ivec3 position) { return waterWorld.get(position); });
+    check(waterHit && waterHit->position == glm::ivec3(2, 21, 2), "editor rays select water before the solid bank");
+    check(waterHit && voxel::removeBlock(waterWorld, *waterHit, &waterHistory), "water can be removed through the editor");
+    check(waterHistory.undo(waterWorld) && waterWorld.get({2, 21, 2}) == voxel::Block::Water,
+          "undo restores an edited water block");
     return failures == 0 ? 0 : 1;
 }

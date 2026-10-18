@@ -2,13 +2,50 @@
 #include "world.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
-#include <cstdlib>
-#include <cstdlib>
+#include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 
 namespace voxel {
 namespace {
+constexpr int Ground = 8;
+constexpr glm::ivec2 Center{8, 8};
+using Style = HubBuildingStyle;
+
+// Floor corner, local size, silhouette, facing (+Z, +X, -Z, -X).
+// Keep the building plan separate from the landscape so moving a house is easy.
+constexpr std::array<HubBuilding, 28> Buildings{{
+    {{-22, Ground, 34}, 9, 9, Style::Workshop, 0},
+    {{-9, Ground, 37}, 7, 7, Style::Cottage, 0},
+    {{22, Ground, 37}, 9, 9, Style::Hall, 0},
+    {{35, Ground, 33}, 9, 9, Style::Cottage, 0},
+    {{-36, Ground, 24}, 9, 11, Style::Hall, 1},
+    {{43, Ground, 21}, 9, 11, Style::Storehouse, 3},
+    {{-22, Ground, 49}, 9, 9, Style::Cottage, 2},
+    {{-8, Ground, 52}, 7, 7, Style::Cottage, 2},
+    {{7, Ground, 50}, 9, 9, Style::Storehouse, 2},
+    {{22, Ground, 51}, 7, 7, Style::Cottage, 2},
+    {{36, Ground, 45}, 9, 9, Style::Cottage, 2},
+    {{-40, Ground, 9}, 9, 9, Style::Workshop, 1},
+    {{-43, Ground, -5}, 9, 9, Style::Cottage, 1},
+    {{-36, Ground, -19}, 11, 9, Style::Hall, 1},
+    {{-25, Ground, -30}, 9, 9, Style::Storehouse, 0},
+    {{-12, Ground, -36}, 9, 9, Style::Cottage, 0},
+    {{24, Ground, -36}, 11, 9, Style::Hall, 0},
+    {{39, Ground, -26}, 9, 9, Style::Workshop, 3},
+    {{43, Ground, -9}, 9, 9, Style::Cottage, 3},
+    {{43, Ground, 6}, 7, 9, Style::Storehouse, 3},
+    {{-36, Ground, -39}, 9, 9, Style::Cottage, 0},
+    {{-20, Ground, -48}, 7, 7, Style::Cottage, 0},
+    {{25, Ground, -48}, 7, 7, Style::Cottage, 0},
+    {{39, Ground, -42}, 7, 9, Style::Cottage, 0},
+    {{-51, Ground, 9}, 7, 9, Style::Cottage, 1},
+    {{-50, Ground, 24}, 7, 7, Style::Cottage, 1},
+    {{57, Ground, 6}, 7, 9, Style::Cottage, 3},
+    {{56, Ground, 23}, 7, 7, Style::Cottage, 3},
+}};
 
 std::uint32_t hash(int x, int z, std::uint32_t seed)
 {
@@ -19,280 +56,375 @@ std::uint32_t hash(int x, int z, std::uint32_t seed)
     return value ^ (value >> 15);
 }
 
-// Box corners are inclusive, matching the coordinates used in the scene plan.
 void box(World& world, glm::ivec3 from, glm::ivec3 to, Block block)
 {
-    for (int y = from.y; y <= to.y; ++y) {
-        for (int z = from.z; z <= to.z; ++z) {
+    for (int y = from.y; y <= to.y; ++y)
+        for (int z = from.z; z <= to.z; ++z)
             for (int x = from.x; x <= to.x; ++x) world.set({x, y, z}, block);
-        }
-    }
 }
 
-void cavern(World& world, int centerX, int centerZ, int radiusX, int radiusZ, int ceiling,
-            Block floor = Block::Limestone)
+float ellipse(int x, int z, glm::vec2 center, glm::vec2 radius)
 {
-    for (int z = centerZ - radiusZ; z <= centerZ + radiusZ; ++z) {
-        for (int x = centerX - radiusX; x <= centerX + radiusX; ++x) {
-            const float dx = float(x - centerX) / radiusX;
-            const float dz = float(z - centerZ) / radiusZ;
-            const float distance = dx * dx + dz * dz;
-            if (distance > 1.0f) continue;
-            // Broad roof shelves and a lower rim read as rock rather than a box.
-            const int shelf = static_cast<int>(hash(x / 4, z / 4, world.seed()) % 2);
-            const int top = ceiling - (distance > 0.72f ? 2 : 0) + shelf;
-            box(world, {x, 4, z}, {x, top, z}, Block::Air);
-            world.set({x, 3, z}, floor);
-        }
-    }
+    const auto offset = (glm::vec2(x, z) - center) / radius;
+    return glm::dot(offset, offset);
 }
 
-void tunnel(World& world, int x1, int z1, int x2, int z2)
+bool lake(int x, int z)
 {
-    // Each segment is axis-aligned; overlapping segments make generous corners.
-    const int left = std::min(x1, x2) - 2;
-    const int right = std::max(x1, x2) + 2;
-    const int back = std::min(z1, z2) - 2;
-    const int front = std::max(z1, z2) + 2;
-    box(world, {left, 4, back}, {right, 8, front}, Block::Air);
-    box(world, {left, 3, back}, {right, 3, front}, Block::Limestone);
-    // Narrower upper opening rounds off the otherwise rectangular passage.
-    box(world, {left + 1, 9, back + 1}, {right - 1, 9, front - 1}, Block::Air);
+    const float island = ellipse(x, z, Center, {10, 10});
+    return (ellipse(x, z, Center, {26, 23}) < 1.0f && island > 1.0f)
+        || ellipse(x, z, {-24, -13}, {15, 8}) < 1.0f
+        || ellipse(x, z, {40, -12}, {9, 8}) < 1.0f;
 }
 
-void lampPost(World& world, int x, int z)
+void landscape(World& world)
 {
-    box(world, {x, 4, z}, {x, 5, z}, Block::Timber);
-    world.set({x, 6, z}, Block::Lantern);
-}
-
-void supportFrame(World& world, int x, int z, bool passageRunsEastWest)
-{
-    // Posts occupy the outer passage edges, leaving three clear walking cells.
-    const glm::ivec3 across = passageRunsEastWest ? glm::ivec3(0, 0, 1) : glm::ivec3(1, 0, 0);
-    for (const int side : {-2, 2}) {
-        const auto post = glm::ivec3(x, 4, z) + across * side;
-        box(world, post, post + glm::ivec3(0, 3, 0), Block::Timber);
-    }
-    const glm::ivec3 beam{x, 8, z};
-    box(world, beam - across * 2, beam + across * 2, Block::Timber);
-}
-
-void cottage(World& world, int x, int z, bool westDoor, int roofStyle)
-{
-    box(world, {x, 3, z}, {x + 6, 3, z + 6}, Block::Planks);
-    box(world, {x, 4, z}, {x + 6, 4, z + 6}, Block::Brick);
-    box(world, {x, 5, z}, {x + 6, 7, z + 6}, Block::Planks);
-    box(world, {x + 1, 4, z + 1}, {x + 5, 7, z + 5}, Block::Air);
-    for (const int postX : {x, x + 6}) {
-        for (const int postZ : {z, z + 6}) {
-            box(world, {postX, 4, postZ}, {postX, 8, postZ}, Block::Timber);
-        }
-    }
-    // Two gable directions and a stepped workshop roof break up the skyline.
-    // Overhanging slate rests on timber trim; the gable ends close the attic.
-    for (int dz = -1; dz <= 7; ++dz) {
-        for (int dx = -1; dx <= 7; ++dx) {
-            const int across = roofStyle == 1 ? dz : dx;
-            const int along = roofStyle == 1 ? dx : dz;
-            const int height = roofStyle == 2 ? 9 + (dx + 1) / 3
-                : 8 + std::max(0, 3 - std::abs(across - 3));
-            if (dx >= 0 && dx <= 6 && dz >= 0 && dz <= 6) {
-                if (along == 0 || along == 6) {
-                    box(world, {x + dx, 8, z + dz}, {x + dx, height - 1, z + dz}, Block::Planks);
+    for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+        for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+            const float distance = ellipse(x, z, Center, {63, 61});
+            const auto variation = hash(x / 5, z / 5, world.seed());
+            const int ceiling = std::min(59, 44 + int(12 * std::max(0.0f, 1.0f - distance)) + int(variation % 3));
+            const bool chamber = distance < 1.0f + float(variation % 5) * 0.006f;
+            const bool water = chamber && lake(x, z);
+            for (int y = 0; y < World::MaxExclusive.y; ++y) {
+                const bool shell = y == 0 || y == World::MaxExclusive.y - 1
+                    || x == World::Min.x || z == World::Min.z
+                    || x == World::MaxExclusive.x - 1 || z == World::MaxExclusive.z - 1;
+                Block block = y < 6 || (y / 7 + int(variation % 3)) % 4 == 0 ? Block::Slate : Block::Stone;
+                if ((y / 9 + int(variation % 2)) % 3 == 0) block = Block::Limestone;
+                if (chamber) {
+                    if (y > Ground && y <= ceiling) block = Block::Air;
+                    if (y == Ground) block = hash(x / 3, z / 3, world.seed()) % 6 == 0 ? Block::Dirt : Block::Grass;
+                    if (y == Ground - 1) block = Block::Dirt;
+                    if (water && y >= 5 && y <= Ground) {
+                        block = y == 5 ? Block::Sand : y == 6 ? Block::Water : Block::Air;
+                    }
                 }
+                world.set({x, y, z}, shell ? Block::Bedrock : block);
             }
-            world.set({x + dx, height, z + dz}, along == -1 || along == 7 ? Block::Timber : Block::Slate);
         }
     }
-    if (roofStyle == 0) {
-        box(world, {x + 5, 8, z + 1}, {x + 5, 11, z + 1}, Block::Brick);
-        world.set({x + 5, 12, z + 1}, Block::Slate);
-        box(world, {x + 1, 7, z + 7}, {x + 4, 7, z + 8}, Block::Planks);
-        for (const int postX : {x + 1, x + 4}) {
-            box(world, {postX, 4, z + 8}, {postX, 6, z + 8}, Block::Timber);
+    // Two one-block shore steps let players climb back out of the shallow basin.
+    for (int z = -24; z <= 38; ++z) {
+        for (int x = -40; x <= 50; ++x) {
+            if (!lake(x, z)) continue;
+            int shoreDistance = 3;
+            for (const auto side : {glm::ivec2(1, 0), {-1, 0}, {0, 1}, {0, -1}})
+                for (int distance = 1; distance <= 2; ++distance)
+                    if (!lake(x + side.x * distance, z + side.y * distance))
+                        shoreDistance = std::min(shoreDistance, distance);
+            if (shoreDistance <= 2) world.set({x, 6, z}, Block::Limestone);
+            if (shoreDistance == 1) world.set({x, 7, z}, Block::Limestone);
         }
     }
-    // Two-block doors and windows leave the interiors visible and accessible.
-    if (westDoor) {
-        box(world, {x, 4, z + 2}, {x, 6, z + 3}, Block::Air);
-        world.set({x, 6, z + 4}, Block::Lantern);
-    } else {
-        box(world, {x + 2, 4, z + 6}, {x + 3, 6, z + 6}, Block::Air);
-        world.set({x + 4, 6, z + 6}, Block::Lantern);
-    }
-    box(world, {x + 2, 6, z}, {x + 3, 6, z}, Block::Air);
-    box(world, {x + 6, 6, z + 2}, {x + 6, 6, z + 3}, Block::Air);
-    // A low workbench and a warm overhead light furnish each room.
-    box(world, {x + 2, 4, z + 1}, {x + 4, 4, z + 1}, Block::Timber);
-    world.set({x + 3, 7, z + 3}, Block::Lantern);
 }
 
-void vein(World& world, glm::ivec3 center, Block ore, int radius)
+void path(World& world, glm::ivec2 from, glm::ivec2 to, int radius = 2, Block block = Block::Limestone)
 {
-    for (int z = center.z - radius; z <= center.z + radius; ++z) {
-        for (int x = center.x - radius; x <= center.x + radius; ++x) {
-            for (int y = 4; y <= 7; ++y) {
-                const auto offset = glm::ivec3(x, y, z) - center;
-                if (offset.x * offset.x + offset.y * offset.y + offset.z * offset.z > radius * radius) continue;
-                const Block old = world.get({x, y, z});
-                if (old == Block::Limestone || old == Block::Stone || old == Block::Slate) {
-                    world.set({x, y, z}, ore);
-                }
+    const int steps = std::max(std::abs(to.x - from.x), std::abs(to.y - from.y));
+    for (int step = 0; step <= steps; ++step) {
+        const auto point = glm::ivec2(glm::round(glm::mix(glm::vec2(from), glm::vec2(to), steps ? float(step) / steps : 0.0f)));
+        for (int z = point.y - radius; z <= point.y + radius; ++z) {
+            for (int x = point.x - radius; x <= point.x + radius; ++x) {
+                world.set({x, Ground, z}, block);
+                box(world, {x, Ground + 1, z}, {x, Ground + 4, z}, Block::Air);
             }
         }
     }
 }
 
-void mossPatch(World& world, int centerX, int centerZ, int radius)
+void lamp(World& world, int x, int z, int floor = Ground)
 {
-    // Change the floor material, never its height or the brick walking paths.
-    for (int z = centerZ - radius; z <= centerZ + radius; ++z) {
-        for (int x = centerX - radius; x <= centerX + radius; ++x) {
-            const int dx = x - centerX, dz = z - centerZ;
+    if (!isSolid(world.get({x, floor, z}))) return;
+    box(world, {x, floor + 1, z}, {x, floor + 2, z}, Block::Timber);
+    world.set({x, floor + 3, z}, Block::Lantern);
+    world.set({x, floor + 4, z}, Block::RoofTiles);
+}
+
+void bridge(World& world, glm::ivec2 from, glm::ivec2 to)
+{
+    path(world, from, to, 3, Block::Planks);
+    const bool northSouth = from.x == to.x;
+    const int begin = northSouth ? std::min(from.y, to.y) : std::min(from.x, to.x);
+    const int end = northSouth ? std::max(from.y, to.y) : std::max(from.x, to.x);
+    for (int position = begin; position <= end; ++position) {
+        for (const int side : {-4, 4}) {
+            const glm::ivec2 p = northSouth ? glm::ivec2(from.x + side, position) : glm::ivec2(position, from.y + side);
+            world.set({p.x, Ground, p.y}, Block::Timber);
+            world.set({p.x, Ground + 1, p.y}, Block::Timber);
+            if ((position - begin) % 6 == 0 || position == end) {
+                box(world, {p.x, 5, p.y}, {p.x, Ground + 2, p.y}, Block::Timber);
+                if ((position - begin) % 12 == 0 || position == end) world.set({p.x, Ground + 3, p.y}, Block::Lantern);
+            }
+        }
+    }
+}
+
+void sphere(World& world, glm::vec3 center, glm::vec3 radii, Block block, bool onlyAir = false)
+{
+    const auto low = glm::ivec3(glm::floor(center - radii));
+    const auto high = glm::ivec3(glm::ceil(center + radii));
+    for (int y = low.y; y <= high.y; ++y) {
+        for (int z = low.z; z <= high.z; ++z) {
+            for (int x = low.x; x <= high.x; ++x) {
+                const auto offset = (glm::vec3(x, y, z) - center) / radii;
+                if (glm::dot(offset, offset) <= 1.0f && (!onlyAir || world.get({x, y, z}) == Block::Air))
+                    world.set({x, y, z}, block);
+            }
+        }
+    }
+}
+
+void branch(World& world, glm::vec3 from, glm::vec3 to, float startWidth, float endWidth)
+{
+    const int steps = std::max(1, int(glm::distance(from, to) * 2));
+    for (int i = 0; i <= steps; ++i) {
+        const float amount = float(i) / steps;
+        sphere(world, glm::mix(from, to, amount), glm::vec3(glm::mix(startWidth, endWidth, amount)), Block::Timber);
+    }
+}
+
+void heartTree(World& world)
+{
+    // Roots leave the four cardinal bridge approaches open.
+    for (const auto root : {glm::vec3(-1, 9, 1), {18, 9, 0}, {-1, 9, 17}, {18, 9, 18}})
+        branch(world, {8, 12, 8}, root, 2.4f, 0.8f);
+    branch(world, {8, 10, 8}, {7, 23, 8}, 3.8f, 2.6f);
+    branch(world, {7, 23, 8}, {10, 34, 9}, 2.6f, 1.4f);
+    for (const auto tip : {glm::vec3(-7, 34, 2), {24, 35, 13}, {5, 37, -9}, {6, 36, 25}}) {
+        const glm::vec3 elbow = glm::mix(glm::vec3(8, 26, 8), tip, 0.58f) - glm::vec3(0, 2, 0);
+        branch(world, {8, 24, 8}, elbow, 2.0f, 1.4f);
+        branch(world, elbow, tip, 1.4f, 0.7f);
+    }
+    // Smaller lobes at different heights reveal the branches between the crowns.
+    struct Crown { glm::vec3 center, radius; };
+    for (const auto& crown : std::array<Crown, 12>{{
+        {{9, 42, 8}, {8, 7, 7}}, {{-6, 36, 2}, {8, 5, 7}},
+        {{-12, 38, 4}, {6, 4, 5}}, {{22, 38, 13}, {8, 5, 7}},
+        {{28, 40, 12}, {5, 4, 5}}, {{4, 39, -7}, {7, 6, 8}},
+        {{2, 42, -13}, {5, 5, 5}}, {{7, 39, 24}, {8, 6, 8}},
+        {{10, 41, 30}, {5, 4, 5}}, {{-3, 41, 18}, {7, 5, 6}},
+        {{18, 44, 1}, {7, 5, 7}}, {{2, 45, 6}, {6, 4, 6}},
+    }}) {
+        sphere(world, crown.center, crown.radius, Block::Leaves, true);
+    }
+    // Luminous accents occupy exposed crown edges, with hanging living roots.
+    for (int z = -19; z <= 36; ++z) {
+        for (int x = -21; x <= 37; ++x) {
+            for (int y = 29; y <= 49; ++y) {
+                if (world.get({x, y, z}) != Block::Leaves) continue;
+                const auto variation = hash(x + y * 7, z, world.seed());
+                const bool underside = world.get({x, y - 1, z}) == Block::Air;
+                const bool luminousPatch = hash((x + 24) / 3 + y / 3, (z + 24) / 3, world.seed()) % 16 == 0;
+                if (luminousPatch && (underside || world.get({x, y + 1, z}) == Block::Air))
+                    world.set({x, y, z}, Block::GlowLeaves);
+                if (underside && variation % 61 == 0) {
+                    const int length = 2 + variation % 6;
+                    for (int drop = 1; drop <= length; ++drop) {
+                        if (world.get({x, y - drop, z}) != Block::Air) break;
+                        world.set({x, y - drop, z}, drop == length ? Block::GlowLeaves : Block::Leaves);
+                    }
+                }
+            }
+        }
+    }
+    for (const glm::ivec3 light : {glm::ivec3(4, 18, 8), {12, 22, 9}, {8, 28, 5}, {5, 33, 17}}) {
+        world.set(light, Block::Lantern);
+        box(world, light + glm::ivec3(0, 1, 0), light + glm::ivec3(0, 2, 0), Block::Timber);
+    }
+    // A low ring and four gaps create a deliberate centerpiece plaza.
+    for (int z = -1; z <= 17; ++z) {
+        for (int x = -1; x <= 17; ++x) {
+            const float radius = glm::length(glm::vec2(x - 8, z - 8));
+            if (radius >= 7.0f && radius <= 9.2f) world.set({x, Ground, z}, Block::Limestone);
+        }
+    }
+}
+
+void crystalGarden(World& world, glm::ivec3 base, int height)
+{
+    for (int dz = -2; dz <= 2; ++dz) {
+        for (int dx = -2; dx <= 2; ++dx) {
+            if (std::abs(dx) + std::abs(dz) > 3) continue;
+            const int top = base.y + std::max(0, height - std::abs(dx) - std::abs(dz));
+            box(world, {base.x + dx, Ground + 1, base.z + dz}, {base.x + dx, top, base.z + dz}, Block::Slate);
+            world.set({base.x + dx, top + 1, base.z + dz}, Block::Crystal);
+        }
+    }
+}
+
+void waterfall(World& world, int x, int z, int top)
+{
+    // Uneven rock shoulders cradle the ribbons and their source pool.
+    sphere(world, {x - 4, 16, z - 3}, {6, 12, 6}, Block::Slate, true);
+    sphere(world, {x + 4, 19, z - 4}, {5, 14, 5}, Block::Slate, true);
+    for (int level = 7; level <= top; ++level) {
+        const int shoulder = 5 + (top - level) / 9;
+        box(world, {x - shoulder, level, z - 4}, {x + shoulder, level, z - 1},
+            level % 11 == 0 ? Block::Limestone : Block::Slate);
+        for (int dx = -2; dx <= 2; ++dx)
+            if (dx != 2 || level < top - 2) world.set({x + dx, level, z}, Block::Water);
+    }
+    box(world, {x - 3, top, z - 4}, {x + 3, top, z}, Block::Water);
+    for (const int side : {-5, 5}) {
+        box(world, {x + side, top - 3, z - 1}, {x + side, top, z + 1}, Block::Leaves);
+        world.set({x + side, top - 4, z + 1}, Block::GlowLeaves);
+    }
+    crystalGarden(world, {x + 7, Ground + 1, z + 1}, 3);
+}
+
+void expeditionGateway(World& world)
+{
+    // An architectural destination only: the open arch leads into a staging hall.
+    box(world, {-2, Ground, -56}, {18, Ground, -35}, Block::Limestone);
+    box(world, {0, Ground + 1, -56}, {16, 23, -42}, Block::Air);
+    for (const int x : {-2, 16}) {
+        box(world, {x, Ground + 1, -47}, {x + 2, 25, -43}, Block::Slate);
+        box(world, {x - 1, 24, -48}, {x + 3, 26, -42}, Block::Limestone);
+        box(world, {x, 27, -47}, {x + 2, 29, -43}, Block::RoofTiles);
+        world.set({x + 1, 22, -42}, Block::Lantern);
+        world.set({x + 1, 28, -45}, Block::Crystal);
+    }
+    box(world, {1, 22, -46}, {15, 24, -43}, Block::Limestone);
+    box(world, {4, 25, -46}, {12, 26, -43}, Block::Slate);
+    box(world, {7, 26, -45}, {9, 28, -44}, Block::Crystal);
+    // Chevron floor inlay and twin supply shelters distinguish the departure plaza.
+    for (int z = -42; z <= -30; ++z) {
+        world.set({8, Ground, z}, Block::RoofTiles);
+        if ((z + 42) % 4 == 0) {
+            for (int dx = 1; dx <= 3; ++dx) {
+                world.set({8 - dx, Ground, z + dx}, Block::RoofTiles);
+                world.set({8 + dx, Ground, z + dx}, Block::RoofTiles);
+            }
+        }
+    }
+    for (const int x : {0, 15}) {
+        box(world, {x, 9, -38}, {x + 1, 10, -36}, Block::Timber);
+        lamp(world, x, -33);
+    }
+    // A recessed, turning passage suggests the journey beyond the hub. It is
+    // still ordinary walkable architecture; no loading or travel action runs.
+    box(world, {0, 9, -58}, {16, 23, -56}, Block::Slate);
+    box(world, {4, Ground, -62}, {12, 18, -53}, Block::Slate);
+    box(world, {5, Ground, -62}, {25, 17, -57}, Block::Slate);
+    box(world, {5, 9, -61}, {11, 17, -53}, Block::Air);
+    box(world, {5, 9, -61}, {24, 16, -58}, Block::Air);
+    world.set({13, 13, -61}, Block::Lantern);
+    world.set({23, 12, -58}, Block::Lantern);
+}
+
+void greenery(World& world)
+{
+    // Low planted borders sit on grass only, so doors and paved routes stay clear.
+    for (int z = -49; z <= 62; z += 3) {
+        for (int x = -51; x <= 65; x += 3) {
             const auto variation = hash(x, z, world.seed());
-            if (dx * dx + dz * dz > radius * radius || variation % 7 == 0) continue;
-            const Block floor = world.get({x, 3, z});
-            if ((floor != Block::Limestone && floor != Block::Slate) || world.get({x, 4, z}) != Block::Air) continue;
-            world.set({x, 2, z}, Block::Dirt);
-            world.set({x, 3, z}, variation % 5 == 0 ? Block::Dirt : Block::Grass);
+            if (variation % 5 != 0 || world.get({x, Ground, z}) != Block::Grass
+                || world.get({x, Ground + 1, z}) != Block::Air) continue;
+            sphere(world, {x, Ground + 1, z}, {1.4f, 0.8f, 1.4f}, Block::Leaves, true);
+            if (variation % 3 == 0) world.set({x, Ground + 2, z}, Block::GlowLeaves);
         }
     }
-}
-
-void outcrop(World& world, int centerX, int centerZ, int radius, int height)
-{
-    // Uneven tapered shoulders frame the rooms without filling their centers.
-    for (int z = centerZ - radius; z <= centerZ + radius; ++z) {
-        for (int x = centerX - radius; x <= centerX + radius; ++x) {
-            const int dx = std::abs(x - centerX), dz = std::abs(z - centerZ);
-            if (dx + dz > radius + 1 || world.get({x, 4, z}) != Block::Air) continue;
-            const int top = 3 + height - std::max(dx, dz) - int(hash(x, z, world.seed()) % 2);
-            for (int y = 4; y <= top; ++y) {
-                if (world.get({x, y, z}) == Block::Air) {
-                    world.set({x, y, z}, y == top ? Block::Limestone : Block::Slate);
-                }
+    // Small trees frame the waterfront without competing with the heart tree.
+    for (const auto p : {glm::ivec2(-17, 25), {32, 27}, {-27, 0}, {36, 2}, {-5, -25}, {22, -25}}) {
+        if (world.get({p.x, Ground, p.y}) != Block::Grass) continue;
+        box(world, {p.x, 9, p.y}, {p.x, 15, p.y}, Block::Timber);
+        sphere(world, {p.x, 16, p.y}, {3, 3, 3}, Block::Leaves, true);
+        sphere(world, {p.x + 2, 15, p.y}, {2, 2, 2}, Block::Leaves, true);
+        world.set({p.x, 13, p.y + 2}, Block::GlowLeaves);
+    }
+    // Hanging vegetation breaks up the high cavern silhouette.
+    for (const auto p : {glm::ivec2(-34, -20), {48, -18}, {-40, 28}, {43, 43}, {-17, 51}}) {
+        for (int dx = -3; dx <= 3; ++dx) {
+            int y = 59;
+            while (y > 25 && world.get({p.x + dx, y, p.y}) != Block::Air) --y;
+            const int length = 4 + hash(p.x + dx, p.y, world.seed()) % 6;
+            for (int drop = 0; drop < length; ++drop) {
+                if (world.get({p.x + dx, y - drop, p.y}) == Block::Air)
+                    world.set({p.x + dx, y - drop, p.y}, drop + 1 == length ? Block::GlowLeaves : Block::Leaves);
             }
         }
     }
 }
 
-void hangingRock(World& world, int x, int z, int length)
+void geology(World& world)
 {
-    int ceiling = 14;
-    while (ceiling >= 8 && world.get({x, ceiling, z}) != Block::Air) --ceiling;
-    for (int y = std::max(8, ceiling - length + 1); y <= ceiling; ++y) {
-        const int width = y >= ceiling - 1 ? 1 : 0;
-        for (int dz = -width; dz <= width; ++dz) {
-            for (int dx = -width; dx <= width; ++dx) {
-                if (world.get({x + dx, y, z + dz}) == Block::Air) {
-                    world.set({x + dx, y, z + dz}, Block::Stone);
+    for (const auto p : {glm::ivec3(-45, 13, -25), {51, 12, -22}, {48, 12, 39},
+                         {-42, 16, 42}}) {
+        box(world, {p.x - 2, Ground + 1, p.z - 2}, {p.x + 2, p.y, p.z + 2}, Block::Stone);
+        sphere(world, p, {4, 6, 4}, Block::Stone, true);
+        for (int y = p.y - 4; y <= p.y + 4; ++y) {
+            for (int z = p.z - 4; z <= p.z + 4; ++z) {
+                for (int x = p.x - 4; x <= p.x + 4; ++x) {
+                    if (world.get({x, y, z}) != Block::Stone) continue;
+                    const auto variation = hash(x / 2 + y * 3, z / 2, world.seed());
+                    if (variation % 4 == 0) world.set({x, y, z}, Block::CopperOre);
+                    else if (variation % 7 == 0) world.set({x, y, z}, Block::IronOre);
+                    else if (variation % 11 == 0) world.set({x, y, z}, Block::CoalOre);
                 }
             }
         }
+        crystalGarden(world, {p.x + 3, Ground + 1, p.z + 4}, 3);
+    }
+    for (const auto p : {glm::ivec3(-17, 9, -7), {33, 9, 20}, {-7, 9, 29},
+                         {20, 9, -15}, {-32, 9, 44}, {51, 9, 2}}) crystalGarden(world, p, 2);
+    // Hanging rocks remain sparse and high above all roofs and walking routes.
+    for (const auto p : {glm::ivec2(-21, -17), {37, -14}, {-28, 32}, {39, 37}, {8, -38}}) {
+        int top = 59;
+        while (top > 30 && world.get({p.x, top, p.y}) != Block::Air) --top;
+        for (int drop = 0; drop < 8; ++drop) {
+            const int width = drop < 3 ? 2 : drop < 6 ? 1 : 0;
+            box(world, {p.x - width, top - drop, p.y - width}, {p.x + width, top - drop, p.y + width}, Block::Stone);
+        }
     }
 }
-
 } // namespace
+
+std::span<const HubBuilding> sceneBuildingPlan() { return Buildings; }
 
 void buildUndergroundScene(World& world)
 {
-    // Start solid. The shell is never carved, so every view remains underground.
-    for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
-        for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
-            const int layer = static_cast<int>(hash(x / 8, z / 8, world.seed()) % 3);
-            for (int y = 0; y < World::MaxExclusive.y; ++y) {
-                const bool shell = y == 0 || y == 15 || x == World::Min.x || z == World::Min.z
-                    || x == World::MaxExclusive.x - 1 || z == World::MaxExclusive.z - 1;
-                const Block rock = y < 3 + layer ? Block::Slate
-                    : (y < 9 + layer ? Block::Limestone : Block::Stone);
-                world.set({x, y, z}, shell ? Block::Bedrock : rock);
-            }
-        }
+    landscape(world);
+    geology(world);
+    waterfall(world, -30, -17, 33);
+    waterfall(world, 43, -16, 29);
+
+    // Broad waterfront and residential loops; every entrance gets a paved spur.
+    path(world, {-29, -27}, {43, -27});
+    path(world, {-29, -27}, {-29, 46});
+    path(world, {-29, 46}, {52, 46});
+    path(world, {38, -27}, {38, 46});
+    path(world, {-46, -8}, {-46, 36});
+    path(world, {-46, 36}, {64, 36});
+    path(world, {54, -8}, {54, 36});
+    path(world, {-29, -40}, {47, -40});
+    path(world, {-29, -40}, {-29, -24});
+    path(world, {38, -40}, {38, -24});
+    path(world, {8, -48}, {8, 51});
+    path(world, {-44, 8}, {58, 8});
+
+    for (const auto& building : Buildings) {
+        const auto size = hubBuildingFootprint(building);
+        box(world, building.origin - glm::ivec3(1, 0, 1),
+            building.origin + glm::ivec3(size.x, 0, size.y), Block::Limestone);
+        box(world, building.origin + glm::ivec3(-1, 1, -1),
+            building.origin + glm::ivec3(size.x, 20, size.y), Block::Air);
+        const auto door = hubBuildingDoor(building);
+        const auto direction = std::array<glm::ivec2, 4>{{{0, 1}, {1, 0}, {0, -1}, {-1, 0}}}[building.facing];
+        path(world, {door.x, door.z}, glm::ivec2(door.x, door.z) + direction * 5, 1);
     }
+    bridge(world, {8, 18}, {8, 34});
+    bridge(world, {8, -19}, {8, -2});
+    bridge(world, {-20, 8}, {-2, 8});
+    bridge(world, {18, 8}, {36, 8});
+    heartTree(world);
+    for (const auto& building : Buildings) buildHubBuilding(world, building);
+    expeditionGateway(world);
+    greenery(world);
 
-    cavern(world, 2, 3, 17, 16, 12);
-    cavern(world, -10, 3, 7, 10, 10);
-    cavern(world, 13, 5, 8, 12, 11);
-    cavern(world, -22, -15, 7, 7, 10, Block::Slate);
-    cavern(world, 28, -13, 8, 7, 11);
-    cavern(world, 27, 28, 8, 8, 12, Block::Slate);
-    tunnel(world, -12, 5, -22, 5);
-    tunnel(world, -22, 5, -22, -15);
-    tunnel(world, 16, 3, 28, 3);
-    tunnel(world, 28, 3, 28, -13);
-    tunnel(world, 28, 3, 28, 28);
-    supportFrame(world, -16, 5, true);
-    supportFrame(world, -22, 1, false);
-    supportFrame(world, 21, 3, true);
-    supportFrame(world, 28, 7, false);
-
-    // Brick paths join the square, cottage doors, and the mine entrances.
-    box(world, {-3, 3, 2}, {4, 3, 8}, Block::Brick);
-    box(world, {-14, 3, 4}, {19, 3, 6}, Block::Brick);
-    box(world, {-3, 3, 7}, {-1, 3, 15}, Block::Brick);
-    box(world, {-9, 3, 0}, {-7, 3, 5}, Block::Brick);
-    box(world, {7, 3, -1}, {9, 3, 5}, Block::Brick);
-    box(world, {5, 3, 5}, {7, 3, 12}, Block::Brick);
-    cottage(world, -11, -5, false, 0);
-    cottage(world, 5, -6, false, 1);
-    cottage(world, 8, 8, true, 2);
-
-    // Square lantern, benches, and stacked supplies beside the workshop.
-    lampPost(world, 2, 5);
-    box(world, {0, 4, 7}, {1, 4, 7}, Block::Planks);
-    box(world, {4, 4, 7}, {4, 4, 8}, Block::Planks);
-    box(world, {-10, 4, 9}, {-8, 4, 11}, Block::Timber);
-    box(world, {-10, 5, 9}, {-9, 5, 10}, Block::Planks);
-    box(world, {-7, 4, 9}, {-7, 4, 10}, Block::Brick);
-    lampPost(world, -11, 8);
-    lampPost(world, 6, 9);
-    lampPost(world, -13, 7);
-    lampPost(world, 18, 5);
-    for (const int z : {-8, 2}) lampPost(world, -24, z);
-    for (const int z : {-8, 1, 12, 23}) lampPost(world, 30, z);
-
-    // Green pockets soften the refuge; stone shoulders and hanging formations
-    // frame its amber houses and leave the central square and mine routes open.
-    for (const glm::ivec2 patch : {glm::ivec2(-13, 10), {-4, -6}, {1, -8},
-                                  {15, 10}, {4, 13}, {-12, 0}}) {
-        mossPatch(world, patch.x, patch.y, 3);
-    }
-    for (const glm::ivec2 patch : {glm::ivec2(-26, -12), {25, -14}, {24, 26}}) {
-        mossPatch(world, patch.x, patch.y, 2);
-    }
-    outcrop(world, 1, -10, 3, 5);
-    outcrop(world, -14, 11, 2, 6);
-    outcrop(world, 17, -4, 2, 5);
-    outcrop(world, -26, -12, 1, 3);
-    outcrop(world, 32, -14, 1, 3);
-    outcrop(world, 23, 29, 1, 3);
-    for (const glm::ivec3 pendant : {glm::ivec3(-2, 3, -1), {15, 4, 1}, {-14, 4, 10},
-                                    {5, 3, 16}, {-24, 4, -13}, {25, 3, -16}, {30, 4, 27}}) {
-        hangingRock(world, pendant.x, pendant.z, pendant.y);
-    }
-
-    // Raised, exposed crystals provide cool focal points behind the warm square.
-    // Each source has solid support and open sides for light and faceted details.
-    for (const glm::ivec3 crystal : {glm::ivec3(0, 8, -10), {2, 9, -10}, {3, 7, -9},
-                                    {-12, 8, 12}, {-27, 5, -12}, {33, 5, -14}}) {
-        box(world, {crystal.x, 4, crystal.z}, crystal - glm::ivec3(0, 1, 0), Block::Slate);
-        world.set(crystal, Block::Crystal);
-    }
-
-    // Clusters intersect chamber walls at eye height, never isolated speckles.
-    const int shift = static_cast<int>(world.seed() % 2);
-    vein(world, {-28, 5, -18 + shift}, Block::CoalOre, 3);
-    vein(world, {-24, 6, -22}, Block::CoalOre, 3);
-    vein(world, {-16, 5, -18}, Block::CoalOre, 2);
-    vein(world, {34, 5, -17 + shift}, Block::CopperOre, 3);
-    vein(world, {24, 5, -19}, Block::CopperOre, 3);
-    vein(world, {35, 6, -10}, Block::CopperOre, 2);
-    vein(world, {20, 5, 31}, Block::IronOre, 3);
-    vein(world, {26, 6, 36 - shift}, Block::IronOre, 3);
-    vein(world, {33, 5, 33}, Block::Crystal, 3);
-    box(world, {31, 4, 31}, {32, 5, 32}, Block::Crystal);
-    world.set({32, 6, 32}, Block::Crystal);
+    for (const auto p : {glm::ivec2(-24, 31), {-11, 33}, {19, 33}, {34, 31}, {-25, 15}, {-25, -4},
+                         {-23, -23}, {-8, -23}, {22, -23}, {35, -21}, {35, 1}, {35, 20},
+                         {-24, 44}, {-5, 46}, {18, 46}, {32, 43}, {-42, 21}, {54, 17},
+                         {-24, -38}, {20, -38}, {47, -29}}) lamp(world, p.x, p.y);
 }
-
 } // namespace voxel

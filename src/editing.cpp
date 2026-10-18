@@ -34,7 +34,7 @@ std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDi
     if (lengthSquared == 0.0) {
         return std::nullopt;
     }
-    if (isSolid(sample(position))) {
+    if (isRenderable(sample(position))) {
         return RayHit{position, glm::ivec3(0), 0.0f};
     }
 
@@ -78,7 +78,7 @@ std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDi
                 hasNormal = true;
             }
         }
-        if (isSolid(sample(position))) {
+        if (isRenderable(sample(position))) {
             return RayHit{position, normal, static_cast<float>(distance)};
         }
     }
@@ -148,7 +148,7 @@ void EditHistory::clear()
 
 bool removeBlock(World& world, const RayHit& hit, EditHistory* history)
 {
-    if (!isSolid(world.get(hit.position))) {
+    if (!isRenderable(world.get(hit.position))) {
         return false;
     }
     if (history) {
@@ -160,10 +160,10 @@ bool removeBlock(World& world, const RayHit& hit, EditHistory* history)
 PlacementCheck checkPlacement(const World& world, const RayHit& hit, Block block,
                                glm::vec3 cameraPosition)
 {
-    if (!isSolid(block)) {
+    if (!isRenderable(block)) {
         return {{}, PlacementFailure::InvalidMaterial};
     }
-    if (!isSolid(world.get(hit.position))) {
+    if (!isRenderable(world.get(hit.position))) {
         return {{}, PlacementFailure::MissingTarget};
     }
     int normalAxes = 0;
@@ -194,10 +194,10 @@ PlacementCheck checkPlacement(const World& world, const RayHit& hit, Block block
     if (!World::contains(destination)) {
         return {destination, PlacementFailure::OutsideWorld};
     }
-    if (isSolid(world.get(destination))) {
+    if (isRenderable(world.get(destination))) {
         return {destination, PlacementFailure::Occupied};
     }
-    if (overlapsCamera) {
+    if (overlapsCamera && isSolid(block)) {
         return {destination, PlacementFailure::CameraOverlap};
     }
     return {destination, PlacementFailure::None};

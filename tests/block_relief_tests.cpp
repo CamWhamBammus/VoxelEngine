@@ -10,7 +10,7 @@
 
 namespace {
 int failures = 0;
-constexpr std::size_t centerChunk = 12;
+constexpr std::size_t centerChunk = voxel::World::Radius * (voxel::World::Width + 1);
 constexpr std::array<glm::ivec3, 6> faces{{
     {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
 }};
@@ -23,7 +23,7 @@ void check(bool condition, const char* message)
 void clear(voxel::World& world)
 {
     for (int z = voxel::World::Min.z; z < voxel::World::MaxExclusive.z; ++z) {
-        for (int y = 0; y < voxel::Chunk::Size; ++y) {
+        for (int y = voxel::World::Min.y; y < voxel::World::MaxExclusive.y; ++y) {
             for (int x = voxel::World::Min.x; x < voxel::World::MaxExclusive.x; ++x) {
                 world.set({x, y, z}, voxel::Block::Air);
             }
@@ -310,7 +310,8 @@ int main()
     world.set(anchor, Block::Air);
     check(buildBlockRelief(world, centerChunk).indices.empty(), "mining an anchor removes its relief");
     for (const auto material : {Block::Grass, Block::Dirt, Block::Sand, Block::Crystal,
-                               Block::Timber, Block::Planks, Block::Brick, Block::Lantern, Block::Bedrock}) {
+                               Block::Timber, Block::Planks, Block::Brick, Block::Lantern, Block::Bedrock,
+                               Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles}) {
         world.set(anchor, material);
         check(buildBlockRelief(world, centerChunk).indices.empty(), "other materials never grow stone or ore plates");
     }
@@ -335,16 +336,18 @@ int main()
     const glm::ivec3 edge{World::Min.x, 6, 5};
     world.set(edge, Block::IronOre);
     cover(world, edge);
-    check(buildBlockRelief(world, 10).indices.empty(), "world exterior is not an adjacent air cell for relief");
+    check(buildBlockRelief(world, World::Radius * World::Width).indices.empty(),
+          "world exterior is not an adjacent air cell for relief");
 
     clear(world);
     const glm::ivec3 negative{-1, 6, -1};
     world.set(negative, Block::IronOre);
     cover(world, negative);
     world.set(negative + faces[0], Block::Air);
-    validate(buildBlockRelief(world, 6), negative, faces[0], Block::IronOre, 0.025f, 0.050f);
+    constexpr auto negativeChunk = centerChunk - World::Width - 1;
+    validate(buildBlockRelief(world, negativeChunk), negative, faces[0], Block::IronOre, 0.025f, 0.050f);
     world.set(negative + faces[0], Block::Stone);
-    check(buildBlockRelief(world, 6).indices.empty(), "negative-coordinate chunk seams also suppress hidden relief");
+    check(buildBlockRelief(world, negativeChunk).indices.empty(), "negative-coordinate chunk seams also suppress hidden relief");
 
     clear(world);
     const glm::ivec3 unpainted{15, 6, 5};
@@ -361,6 +364,25 @@ int main()
     world.set(visibleOre + faces[4], Block::Air);
     check(raisedArea(buildBlockRelief(world, centerChunk), {0, 0, 1}, 0.010f) > 0.01f,
           "the native ore fixture raises more than one percent of its face by at least one hundredth of a block");
+
+    clear(world);
+    constexpr auto upperChunk = centerChunk + World::Width * World::Width;
+    for (int z = -1; z <= 16; ++z) {
+        for (int x = -1; x <= 16; ++x) {
+            world.set({x, 30, z}, Block::Dirt);
+            world.set({x, 31, z}, x >= 0 && x < 16 && z >= 0 && z < 16 ? Block::CopperOre : Block::Dirt);
+        }
+    }
+    const auto upperRelief = buildBlockRelief(world, upperChunk);
+    check(!upperRelief.indices.empty(), "ore in an upper layer can grow across its top chunk seam");
+    for (int z = 0; z < 16; ++z) {
+        for (int x = 0; x < 16; ++x) world.set({x, 32, z}, Block::Planks);
+    }
+    check(buildBlockRelief(world, upperChunk).indices.empty(), "the next vertical chunk suppresses covered relief");
+    for (int z = 0; z < 16; ++z) {
+        for (int x = 0; x < 16; ++x) world.set({x, 32, z}, Block::Air);
+    }
+    check(same(upperRelief, buildBlockRelief(world, upperChunk)), "reopening an upper seam restores the same ore relief");
 
     // Whole surfaces exercise sparse density and endpoint taper on every orientation.
     for (const auto material : {Block::Stone, Block::Limestone, Block::Slate}) {

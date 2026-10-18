@@ -77,9 +77,9 @@ int main()
     check(world.takeDirtyChunks().empty(), "consuming initial uploads must clear dirty chunks");
 
     // The top layer is above generated terrain; these cells straddle x=0.
-    const glm::ivec3 left(-1, 15, 1), right(0, 15, 1);
-    const glm::vec3 camera(1.5f, 15.5f, 1.5f);
-    const std::vector<std::size_t> seamChunks{11, 12};
+    const glm::ivec3 left(-1, 14, 1), right(0, 14, 1);
+    const glm::vec3 camera(1.5f, 14.5f, 1.5f);
+    const std::vector<std::size_t> seamChunks{39, 40};
     const auto target = [&]() {
         return voxel::raycast(camera, {-1, 0, 0}, 8.0f,
                               [&world](glm::ivec3 position) { return world.get(position); });
@@ -100,8 +100,8 @@ int main()
     if (!placedHit) {
         return 1;
     }
-    const auto savedLeftMesh = voxel::buildMesh(world, 11);
-    const auto savedRightMesh = voxel::buildMesh(world, 12);
+    const auto savedLeftMesh = voxel::buildMesh(world, 39);
+    const auto savedRightMesh = voxel::buildMesh(world, 40);
     const auto savedState = snapshot(world);
     voxel::saveWorld(world, savePath);
     check(history.undoCount() == 2 && history.redoCount() == 0,
@@ -115,7 +115,7 @@ int main()
     const auto undoneHit = target();
     check(undoneHit && undoneHit->position == left, "undo must update subsequent ray targets");
     check(world.takeDirtyChunks() == seamChunks, "undo must invalidate both meshes at the seam");
-    check(!sameMesh(voxel::buildMesh(world, 11), savedLeftMesh) && !sameMesh(voxel::buildMesh(world, 12), savedRightMesh),
+    check(!sameMesh(voxel::buildMesh(world, 39), savedLeftMesh) && !sameMesh(voxel::buildMesh(world, 40), savedRightMesh),
           "undo must expose the neighboring face and remove the placed voxel geometry");
     check(history.redo(world) && snapshot(world) == savedState,
           "redo must restore exactly the saved world contents");
@@ -135,7 +135,7 @@ int main()
     check(world.takeDirtyChunks().size() == voxel::World::ChunkCount,
           "loaded world must replace every previously cached chunk mesh");
     check(world.takeDirtyChunks().empty(), "loaded mesh invalidations must clear after upload");
-    check(sameMesh(voxel::buildMesh(world, 11), savedLeftMesh) && sameMesh(voxel::buildMesh(world, 12), savedRightMesh),
+    check(sameMesh(voxel::buildMesh(world, 39), savedLeftMesh) && sameMesh(voxel::buildMesh(world, 40), savedRightMesh),
           "saved seam edits must reconstruct identical positions, normals, colors, and indices");
     const auto loadedHit = target();
     check(loadedHit && loadedHit->position == right && world.get(left) == voxel::Block::Sand

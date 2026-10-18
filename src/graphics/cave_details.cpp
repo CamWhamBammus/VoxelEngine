@@ -153,7 +153,7 @@ MeshData buildCaveDetails(const World& world, std::size_t chunkIndex)
                             ++wallShards;
                         }
                     }
-                } else if (stones < 10 && y >= 10 && variation % 13 == 0 && air(cell + glm::ivec3(0, -1, 0))
+                } else if (stones < 10 && cell.y >= 10 && variation % 13 == 0 && air(cell + glm::ivec3(0, -1, 0))
                            && (material == Block::Stone || material == Block::Limestone || material == Block::Slate)) {
                     stalactite(mesh, cell, material, variation);
                     ++stones;

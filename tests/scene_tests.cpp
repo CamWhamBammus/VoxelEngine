@@ -2,54 +2,64 @@
 #include "player.h"
 #include "world.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <optional>
 #include <queue>
+#include <string>
 #include <glm/geometric.hpp>
 
 namespace {
 int failures = 0;
-
-void check(bool condition, const char* message)
-{
-    if (!condition) {
-        std::cerr << "FAIL: " << message << '\n';
-        ++failures;
-    }
-}
-
 constexpr int Width = voxel::World::MaxExclusive.x - voxel::World::Min.x;
+constexpr int FloorY = 9;
+constexpr std::array<glm::ivec3, 4> Steps{{{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}};
 using FloorMap = std::array<bool, Width * Width>;
+
+void check(bool condition, const std::string& message)
+{
+    if (!condition) { std::cerr << "FAIL: " << message << '\n'; ++failures; }
+}
 
 std::size_t index(int x, int z)
 {
     return static_cast<std::size_t>((z - voxel::World::Min.z) * Width + x - voxel::World::Min.x);
 }
 
+std::string coordinate(glm::ivec3 p)
+{
+    return "(" + std::to_string(p.x) + "," + std::to_string(p.y) + "," + std::to_string(p.z) + ")";
+}
+
+bool supported(const voxel::World& world, glm::ivec3 feet)
+{
+    voxel::Player player;
+    return player.setFeetPosition(world, glm::vec3(feet) + glm::vec3(0.5f, 0, 0.5f)) && player.grounded();
+}
+
 FloorMap walkableRoutes(const voxel::World& world)
 {
     FloorMap reached{};
+    const glm::ivec3 start(glm::floor(voxel::VillageSpawn));
+    if (!supported(world, start)) return reached;
     std::queue<glm::ivec3> frontier;
-    const glm::ivec3 start{static_cast<int>(std::floor(voxel::VillageSpawn.x)), 4,
-                           static_cast<int>(std::floor(voxel::VillageSpawn.z))};
     frontier.push(start);
     reached[index(start.x, start.z)] = true;
-    constexpr std::array<glm::ivec3, 4> steps{{{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}};
     while (!frontier.empty()) {
         const auto current = frontier.front();
         frontier.pop();
-        for (const auto step : steps) {
+        for (const auto step : Steps) {
             const auto next = current + step;
             if (!voxel::World::contains(next) || reached[index(next.x, next.z)]) continue;
-            const glm::vec3 currentFeet{current.x + 0.5f, 4, current.z + 0.5f};
-            const glm::vec3 nextFeet{next.x + 0.5f, 4, next.z + 0.5f};
             voxel::Player player;
-            if (!player.setFeetPosition(world, currentFeet)) continue;
-            // Exercise the actual swept player body along every discovered edge.
+            if (!player.setFeetPosition(world, glm::vec3(current) + glm::vec3(0.5f, 0, 0.5f))) continue;
+            // Each route edge uses the actual swept body, without flying or jumping.
             player.move(world, glm::vec3(step));
-            if (glm::distance(player.feetPosition(), nextFeet) > 0.001f || !player.grounded()) continue;
+            const auto destination = glm::vec3(next) + glm::vec3(0.5f, 0, 0.5f);
+            if (glm::distance(player.feetPosition(), destination) > 0.001f || !player.grounded()) continue;
             reached[index(next.x, next.z)] = true;
             frontier.push(next);
         }
@@ -57,110 +67,176 @@ FloorMap walkableRoutes(const voxel::World& world)
     return reached;
 }
 
+void checkRoute(const voxel::World& world, const FloorMap& routes, glm::ivec3 feet,
+                const std::string& label)
+{
+    const bool reached = voxel::World::contains(feet) && feet.y == FloorY
+        && routes[index(feet.x, feet.z)] && supported(world, feet);
+    if (!reached) {
+        glm::ivec3 nearest{};
+        int distance = Width * 2;
+        for (int z = voxel::World::Min.z; z < voxel::World::MaxExclusive.z; ++z) {
+            for (int x = voxel::World::Min.x; x < voxel::World::MaxExclusive.x; ++x) {
+                const int candidate = std::abs(x - feet.x) + std::abs(z - feet.z);
+                if (routes[index(x, z)] && candidate < distance) { distance = candidate; nearest = {x, FloorY, z}; }
+            }
+        }
+        std::cerr << "seed " << world.seed() << ' ' << label << " at " << coordinate(feet)
+                  << "; nearest reachable " << coordinate(nearest)
+                  << "; floor/body/head " << voxel::blockName(world.get(feet - glm::ivec3(0, 1, 0)))
+                  << '/' << voxel::blockName(world.get(feet))
+                  << '/' << voxel::blockName(world.get(feet + glm::ivec3(0, 1, 0))) << '\n';
+    }
+    check(reached, label + " has a grounded route from spawn");
+}
+
+// Find a real three-step bank: basin feet6 -> shelf7 -> shelf8 -> village9.
+// Validate the body on every landing, then replay jumps on one such exit.
+bool waterExit(const voxel::World& world, const FloorMap& routes)
+{
+    for (int z = voxel::World::Min.z + 3; z < voxel::World::MaxExclusive.z - 3; ++z) {
+        for (int x = voxel::World::Min.x + 3; x < voxel::World::MaxExclusive.x - 3; ++x) {
+            const glm::ivec3 bank{x, FloorY, z};
+            if (!routes[index(x, z)]) continue;
+            for (const auto side : Steps) {
+                const auto upper = bank + side - glm::ivec3(0, 1, 0);
+                const auto lower = bank + side * 2 - glm::ivec3(0, 2, 0);
+                const auto basin = bank + side * 3 - glm::ivec3(0, 3, 0);
+                if (world.get(basin) != voxel::Block::Water || !supported(world, basin)
+                    || !supported(world, lower) || !supported(world, upper)) continue;
+                voxel::Player player;
+                player.setFeetPosition(world, glm::vec3(basin) + glm::vec3(0.5f, 0, 0.5f));
+                bool climbed = true;
+                for (const auto landing : {lower, upper, bank}) {
+                    const auto target = glm::vec3(landing) + glm::vec3(0.5f, 0, 0.5f);
+                    player.update(world, {}, glm::vec3(-side), false, false, 1.0f / 120.0f);
+                    for (int frame = 0; frame < 100; ++frame) {
+                        const auto difference = target - player.feetPosition();
+                        const float horizontal = std::abs(difference.x) + std::abs(difference.z);
+                        const float move = std::min(1.0f, horizontal * 120.0f / 4.5f);
+                        player.update(world, {0, move}, glm::vec3(-side), frame == 0, false, 1.0f / 120.0f);
+                        if (player.grounded() && glm::distance(player.feetPosition(), target) < 0.01f) break;
+                    }
+                    climbed &= player.grounded() && glm::distance(player.feetPosition(), target) < 0.01f;
+                    if (!climbed) break;
+                }
+                if (climbed) return true;
+            }
+        }
+    }
+    return false;
+}
 } // namespace
 
 int main()
 {
     using voxel::Block;
     using voxel::World;
+    std::optional<World> previous;
+    bool seedChangesGeometry = false;
     for (const std::uint32_t seed : {0u, 42u, 1337u, 4294967295u}) {
         World world(seed);
         voxel::buildUndergroundScene(world);
         World rebuilt(seed);
-        rebuilt.set({2, 5, 2}, Block::Sand);
+        rebuilt.set({2, 40, 2}, Block::Sand);
+        rebuilt.set(World::Min, Block::Air);
         voxel::buildUndergroundScene(rebuilt);
-        check(world.sameContents(rebuilt), "scene replaces prior terrain and edits deterministically");
+        check(world.sameContents(rebuilt), "scene deterministically replaces prior edits, including the upper layers and shell");
         voxel::buildUndergroundScene(rebuilt);
-        check(world.sameContents(rebuilt), "rebuilding the sample scene is idempotent");
+        check(world.sameContents(rebuilt), "rebuilding the designed hub is idempotent");
+        if (previous) {
+            for (std::size_t chunk = 0; chunk < World::ChunkCount; ++chunk)
+                seedChangesGeometry |= world.chunk(chunk) != previous->chunk(chunk);
+        }
+        previous = world;
 
         bool closed = true;
-        std::array<int, voxel::BlockCount> counts{};
-        for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
-            for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
-                for (int y = 0; y < World::MaxExclusive.y; ++y) {
-                    const auto block = world.get({x, y, z});
+        std::array<int, voxel::BlockCount> counts{}, exposed{};
+        int highestWater = 0, highestWood = 0, highestCanopy = 0, crownLeaves = 0;
+        glm::ivec3 canopyLow(World::MaxExclusive), canopyHigh(World::Min);
+        std::array<int, 4> branches{};
+        for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
+            for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+                for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+                    const glm::ivec3 position{x, y, z};
+                    const auto block = world.get(position);
                     ++counts[static_cast<std::size_t>(block)];
                     if (x == World::Min.x || x == World::MaxExclusive.x - 1
-                        || z == World::Min.z || z == World::MaxExclusive.z - 1 || y == 0 || y == 15) {
-                        closed &= block == Block::Bedrock;
+                        || z == World::Min.z || z == World::MaxExclusive.z - 1
+                        || y == World::Min.y || y == World::MaxExclusive.y - 1) closed &= block == Block::Bedrock;
+                    if (block == Block::Water) highestWater = std::max(highestWater, y);
+                    if (block == Block::CoalOre || block == Block::CopperOre || block == Block::IronOre || block == Block::Crystal) {
+                        bool visible = false;
+                        for (const auto side : {glm::ivec3(1, 0, 0), {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}})
+                            visible |= world.get(position + side) == Block::Air;
+                        exposed[static_cast<std::size_t>(block)] += visible;
+                    }
+                    if (x < -20 || x > 37 || z < -20 || z > 37) continue;
+                    if (block == Block::Timber && y >= 20) {
+                        highestWood = std::max(highestWood, y);
+                        if (y >= 24) {
+                            branches[0] += x < 0; branches[1] += x > 18;
+                            branches[2] += z < 0; branches[3] += z > 18;
+                        }
+                    }
+                    if ((block == Block::Leaves || block == Block::GlowLeaves) && y >= 29) {
+                        ++crownLeaves;
+                        highestCanopy = std::max(highestCanopy, y);
+                        canopyLow = glm::min(canopyLow, position);
+                        canopyHigh = glm::max(canopyHigh, position);
                     }
                 }
             }
         }
-        check(closed, "bedrock closes every outer face, including floor and roof");
-        check(counts[static_cast<int>(Block::Sand)] == 0,
-              "the underground sample contains no leftover surface sand");
-        check(counts[static_cast<int>(Block::Grass)] >= 40 && counts[static_cast<int>(Block::Grass)] < 220
-              && counts[static_cast<int>(Block::Dirt)] >= 40,
-              "small moss and earth patches add color without covering the cavern floor");
-        for (const Block block : {Block::Limestone, Block::Stone, Block::Slate,
-                                  Block::Timber, Block::Planks, Block::Brick}) {
-            check(counts[static_cast<int>(block)] > 40, "rocks and village materials form substantial structures");
-        }
-        check(counts[static_cast<int>(Block::Lantern)] >= 12, "village and passages have warm lantern landmarks");
+        check(closed, "bedrock seals all six outer faces across the complete sixty-four-block height");
+        const auto substantial = [&](Block block, int minimum) {
+            check(counts[static_cast<std::size_t>(block)] >= minimum,
+                  std::string(voxel::blockName(block)) + " forms substantial hub features (count "
+                  + std::to_string(counts[static_cast<std::size_t>(block)]) + ")");
+        };
+        substantial(Block::Water, 1000); substantial(Block::Leaves, 5000); substantial(Block::GlowLeaves, 150);
+        substantial(Block::Timber, 1000); substantial(Block::Planks, 2500); substantial(Block::RoofTiles, 1000);
+        substantial(Block::Brick, 120); substantial(Block::Lantern, 70); substantial(Block::Grass, 500);
+        check(highestWater >= 25, "falling water reaches far above the lake surface");
+        check(world.get({8, 15, 8}) == Block::Timber && highestWood >= 34 && highestCanopy >= 44,
+              "the heart tree has a substantial central trunk and a tall crown");
+        check(crownLeaves >= 5000 && canopyHigh.x - canopyLow.x >= 40 && canopyHigh.z - canopyLow.z >= 40,
+              "the central canopy spreads broadly above the village");
+        check(std::all_of(branches.begin(), branches.end(), [](int count) { return count >= 10; }),
+              "large tree branches spread in all four directions");
+        for (const auto ore : {Block::CoalOre, Block::CopperOre, Block::IronOre, Block::Crystal})
+            check(exposed[static_cast<std::size_t>(ore)] >= 5, std::string(voxel::blockName(ore)) + " remains visibly exposed");
 
         voxel::Player player;
         check(player.setFeetPosition(world, voxel::VillageSpawn) && player.grounded(),
-              "village spawn has full body clearance and solid ground");
-        for (const glm::ivec3 crystal : {glm::ivec3(0, 8, -10), {2, 9, -10}, {3, 7, -9},
-                                         {-12, 8, 12}, {-27, 5, -12}, {33, 5, -14}}) {
-            check(world.get(crystal) == Block::Crystal
-                  && voxel::isSolid(world.get(crystal - glm::ivec3(0, 1, 0))),
-                  "raised crystal landmarks have solid support");
-            bool exposed = false;
-            for (const glm::ivec3 side : {glm::ivec3(1, 0, 0), {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}) {
-                exposed |= world.get(crystal + side) == Block::Air;
-            }
-            if (!exposed) std::cerr << "Buried crystal: " << crystal.x << ',' << crystal.y << ',' << crystal.z << " seed " << seed << '\n';
-            check(exposed, "crystal landmarks have exposed sides for visible glow and geometry");
-        }
-        for (const glm::ivec3 frame : {glm::ivec3(-16, 4, 5), glm::ivec3(-22, 4, 1),
-                                       glm::ivec3(21, 4, 3), glm::ivec3(28, 4, 7)}) {
-            check(world.get(frame + glm::ivec3(0, 4, 0)) == Block::Timber
-                  && player.setFeetPosition(world, glm::vec3(frame) + glm::vec3(0.5f, 0, 0.5f))
-                  && player.grounded(), "mine frames have a visible overhead beam and clear grounded passage");
-        }
+              "arrival spawn has full player clearance and ground support");
         const auto routes = walkableRoutes(world);
-        int reachableCells = 0;
-        for (const bool reachable : routes) reachableCells += reachable;
-        check(reachableCells > 900, "village and mines form a substantial connected walking area");
-        for (const auto chamber : voxel::OreChambers) {
-            check(routes[index(static_cast<int>(std::floor(chamber.x)), static_cast<int>(std::floor(chamber.z)))],
-                  "every ore chamber is reachable with the player body without jumping");
+        check(std::count(routes.begin(), routes.end(), true) >= 5000, "hub has a substantial connected walking area");
+        const auto buildings = voxel::sceneBuildingPlan();
+        check(buildings.size() == 28, "the hub contains twenty-eight designed buildings");
+        for (std::size_t i = 0; i < buildings.size(); ++i) {
+            const auto& building = buildings[i];
+            const auto door = voxel::hubBuildingDoor(building);
+            const auto footprint = voxel::hubBuildingFootprint(building);
+            const auto room = building.origin + glm::ivec3(footprint.x / 2, 1, footprint.y / 2);
+            checkRoute(world, routes, door, "building " + std::to_string(i + 1) + " door");
+            checkRoute(world, routes, room, "building " + std::to_string(i + 1) + " interior");
+            bool roof = false;
+            for (int y = room.y + 2; y <= building.origin.y + 14; ++y)
+                roof |= world.get({room.x, y, room.z}) == Block::RoofTiles;
+            check(world.get(room - glm::ivec3(0, 1, 0)) == Block::Planks && roof,
+                  "building " + std::to_string(i + 1) + " has a finished interior floor and tiled roof");
         }
-        for (const glm::ivec3 room : {glm::ivec3(-8, 4, -2), glm::ivec3(8, 4, -3), glm::ivec3(11, 4, 11)}) {
-            check(routes[index(room.x, room.z)], "all three building interiors have usable doors");
+        checkRoute(world, routes, glm::ivec3(glm::floor(voxel::ExpeditionDeparture)), "expedition staging hall");
+        // Sample the entire center line of each cardinal bridge, not just its ends.
+        for (int coordinate = -20; coordinate <= 36; ++coordinate) {
+            if (coordinate <= -2 || coordinate >= 18) checkRoute(world, routes, {coordinate, FloorY, 8}, "east/west bridge");
         }
-
-        std::array<int, voxel::BlockCount> reachableOre{};
-        constexpr std::array<glm::ivec3, 4> neighbors{{{1, 0, 0}, {-1, 0, 0}, {0, 0, 1}, {0, 0, -1}}};
-        for (int z = World::Min.z + 1; z < World::MaxExclusive.z - 1; ++z) {
-            for (int x = World::Min.x + 1; x < World::MaxExclusive.x - 1; ++x) {
-                for (int y = 4; y <= 6; ++y) {
-                    const Block block = world.get({x, y, z});
-                    if (block != Block::CoalOre && block != Block::CopperOre
-                        && block != Block::IronOre && block != Block::Crystal) continue;
-                    bool exposed = false;
-                    for (const auto step : neighbors) {
-                        const glm::ivec3 beside = glm::ivec3(x, y, z) + step;
-                        exposed |= routes[index(beside.x, beside.z)] && world.get(beside) == Block::Air;
-                    }
-                    if (exposed) ++reachableOre[static_cast<int>(block)];
-                }
-            }
+        for (int coordinate = -19; coordinate <= 34; ++coordinate) {
+            if (coordinate <= -2 || coordinate >= 18) checkRoute(world, routes, {8, FloorY, coordinate}, "north/south bridge");
         }
-        for (const Block ore : {Block::CoalOre, Block::CopperOre, Block::IronOre, Block::Crystal}) {
-            check(reachableOre[static_cast<int>(ore)] >= 6, "clustered ore is exposed beside walkable ground at reachable height");
-        }
+        check(waterExit(world, routes), "players can jump from the basin up shallow shelves to connected village ground");
     }
-
-    World first(42), second(1337);
-    voxel::buildUndergroundScene(first);
-    voxel::buildUndergroundScene(second);
-    bool different = false;
-    for (std::size_t chunk = 0; chunk < World::ChunkCount; ++chunk) {
-        different |= first.chunk(chunk) != second.chunk(chunk);
-    }
-    check(different, "different seeds change the actual geology, not only world metadata");
+    check(seedChangesGeometry, "different seeds change actual geology and foliage rather than only metadata");
     return failures ? 1 : 0;
 }

@@ -149,8 +149,9 @@ int main()
         feedbackOptions.worldExplicit = false;
         voxel::Game feedback(feedbackOptions);
         feedback.camera.rotate(125.0f, -65.0f);
-        feedback.camera.setPosition({0.5f, 18.5f, 0.5f});
-        feedback.world.set({0, 15, 0}, voxel::Block::Stone);
+        constexpr int worldTop = voxel::World::MaxExclusive.y - 1;
+        feedback.camera.setPosition({0.5f, worldTop + 3.5f, 0.5f});
+        feedback.world.set({0, worldTop, 0}, voxel::Block::Stone);
         const auto beforeRejectedPlace = feedback.world;
         actions = {};
         actions.place = true;
@@ -158,17 +159,17 @@ int main()
         check(feedback.status == "Cannot place: outside world bounds"
               && feedback.history.undoCount() == 0 && feedback.world.sameContents(beforeRejectedPlace),
               "out-of-world placement explains the limit without editing");
-        feedback.world.set({0, 15, 0}, voxel::Block::Air);
-        feedback.world.set({0, 14, 0}, voxel::Block::Stone);
-        feedback.camera.setPosition({0.5f, 15.5f, 0.5f});
+        feedback.world.set({0, worldTop, 0}, voxel::Block::Air);
+        feedback.world.set({0, worldTop - 1, 0}, voxel::Block::Stone);
+        feedback.camera.setPosition({0.5f, worldTop + 0.5f, 0.5f});
         feedback.update(actions);
         check(feedback.status == "Cannot place: move out of the destination cell"
               && feedback.history.undoCount() == 0, "camera overlap gives useful guidance");
-        feedback.camera.setPosition({0.5f, 14.5f, 0.5f});
+        feedback.camera.setPosition({0.5f, worldTop - 0.5f, 0.5f});
         feedback.update(actions);
         check(feedback.status == "Cannot place: aim at a block face from outside it",
               "starting inside a block explains the missing face");
-        feedback.camera.setPosition({1000, 1000, 1000});
+        feedback.camera.setPosition(glm::vec3(voxel::World::MaxExclusive) + glm::vec3(32));
         feedback.update(actions);
         check(feedback.status == "No block within editing reach" && feedback.history.undoCount() == 0,
               "editing empty space explains why nothing changed");

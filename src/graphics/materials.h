@@ -148,6 +148,61 @@ MaterialSurface evaluateMaterial() {
                 }
             }
         }
+    } else if (materialId == 16) {
+        // Water remains an opaque voxel surface. Broad flowing paint and
+        // shifting highlights suggest depth without hiding paths or the banks.
+        vec2 flow = top ? p + vec2(timeSeconds * 0.035, -timeSeconds * 0.025)
+                        : p + vec2(0.0, timeSeconds * 0.65);
+        float body = materialNoise(flow * (top ? vec2(0.45, 0.65) : vec2(3.0, 0.6)));
+        float wave = sin(flow.x * 2.8 + flow.y * 1.7 + body * 1.5);
+        float ripple = sin(flow.x * 3.0 - flow.y * 5.0 + body * 2.0);
+        color = mix(vec3(0.015, 0.20, 0.25), vec3(0.035, 0.52, 0.51), body);
+        if (top) {
+            float glint = smoothstep(0.84, 0.99, wave) * smoothstep(-0.2, 0.8, ripple);
+            color += vec3(0.12, 0.23, 0.21) * glint;
+            slope = vec2(wave * 0.10, ripple * 0.075);
+        } else {
+            // Vertical surfaces read as falling ribbons, not a rotated pond.
+            float ribbon = materialNoise(vec2(flow.x * 9.0, flow.y * 1.3));
+            float foam = smoothstep(0.66, 0.88, ribbon) * (0.55 + 0.45 * body);
+            color = mix(color * 1.25, vec3(0.38, 0.78, 0.76), foam);
+            slope = vec2((ribbon - 0.5) * 0.18, ripple * 0.035);
+        }
+        roughness = 0.16;
+    } else if (materialId == 17 || materialId == 18) {
+        // Paint overlapping leaf shapes into the cubes: a dense tree keeps a
+        // simple silhouette instead of multiplying thousands of small meshes.
+        vec2 leafGrid = p * 1.5;
+        leafGrid.x += mod(floor(leafGrid.y), 2.0) * 0.45;
+        float leafSeed = materialHash(floor(leafGrid) + seed);
+        vec2 q = fract(leafGrid) - 0.5;
+        q.x += q.y * (leafSeed - 0.5) * 0.7;
+        float shape = abs(q.x) * 1.55 + abs(q.y) * 0.85;
+        float leaf = 1.0 - smoothstep(0.30, 0.62, shape);
+        float mass = materialNoise(p * 0.45 + seed);
+        vec3 pigment = mix(vec3(0.09, 0.30, 0.10), vec3(0.22, 0.48, 0.13), mass * 0.75 + leafSeed * 0.25);
+        if (materialId == 18) pigment = mix(vec3(0.06, 0.40, 0.24), vec3(0.10, 0.54, 0.30), mass);
+        color = mix(pigment * 0.82, pigment * (0.95 + q.y * 0.12), leaf);
+        float vein = (1.0 - smoothstep(0.015, 0.045, abs(q.x))) * leaf;
+        color += (materialId == 18 ? vec3(0.015, 0.045, 0.025) : vec3(0.025, 0.04, 0.01)) * vein;
+        color *= 0.91 + 0.16 * broad;
+        slope = q * leaf * 0.08;
+        roughness = 0.85;
+        // A tiny green fill keeps unlit canopy readable. Glow leaves remain
+        // accents within that canopy instead of bright cyan checker tiles.
+        emission = materialId == 18 ? 0.08 + leaf * 0.04 : 0.030;
+    } else if (materialId == 19) {
+        vec2 tiles = p * vec2(2.0, 2.5);
+        tiles.x += mod(floor(tiles.y), 2.0) * 0.5;
+        vec2 f = fract(tiles);
+        float tileSeed = materialHash(floor(tiles) + seed);
+        color = mix(vec3(0.045, 0.12, 0.23), vec3(0.065, 0.27, 0.30), tileSeed);
+        color *= 0.78 + 0.25 * f.y + 0.12 * broad;
+        float edge = min(f.x, 1.0 - f.x);
+        if (edge < 0.04 || f.y < 0.08) color *= 0.48;
+        else color += vec3(0.045, 0.08, 0.10) * (1.0 - smoothstep(0.08, 0.18, f.y));
+        slope = vec2((f.x - 0.5) * 0.22, -0.08);
+        roughness = 0.62;
     } else if (materialId == 11 || materialId == 12) {
         bool timber = materialId == 11;
         if (timber && top) {

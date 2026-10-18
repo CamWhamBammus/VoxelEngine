@@ -372,6 +372,15 @@ void verifyRendererCaches(int width, int height)
     world = replacement;
     checkBoth(world, originalTriangles);
     checkBoth(world, originalTriangles);
+    // Both sides of a vertical seam must refresh in the taller chunk grid.
+    world.set({2, 31, 2}, Block::Planks);
+    checkBoth(world, originalTriangles + 12);
+    world.set({2, 32, 2}, Block::Brick);
+    checkBoth(world, originalTriangles + 20);
+    world.set({2, 31, 2}, Block::Air);
+    checkBoth(world, originalTriangles + 12);
+    world.set({2, 32, 2}, Block::Air);
+    checkBoth(world, originalTriangles);
     checkOpenGl();
     std::cout << "Renderer caches passed: multiple views, seam edits, switching and replacing worlds\n";
 }
@@ -400,9 +409,9 @@ void verifyUndergroundMaterials(int width, int height)
     glActiveTexture(GL_TEXTURE3);
     constexpr int patchSize = 128;
     std::array<unsigned char, patchSize * patchSize * 4> pixels{};
-    const auto sample = [&](Block material) {
+    const auto sample = [&](Block material, float seconds = 0.0f) {
         world.set({0, 6, 0}, material);
-        renderer.render(world, camera, width, height, false, true);
+        renderer.render(world, camera, width, height, false, true, seconds);
         checkOpenGl();
         GLint activeTexture = 0, texture = 0, lightTexture = 0;
         glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
@@ -479,6 +488,26 @@ void verifyUndergroundMaterials(int width, int height)
         throw std::runtime_error("Replacing a crystal retained stale decorative geometry");
     }
 
+    const auto water = sample(Block::Water);
+    const auto stillWater = pixels;
+    sample(Block::Water, 1.5f);
+    std::size_t movingPixels = 0;
+    for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
+        movingPixels += std::abs(int(pixels[pixel + 1]) - int(stillWater[pixel + 1])) > 3;
+    }
+    if (water.y < water.x + 20 || water.z < water.x + 20
+        || movingPixels < patchSize || renderer.triangleCount() != 12) {
+        throw std::runtime_error("Water lost its rendered turquoise surface or flowing ribbons");
+    }
+    const auto leaves = sample(Block::Leaves);
+    const auto glowLeaves = sample(Block::GlowLeaves);
+    const auto roof = sample(Block::RoofTiles);
+    if (leaves.y < leaves.x + 10 || leaves.y < leaves.z + 5
+        || glowLeaves.y < leaves.y + 20 || glowLeaves.z < glowLeaves.x + 15
+        || roof.z < roof.x + 8 || roof.y < roof.x + 5) {
+        throw std::runtime_error("Foliage glow or blue-teal roof materials lost their distinct colors");
+    }
+
     // Light edits must refresh the source cache, even with the same renderer.
     world.set({2, 7, 3}, Block::Lantern);
     const auto warm = sample(Block::Stone);
@@ -489,6 +518,20 @@ void verifyUndergroundMaterials(int width, int height)
     }
     const auto blocked = sample(Block::Stone);
     for (int x = 1; x <= 3; ++x) {
+        for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Water);
+    }
+    const auto throughWater = sample(Block::Stone);
+    if (glm::length(throughWater - warm) > 2.0f) {
+        throw std::runtime_error("Non-solid water incorrectly cast an opaque voxel shadow");
+    }
+    for (int x = 1; x <= 3; ++x) {
+        for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Leaves);
+    }
+    const auto throughLeaves = sample(Block::Stone);
+    if (glm::length(throughLeaves - blocked) > 2.0f) {
+        throw std::runtime_error("Solid foliage failed to block lantern light");
+    }
+    for (int x = 1; x <= 3; ++x) {
         for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Air);
     }
     const auto reopened = sample(Block::Stone);
@@ -498,10 +541,13 @@ void verifyUndergroundMaterials(int width, int height)
     }
     world.set({2, 7, 3}, Block::Crystal);
     const auto cool = sample(Block::Stone);
+    world.set({2, 7, 3}, Block::GlowLeaves);
+    const auto green = sample(Block::Stone);
     world.set({2, 7, 3}, Block::Air);
     const auto removed = sample(Block::Stone);
     if (warm.x < stone.x + 5 || warm.x - warm.z < stone.x - stone.z + 8
         || cool.z < stone.z + 5 || cool.z - cool.x < stone.z - stone.x + 8
+        || green.y < stone.y + 5 || green.y - green.x < stone.y - stone.x + 5
         || glm::length(removed - stone) > 1.0f) {
         throw std::runtime_error("Underground light colors or edit invalidation failed");
     }
@@ -549,9 +595,10 @@ void verifyUndergroundMaterials(int width, int height)
 
 void verifyStableWorldLighting(int width, int height)
 {
-    // Repeat across a chunk boundary: the second target is x=15 and its lamp
-    // is x=17, so visible lighting must also include neighboring chunk sources.
-    for (const int originX : {0, Chunk::Size - 1}) {
+    // Repeat across horizontal and vertical chunk seams. The upper target is
+    // at (15,31,0), while its lamp is at (17,32,3) in both neighboring axes.
+    for (const auto location : std::array<glm::ivec2, 3>{{{0, 0}, {Chunk::Size - 1, 0}, {Chunk::Size - 1, 25}}}) {
+        const int originX = location.x;
         World world;
         for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
             for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
@@ -560,7 +607,7 @@ void verifyStableWorldLighting(int width, int height)
                 }
             }
         }
-        const glm::ivec3 origin(originX, 0, 0);
+        const glm::ivec3 origin(originX, location.y, 0);
         const glm::ivec3 lamp = origin + glm::ivec3(2, 7, 3);
         world.set(origin + glm::ivec3(0, 6, 0), Block::Stone);
         world.set(lamp, Block::Lantern);
@@ -586,7 +633,7 @@ void verifyStableWorldLighting(int width, int height)
         constexpr int patchSize = 24;
         std::array<unsigned char, patchSize * patchSize * 4> pixels{};
         const auto sample = [&](float distance) {
-            camera.setPosition({originX + 0.5f, 6.5f, distance});
+            camera.setPosition({originX + 0.5f, origin.y + 6.5f, distance});
             renderer.render(world, camera, width, height, false, true);
             glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
                          patchSize, patchSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
@@ -720,6 +767,22 @@ void verifyBlockRelief(int width, int height)
         || std::any_of(mined.begin(), mined.end(), [](float value) { return value < 0.99999f; })) {
         throw std::runtime_error("Mining an ore block retained stale relief geometry");
     }
+    // Decorative meshes also depend on the chunk immediately above them.
+    world.set({0, 31, 0}, Block::Crystal);
+    depth(true);
+    const auto crystalTriangles = renderer.triangleCount();
+    world.set({0, 32, 0}, Block::Planks);
+    depth(true);
+    depth(true, &freshRenderer);
+    if (renderer.triangleCount() != freshRenderer.triangleCount()
+        || renderer.triangleCount() >= crystalTriangles + 12) {
+        throw std::runtime_error("Upper chunk edit failed to rebuild the covered crystal details");
+    }
+    world.set({0, 32, 0}, Block::Air);
+    depth(true);
+    if (renderer.triangleCount() != crystalTriangles) {
+        throw std::runtime_error("Upper chunk edit failed to restore crystal details");
+    }
     std::cout << "Block relief passed: real depth, shallow bounds, neighbor cover, reveal and mining\n";
 }
 
@@ -768,6 +831,7 @@ void verifyGpuResources()
     for (std::size_t id = 1; id < BlockCount; ++id) {
         chunk.set(0, 0, 0, static_cast<Block>(id));
         const auto materialMesh = buildMesh(chunk);
+        if (materialMesh.indices.empty()) throw std::runtime_error("Renderable material produced an empty mesh");
         for (const auto& vertex : materialMesh.vertices) {
             if (vertex.material != static_cast<float>(id)) {
                 throw std::runtime_error("Voxel material ID was lost while meshing");

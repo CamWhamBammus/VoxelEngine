@@ -109,13 +109,15 @@ std::optional<std::size_t> chunkIndex(glm::ivec3 position)
         return std::nullopt;
     }
     const int x = chunkCoordinate(position.x);
+    const int y = chunkCoordinate(position.y);
     const int z = chunkCoordinate(position.z);
-    return static_cast<std::size_t>((z + World::Radius) * World::Width + x + World::Radius);
+    return static_cast<std::size_t>(x + World::Radius
+        + World::Width * (z + World::Radius + World::Width * y));
 }
 
 } // namespace
 
-World::World(std::uint32_t seed) : seed_(seed)
+World::World(std::uint32_t seed) : seed_(seed), chunks_(ChunkCount)
 {
     for (std::size_t index = 0; index < ChunkCount; ++index) {
         generateTerrain(chunks_[index], origin(index), seed);
@@ -134,8 +136,9 @@ glm::ivec3 World::origin(std::size_t index) const
         throw std::out_of_range("World chunk index is out of range");
     }
     const int x = static_cast<int>(index % Width) - Radius;
-    const int z = static_cast<int>(index / Width) - Radius;
-    return {x * Chunk::Size, 0, z * Chunk::Size};
+    const int z = static_cast<int>((index / Width) % Width) - Radius;
+    const int y = static_cast<int>(index / (Width * Width));
+    return {x * Chunk::Size, y * Chunk::Size, z * Chunk::Size};
 }
 
 Block World::get(glm::ivec3 worldPosition) const

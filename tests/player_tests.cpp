@@ -46,6 +46,15 @@ int main()
     check(!player.overlapsBlock({0, 0, 0}) && !player.overlapsBlock({1, 1, 0})
         && !player.overlapsBlock({0, 3, 0}), "touching or separated blocks do not overlap the body");
 
+    world.set({0, 1, 0}, Block::Water);
+    world.set({0, 2, 0}, Block::Water);
+    check(player.setFeetPosition(world, {0.5f, 1.0f, 0.5f}) && player.grounded(),
+          "visible water does not collide with the player or replace ground support");
+    world.set({0, 1, 0}, Block::Leaves);
+    check(!player.setFeetPosition(world, {0.5f, 1.0f, 0.5f}), "leaf blocks still collide");
+    world.set({0, 1, 0}, Block::Air);
+    world.set({0, 2, 0}, Block::Air);
+
     for (int y = 1; y <= 4; ++y) {
         for (int z = 0; z <= 6; ++z) {
             world.set({4, y, z}, Block::Stone);
@@ -82,13 +91,13 @@ int main()
     player.move(world, {0, 0, -20});
     check(near(player.feetPosition().z, 11.3f), "negative z movement stops at the body edge");
     player.move(world, {1000, 0, 1000});
-    check(near(player.feetPosition().x, 47.7f) && near(player.feetPosition().z, 47.7f),
+    check(near(player.feetPosition().x, 79.7f) && near(player.feetPosition().z, 79.7f),
         "positive world edge keeps the full body inside");
     player.move(world, {-1000, 0, -1000});
-    check(near(player.feetPosition().x, -31.7f) && near(player.feetPosition().z, -31.7f),
+    check(near(player.feetPosition().x, -63.7f) && near(player.feetPosition().z, -63.7f),
         "negative world edge keeps the full body inside");
-    check(!player.setFeetPosition(world, {-32, 1, 0})
-        && !player.setFeetPosition(world, {48, 1, 0}), "teleport rejects positions across world edges");
+    check(!player.setFeetPosition(world, {-64, 1, 0})
+        && !player.setFeetPosition(world, {80, 1, 0}), "teleport rejects positions across world edges");
 
     const auto beforeInvalidMove = player.feetPosition();
     for (const float invalid : {std::numeric_limits<float>::infinity(),
@@ -98,7 +107,7 @@ int main()
             && player.feetPosition() == beforeInvalidMove, "nonfinite movement and positions are ignored");
     }
     player.move(world, {std::numeric_limits<float>::max(), 0, 0});
-    check(near(player.feetPosition().x, 47.7f), "extreme finite sweep remains bounded by the world");
+    check(near(player.feetPosition().x, 79.7f), "extreme finite sweep remains bounded by the world");
 
     check(player.setFeetPosition(world, {20.5f, -2, 20.5f}), "feet may be below the world's editable height");
     player.move(world, {0, -20, 0});
@@ -202,10 +211,10 @@ int main()
     const auto nearbySpawn = player.feetPosition();
     player.spawn(world, {20, 20});
     check(player.feetPosition() == nearbySpawn, "repeated spawn chooses the same safe location");
-    world.set({20, 15, 20}, Block::Stone);
-    check(player.spawn(world, {20, 20}) && near(player.feetPosition().y, 16.0f)
+    world.set({20, 63, 20}, Block::Stone);
+    check(player.spawn(world, {20, 20}) && near(player.feetPosition().y, 64.0f)
         && player.grounded(), "spawn can stand above a player-built column at maximum world height");
-    check(!player.overlapsBlock({20, 15, 20}), "spawned body touches support without intersecting it");
+    check(!player.overlapsBlock({20, 63, 20}), "spawned body touches support without intersecting it");
 
     player.spawn(world, {10, 30});
     player.update(world, {}, forward, true, false, 0.1f);

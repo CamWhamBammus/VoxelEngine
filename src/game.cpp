@@ -88,7 +88,7 @@ Game::Game(const Options& options)
         inventory_[static_cast<std::size_t>(Block::Lantern)] = 8;
         selectedBlock = Block::Planks;
         if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
-        status = "Explore the village and ore tunnels. Mine blocks and try building";
+        status = "Explore Glowroot Haven: tree island, waterfront homes, and the north expedition gate";
     }
     findTarget();
 }
@@ -96,7 +96,7 @@ Game::Game(const Options& options)
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
     if (!editorMode_ && !updatePlay(actions, deltaSeconds)) return;
-    if (actions.selectedBlock && isSolid(*actions.selectedBlock) && *actions.selectedBlock != Block::Bedrock) {
+    if (actions.selectedBlock && isRenderable(*actions.selectedBlock) && *actions.selectedBlock != Block::Bedrock) {
         selectedBlock = *actions.selectedBlock;
     } else if (actions.materialStep != 0) {
         const auto current = std::find(PlaceableBlocks.begin(), PlaceableBlocks.end(), selectedBlock);
@@ -256,7 +256,7 @@ void Game::editTarget(const InputActions& actions)
             status = "Cannot place: reset the camera with R";
             return;
         }
-        if (!editorMode_ && player.overlapsBlock(placement.position)) {
+        if (!editorMode_ && isSolid(selectedBlock) && player.overlapsBlock(placement.position)) {
             status = "Cannot place: your body is in the destination cell";
             return;
         }
@@ -277,13 +277,13 @@ bool Game::hasUnsavedChanges() const
 
 int Game::blockCount(Block block) const
 {
-    return isSolid(block) ? inventory_[static_cast<std::size_t>(block)] : 0;
+    return isRenderable(block) ? inventory_[static_cast<std::size_t>(block)] : 0;
 }
 
 std::string Game::playStatusText(bool captured, bool showHelp) const
 {
     std::ostringstream text;
-    text << "UNDERGROUND VILLAGE | EXPLORATION SAMPLE";
+    text << "GLOWROOT HAVEN | VILLAGE HUB";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
     text << "\nSELECTED " << blockName(selectedBlock) << " x" << blockCount(selectedBlock);
     if (captured && target) text << " | LOOKING AT " << blockName(world.get(target->position));
@@ -299,8 +299,8 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
              << " | COPPER " << blockCount(Block::CopperOre)
              << " | IRON " << blockCount(Block::IronOre)
              << " | CRYSTAL " << blockCount(Block::Crystal)
-             << "\nFOLLOW THE LANTERNS INTO THE MINES AND BACK HOME"
-             << "\nSAMPLE RESETS ON LAUNCH | UPGRADES ARE NOT IMPLEMENTED";
+             << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
+             << "\nHUB RESETS ON LAUNCH | EXPEDITIONS AND BUILDING SERVICES COMING LATER";
     }
     return text.str();
 }

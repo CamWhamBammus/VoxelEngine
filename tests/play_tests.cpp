@@ -139,8 +139,8 @@ int main()
             const auto feet = expedition.player.feetPosition();
             expedition.update(actions, 1000.0f);
             check(expedition.player.feetPosition() == feet, "exploration has no challenge countdown or time limit");
-            check(expedition.statusText(0, 0, 0, 0, true, true).find("UPGRADES ARE NOT IMPLEMENTED") != std::string::npos,
-                  "sample controls accurately identify the current development scope");
+            check(expedition.statusText(0, 0, 0, 0, true, true).find("EXPEDITIONS AND BUILDING SERVICES COMING LATER") != std::string::npos,
+                  "hub controls accurately identify the current development scope");
         }
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

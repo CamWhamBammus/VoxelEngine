@@ -42,7 +42,7 @@ Coverage naiveCoverage(const Chunk& chunk, glm::ivec3 origin, const Sampler& out
         for (int z = 0; z < Chunk::Size; ++z) {
             for (int x = 0; x < Chunk::Size; ++x) {
                 const Block block = chunk.get(x, y, z);
-                if (!voxel::isSolid(block)) continue;
+                if (!voxel::isRenderable(block)) continue;
                 const glm::ivec3 local{x, y, z};
                 for (int axis = 0; axis < 3; ++axis) {
                     for (const int sign : {-1, 1}) {
@@ -51,7 +51,7 @@ Coverage naiveCoverage(const Chunk& chunk, glm::ivec3 origin, const Sampler& out
                         const Block adjacent = Chunk::inBounds(neighbor.x, neighbor.y, neighbor.z)
                             ? chunk.get(neighbor.x, neighbor.y, neighbor.z)
                             : (outside ? outside(origin + neighbor) : Block::Air);
-                        if (!voxel::isSolid(adjacent)) {
+                        if (adjacent == Block::Air || (adjacent == Block::Water && block != Block::Water)) {
                             ++result[faceKey(origin + local, axis, sign, block)];
                         }
                     }
@@ -84,15 +84,13 @@ Coverage meshCoverage(const voxel::MeshData& mesh, glm::ivec3 origin, const std:
         const int sign = reference.normal[axis] > 0.0f ? 1 : -1;
         const int u = (axis + 1) % 3;
         const int v = (axis + 2) % 3;
-        Block material = Block::Air;
-        for (const auto candidate : {Block::Grass, Block::Dirt, Block::Stone, Block::Sand}) {
-            if (reference.color == voxel::blockColor(candidate)) material = candidate;
-        }
-        valid = voxel::isSolid(material);
+        const auto material = static_cast<Block>(static_cast<int>(reference.material));
+        valid = voxel::isRenderable(material) && reference.color == voxel::blockColor(material);
         std::array<glm::ivec3, 4> corners{};
         for (std::size_t corner = 0; corner < 4; ++corner) {
             const auto& vertex = mesh.vertices[first + corner];
-            valid &= vertex.normal == reference.normal && vertex.color == reference.color;
+            valid &= vertex.normal == reference.normal && vertex.color == reference.color
+                && vertex.material == reference.material;
             for (int component = 0; component < 3; ++component) {
                 const float coordinate = vertex.position[component];
                 const bool integral = std::isfinite(coordinate) && std::floor(coordinate) == coordinate
@@ -214,6 +212,19 @@ int main()
                     if (glm::ivec3(x, y, z)[axis] == 7) slab.set(x, y, z, Block::Sand);
         check(verify(slab, "slab").indices.size() == 36, "flat slab has six quads on every axis");
     }
+    Chunk water;
+    fill(water, Block::Water);
+    check(verify(water, "water surface").indices.size() == 36, "water merges into six visible outer surfaces");
+    check(verify(water, "continuous neighboring water", {}, [](glm::ivec3) { return Block::Water; }).indices.empty(),
+          "water across chunk boundaries has no internal faces");
+    for (int axis = 0; axis < 3; ++axis) {
+        Chunk bank;
+        bank.set(5, 5, 5, Block::Stone);
+        glm::ivec3 adjacent(5); ++adjacent[axis];
+        bank.set(adjacent.x, adjacent.y, adjacent.z, Block::Water);
+        check(verify(bank, "solid-water bank").indices.size() == 66,
+              "solid banks remain visible next to water without overlapping opposite water faces");
+    }
     Chunk full;
     fill(full, Block::Grass);
     const glm::ivec3 origin(-48, -32, -16);
@@ -260,7 +271,7 @@ int main()
             for (int z = 0; z < Chunk::Size; ++z)
                 for (int x = 0; x < Chunk::Size; ++x)
                     if (random() % 100 < density)
-                        chunk.set(x, y, z, sample % 2 ? Block::Stone : static_cast<Block>(1 + random() % 4));
+                        chunk.set(x, y, z, sample % 2 ? Block::Stone : static_cast<Block>(1 + random() % (voxel::BlockCount - 1)));
         const auto outside = [](glm::ivec3 position) {
             return (position.x + 3 * position.y + 7 * position.z) % 4 == 0 ? Block::Stone : Block::Air;
         };

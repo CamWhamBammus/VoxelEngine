@@ -51,14 +51,17 @@ int main()
         voxel::Block::Sand, voxel::Block::Limestone, voxel::Block::Slate,
         voxel::Block::CoalOre, voxel::Block::CopperOre, voxel::Block::IronOre,
         voxel::Block::Crystal, voxel::Block::Timber, voxel::Block::Planks,
-        voxel::Block::Brick, voxel::Block::Lantern, voxel::Block::Bedrock
+        voxel::Block::Brick, voxel::Block::Lantern, voxel::Block::Bedrock,
+        voxel::Block::Water, voxel::Block::Leaves, voxel::Block::GlowLeaves, voxel::Block::RoofTiles
     };
     check(voxel::BlockCount == expectedMaterials.size(), "block count covers every stored material");
     for (std::size_t value = 0; value < expectedMaterials.size(); ++value) {
         const auto block = expectedMaterials[value];
         check(static_cast<std::size_t>(block) == value, "material IDs must remain save-compatible");
         check(voxel::isValidBlock(block), "every declared material is valid");
-        check(voxel::isSolid(block) == (block != voxel::Block::Air), "only air is not solid");
+        check(voxel::isSolid(block) == (block != voxel::Block::Air && block != voxel::Block::Water),
+              "air and water have no collision");
+        check(voxel::isRenderable(block) == (block != voxel::Block::Air), "every material except air renders");
         check(!voxel::blockName(block).empty() && voxel::blockName(block) != "Unknown",
               "every declared material has a display name");
         const auto color = voxel::blockColor(block);
@@ -69,14 +72,14 @@ int main()
     }
     for (unsigned int value = voxel::BlockCount; value < 256; ++value) {
         const auto invalid = static_cast<voxel::Block>(value);
-        check(!voxel::isValidBlock(invalid) && !voxel::isSolid(invalid), "unknown block IDs must not be solid");
+        check(!voxel::isValidBlock(invalid) && !voxel::isSolid(invalid) && !voxel::isRenderable(invalid), "unknown block IDs must not be solid");
         check(!chunk.set(0, 0, 0, invalid), "unknown block IDs must not enter storage");
         check(voxel::blockName(invalid) == "Unknown", "unknown block names must be safe");
     }
     check(chunk.get(0, 0, 0) == voxel::Block::Grass, "invalid material writes preserve contents");
     std::array<bool, voxel::BlockCount> inPalette{};
     for (const auto block : voxel::PlaceableBlocks) {
-        check(voxel::isValidBlock(block) && voxel::isSolid(block), "palette contains only valid solids");
+        check(voxel::isValidBlock(block) && voxel::isRenderable(block), "palette contains only valid visible blocks");
         check(voxel::blockName(block) != "Unknown", "palette has display names");
         const auto value = static_cast<std::size_t>(block);
         check(!inPalette[value], "palette contains no duplicate materials");

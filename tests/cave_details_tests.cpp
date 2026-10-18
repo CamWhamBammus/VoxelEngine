@@ -18,7 +18,9 @@ void clear(voxel::World& world)
 {
     for (int z = voxel::World::Min.z; z < voxel::World::MaxExclusive.z; ++z) {
         for (int x = voxel::World::Min.x; x < voxel::World::MaxExclusive.x; ++x) {
-            for (int y = 0; y < voxel::Chunk::Size; ++y) world.set({x, y, z}, voxel::Block::Air);
+            for (int y = voxel::World::Min.y; y < voxel::World::MaxExclusive.y; ++y) {
+                world.set({x, y, z}, voxel::Block::Air);
+            }
         }
     }
 }
@@ -71,7 +73,8 @@ int main()
 {
     using voxel::Block;
     using voxel::World;
-    constexpr std::size_t centerChunk = 12; // Origin (0, 0, 0) in the 5x5 chunk grid.
+    constexpr std::size_t centerChunk = World::Radius * (World::Width + 1);
+    constexpr std::size_t layer = World::Width * World::Width;
     constexpr std::array<glm::ivec3, 6> directions{{
         {-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1},
     }};
@@ -165,6 +168,38 @@ int main()
         for (int x = 0; x < 16; ++x) world.set({x, 8, z}, Block::Limestone);
     }
     check(voxel::buildCaveDetails(world, centerChunk).indices.empty(), "low ceilings never receive stalactites");
+    clear(world);
+
+    // An upper chunk starts at local Y=0 but still represents a high ceiling.
+    for (int z = 0; z < 16; ++z) {
+        for (int x = 0; x < 16; ++x) world.set({x, 32, z}, Block::Limestone);
+    }
+    const auto highCeiling = voxel::buildCaveDetails(world, centerChunk + 2 * layer);
+    check(!highCeiling.indices.empty(), "upper chunk ceilings use world height for stalactites");
+    validate(highCeiling, world.origin(centerChunk + 2 * layer));
+    for (int z = 0; z < 16; ++z) {
+        for (int x = 0; x < 16; ++x) world.set({x, 31, z}, Block::Planks);
+    }
+    check(voxel::buildCaveDetails(world, centerChunk + 2 * layer).indices.empty(),
+          "a lower neighboring chunk suppresses hidden ceiling details");
+    clear(world);
+
+    const glm::ivec3 upperCrystal{5, 31, 5};
+    world.set(upperCrystal, Block::Crystal);
+    for (const auto direction : directions) world.set(upperCrystal + direction, Block::Planks);
+    world.set(upperCrystal + glm::ivec3(0, 1, 0), Block::Air);
+    check(!voxel::buildCaveDetails(world, centerChunk + layer).indices.empty(),
+          "crystal tops can extend into an upper neighboring chunk");
+    world.set(upperCrystal + glm::ivec3(0, 1, 0), Block::Leaves);
+    check(voxel::buildCaveDetails(world, centerChunk + layer).indices.empty(),
+          "foliage in the upper neighboring chunk covers crystal tops");
+    clear(world);
+
+    for (int z = 0; z < 16; ++z) {
+        for (int x = 0; x < 16; ++x) world.set({x, 35, z}, (x + z) % 3 ? Block::Leaves : Block::GlowLeaves);
+    }
+    check(voxel::buildCaveDetails(world, centerChunk + 2 * layer).indices.empty(),
+          "dense leaf canopies do not multiply decorative geometry");
     clear(world);
 
     // Stress the caps with hundreds of eligible anchors in one chunk.

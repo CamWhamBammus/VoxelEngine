@@ -63,13 +63,13 @@ MeshData buildMesh(const Chunk& chunk, glm::ivec3 origin,
                         local[u] = column;
                         local[v] = row;
                         const Block block = chunk.get(local.x, local.y, local.z);
-                        if (!isSolid(block)) continue;
+                        if (!isRenderable(block)) continue;
                         glm::ivec3 neighbor = local;
                         neighbor[axis] += sign;
                         const Block adjacent = Chunk::inBounds(neighbor.x, neighbor.y, neighbor.z)
                             ? chunk.get(neighbor.x, neighbor.y, neighbor.z)
                             : (sampleOutside ? sampleOutside(origin + neighbor) : Block::Air);
-                        if (!isSolid(adjacent)) {
+                        if (!occludes(adjacent, block)) {
                             mask[column + row * Chunk::Size] = block;
                         }
                     }
@@ -78,7 +78,7 @@ MeshData buildMesh(const Chunk& chunk, glm::ivec3 origin,
                 for (int row = 0; row < Chunk::Size; ++row) {
                     for (int column = 0; column < Chunk::Size;) {
                         const Block block = mask[column + row * Chunk::Size];
-                        if (!isSolid(block)) {
+                        if (!isRenderable(block)) {
                             ++column;
                             continue;
                         }

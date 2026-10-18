@@ -18,7 +18,8 @@ struct RayHit {
 // Traverses voxels in world space; direction need not be normalized. Exact
 // edge/corner crossings advance all tied axes, skipping cells touched only at
 // an edge or point. The hit normal uses X, then Y, then Z to break these ties.
-// A solid starting voxel returns distance zero and a zero normal.
+// Visible materials (including water) can be selected. A visible starting
+// voxel returns distance zero and a zero normal.
 std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance,
                               const std::function<Block(glm::ivec3)>& sample);
 

@@ -48,6 +48,7 @@ uniform vec3 cameraPosition;
 uniform vec3 cameraForward;
 uniform int underground;
 uniform int decorative;
+uniform float timeSeconds;
 uniform int lightCount;
 uniform int lightOffset;
 uniform sampler2D lightSources;
@@ -169,14 +170,22 @@ void main() {
         float strongest = max(pointLight.r, max(pointLight.g, pointLight.b));
         light += pointLight / max(1.0, strongest) * mix(0.65, 1.0, ao);
         lit = color * light + highlight;
-        fogColor = mix(vec3(0.018, 0.105, 0.14), vec3(0.065, 0.032, 0.13),
-                       smoothstep(4.0, 12.0, worldPosition.y));
-        fog = smoothstep(12.0, 55.0, cameraDistance) * 0.88;
+        fogColor = mix(vec3(0.012, 0.035, 0.043), vec3(0.025, 0.027, 0.044),
+                       smoothstep(8.0, 46.0, worldPosition.y));
+        fog = smoothstep(35.0, 135.0, cameraDistance) * 0.55;
     } else {
         float sun = max(dot(normal, normalize(vec3(-0.6, 1.0, 0.3))), 0.0);
         lit = color * (0.45 + 0.55 * sun);
         fogColor = vec3(0.48, 0.70, 0.90);
         fog = smoothstep(55.0, 150.0, cameraDistance);
+    }
+    if (materialId == 16) {
+        // A painted cave reflection keeps opaque water legible without needing
+        // a second scene render. Grazing angles catch the cool ceiling color.
+        float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
+        vec3 reflection = mix(vec3(0.018, 0.16, 0.19), vec3(0.10, 0.25, 0.31),
+                              clamp(normal.y * 0.5 + 0.5, 0.0, 1.0));
+        lit = mix(lit, reflection, 0.24 + 0.44 * fresnel);
     }
     if (underground != 0) {
         // HDR composition owns exposure and gamma. Alpha marks luminous
@@ -246,7 +255,7 @@ void WorldRenderer::uploadLights(const World& world)
 }
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
-                           bool wireframe, bool underground)
+                           bool wireframe, bool underground, float timeSeconds)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -257,10 +266,14 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         rebuild[index] = true;
         // Neighbor faces can change too. Comparing chunk contents also handles
         // switching worlds or assigning a saved world to the same object.
-        if (index % World::Width > 0) rebuild[index - 1] = true;
-        if (index % World::Width + 1 < World::Width) rebuild[index + 1] = true;
-        if (index >= World::Width) rebuild[index - World::Width] = true;
-        if (index + World::Width < meshes_.size()) rebuild[index + World::Width] = true;
+        constexpr std::size_t layer = World::Width * World::Width;
+        const auto x = index % World::Width, z = index / World::Width % World::Width;
+        if (x > 0) rebuild[index - 1] = true;
+        if (x + 1 < World::Width) rebuild[index + 1] = true;
+        if (z > 0) rebuild[index - World::Width] = true;
+        if (z + 1 < World::Width) rebuild[index + World::Width] = true;
+        if (index >= layer) rebuild[index - layer] = true;
+        if (index + layer < meshes_.size()) rebuild[index + layer] = true;
     }
     bool changed = false;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
@@ -284,6 +297,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         constexpr auto size = World::MaxExclusive - World::Min;
         std::vector<unsigned char> voxels(size.x * size.y * size.z);
         std::vector<bool> crystalCovered(voxels.size());
+        std::vector<bool> foliageCovered(voxels.size());
         for (std::size_t index = 0; index < World::ChunkCount; ++index) {
             const auto origin = world.origin(index);
             const auto& chunk = world.chunk(index);
@@ -295,25 +309,28 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         const auto local = position - World::Min;
                         // OpenGL 3D images run x, then y, then z (unlike Chunk).
                         voxels[local.x + size.x * (local.y + size.y * local.z)] = isSolid(block) ? 255 : 0;
-                        if (block != Block::Lantern && block != Block::Crystal) continue;
+                        if (block != Block::Lantern && block != Block::Crystal && block != Block::GlowLeaves) continue;
                         bool exposed = false;
                         for (const auto offset : {glm::ivec3(1,0,0), glm::ivec3(-1,0,0),
                              glm::ivec3(0,1,0), glm::ivec3(0,-1,0), glm::ivec3(0,0,1), glm::ivec3(0,0,-1)}) {
                             exposed |= !isSolid(world.get(position + offset));
                         }
                         if (!exposed) continue;
-                        if (block == Block::Crystal) {
-                            // Adjacent crystal blocks share a fixed source at an
-                            // actual exposed block, keeping dense veins cheap.
+                        if (block == Block::Crystal || block == Block::GlowLeaves) {
+                            // Dense crystals and glowing foliage share fixed
+                            // sources at actual exposed blocks. Foliage uses a
+                            // wider spacing so a canopy cannot flood the light list.
                             // This world-order grouping never follows the camera;
                             // every lantern still keeps its own light.
-                            if (crystalCovered[local.x + size.x * (local.y + size.y * local.z)]) continue;
-                            for (int dz = -1; dz <= 1; ++dz) {
-                                for (int dy = -1; dy <= 1; ++dy) {
-                                    for (int dx = -1; dx <= 1; ++dx) {
+                            auto& covered = block == Block::Crystal ? crystalCovered : foliageCovered;
+                            const int spacing = block == Block::Crystal ? 1 : 3;
+                            if (covered[local.x + size.x * (local.y + size.y * local.z)]) continue;
+                            for (int dz = -spacing; dz <= spacing; ++dz) {
+                                for (int dy = -spacing; dy <= spacing; ++dy) {
+                                    for (int dx = -spacing; dx <= spacing; ++dx) {
                                         const auto neighbor = local + glm::ivec3(dx, dy, dz);
                                         if (World::contains(position + glm::ivec3(dx, dy, dz))) {
-                                            crystalCovered[neighbor.x + size.x * (neighbor.y + size.y * neighbor.z)] = true;
+                                            covered[neighbor.x + size.x * (neighbor.y + size.y * neighbor.z)] = true;
                                         }
                                     }
                                 }
@@ -321,8 +338,9 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         }
                         lights_.push_back({glm::vec3(position) + 0.5f,
                             block == Block::Lantern ? glm::vec3(1.15f, 0.58f, 0.18f)
-                                                   : glm::vec3(0.10f, 0.85f, 1.15f),
-                            block == Block::Lantern ? 11.0f : 8.0f});
+                            : block == Block::Crystal ? glm::vec3(0.10f, 0.85f, 1.15f)
+                                                      : glm::vec3(0.08f, 0.48f, 0.31f),
+                            block == Block::Lantern ? 11.0f : block == Block::Crystal ? 8.0f : 7.0f});
                     }
                 }
             }
@@ -360,6 +378,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setVec3("cameraForward", camera.forward());
     shader_.setInt("underground", underground);
     shader_.setInt("decorative", 0);
+    shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));

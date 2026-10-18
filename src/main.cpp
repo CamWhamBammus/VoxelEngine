@@ -61,7 +61,8 @@ int main(int argc, char** argv)
                 glfwWaitEventsTimeout(0.05); // Avoid busy-looping when minimized.
                 continue;
             }
-            renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode());
+            renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
+                            static_cast<float>(now));
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured()) {

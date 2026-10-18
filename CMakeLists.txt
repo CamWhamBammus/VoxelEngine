@@ -19,6 +19,7 @@ endfunction()
 add_library(VoxelCore
     src/game.cpp
     src/scene.cpp
+    src/hub_buildings.cpp
     src/player.cpp
     src/camera.cpp
     src/world.cpp

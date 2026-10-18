@@ -56,18 +56,18 @@ int main()
     for (const std::uint32_t seed : {0u, 1337u, 0x89abcdefu}) {
         voxel::World source(seed);
         source.takeDirtyChunks();
-        source.set({-32, 0, -32}, voxel::Block::Air);
+        source.set({-64, 0, -64}, voxel::Block::Air);
         source.set({-1, 15, -1}, voxel::Block::Grass);
         source.set({0, 15, 0}, voxel::Block::Dirt);
         source.set({16, 15, 16}, voxel::Block::Stone);
-        source.set({47, 15, 47}, voxel::Block::Sand);
+        source.set({79, 63, 79}, voxel::Block::Sand);
         for (std::size_t value = 0; value < voxel::BlockCount; ++value) {
             const auto block = static_cast<voxel::Block>(value);
-            source.set({-32 + static_cast<int>(value), 3, -32}, block);
-            source.set({32 + static_cast<int>(value), 13, 47}, block);
+            source.set({-64 + static_cast<int>(value), 3, -64}, block);
+            source.set({60 + static_cast<int>(value), 63, 79}, block);
         }
         const auto bytes = encode(source);
-        check(bytes.size() == 36 + 25 * 16 * 16 * 16 + 4, "snapshot must use compact fixed byte layout");
+        check(bytes.size() == 36 + voxel::World::ChunkCount * 16 * 16 * 16 + 4, "snapshot must use compact fixed byte layout");
         check(static_cast<std::uint8_t>(bytes[12]) == static_cast<std::uint8_t>(seed)
               && static_cast<std::uint8_t>(bytes[15]) == static_cast<std::uint8_t>(seed >> 24),
               "seed must use portable little-endian storage");
@@ -77,8 +77,8 @@ int main()
         check(encode(restored) == bytes, "all materials and negative-coordinate edits must round trip exactly");
         for (std::size_t value = 0; value < voxel::BlockCount; ++value) {
             const auto block = static_cast<voxel::Block>(value);
-            check(restored.get({-32 + static_cast<int>(value), 3, -32}) == block
-                  && restored.get({32 + static_cast<int>(value), 13, 47}) == block,
+            check(restored.get({-64 + static_cast<int>(value), 3, -64}) == block
+                  && restored.get({60 + static_cast<int>(value), 63, 79}) == block,
                   "each material ID including bedrock round trips at opposite world edges");
         }
         check(restored.takeDirtyChunks().size() == voxel::World::ChunkCount,
@@ -87,7 +87,7 @@ int main()
     }
 
     // Build the original format independently of today's encoder or terrain.
-    // Old saves contain only Air=0 through Sand=4 and must retain their meaning.
+    // Version one supports all sixteen original IDs; none may move during import.
     constexpr std::size_t legacyPayloadSize = 25 * 16 * 16 * 16;
     std::string legacy("VXWORLD\0", 8);
     legacy.resize(36 + legacyPayloadSize + 4);
@@ -99,24 +99,42 @@ int main()
     writeInteger(legacy, 28, 5);
     writeInteger(legacy, 32, legacyPayloadSize);
     for (std::size_t index = 0; index < legacyPayloadSize; ++index) {
-        legacy[36 + index] = static_cast<char>(index % 5);
+        legacy[36 + index] = static_cast<char>(index % 16);
     }
     repairChecksum(legacy);
     std::istringstream legacyStream(legacy, std::ios::binary);
     const auto legacyWorld = voxel::decodeWorld(legacyStream);
-    check(legacyWorld.seed() == 2026 && encode(legacyWorld) == legacy,
-          "original version-one saves remain readable and byte-for-byte stable");
+    check(legacyWorld.seed() == 2026, "legacy snapshots retain the world seed");
+    const voxel::World legacyTerrain(2026);
+    const auto migratedBytes = encode(legacyWorld);
+    check(static_cast<unsigned char>(migratedBytes[8]) == 2,
+          "legacy snapshots upgrade to the expanded version-two format");
+    std::istringstream migratedStream(migratedBytes, std::ios::binary);
+    check(voxel::decodeWorld(migratedStream).sameContents(legacyWorld),
+          "saving and loading an imported legacy world preserves every migrated voxel");
     std::size_t legacyCursor = 0;
-    for (std::size_t index = 0; index < voxel::World::ChunkCount; ++index) {
+    for (std::size_t index = 0; index < 25; ++index) {
+        const glm::ivec3 origin((static_cast<int>(index % 5) - 2) * 16, 0,
+                                (static_cast<int>(index / 5) - 2) * 16);
         for (int y = 0; y < voxel::Chunk::Size; ++y) {
             for (int z = 0; z < voxel::Chunk::Size; ++z) {
                 for (int x = 0; x < voxel::Chunk::Size; ++x) {
-                    check(legacyWorld.chunk(index).get(x, y, z)
-                              == static_cast<voxel::Block>(legacyCursor++ % 5),
+                    check(legacyWorld.get(origin + glm::ivec3(x, y, z))
+                              == static_cast<voxel::Block>(legacyCursor++ % 16),
                           "legacy payload order and material IDs retain their meaning");
                 }
             }
         }
+    }
+
+    for (std::size_t index = 0; index < voxel::World::ChunkCount; ++index) {
+        const auto origin = legacyWorld.origin(index);
+        if (origin.y == 0 && origin.x >= -32 && origin.x <= 32 && origin.z >= -32 && origin.z <= 32) continue;
+        check(legacyWorld.chunk(index) == legacyTerrain.chunk(index),
+              "new space outside a legacy snapshot retains deterministic seed terrain");
+    }
+    for (const auto& malformed : {legacy.substr(0, legacy.size() - 1), legacy + '\0'}) {
+        check(rejects(malformed), "legacy import also rejects truncation and trailing data");
     }
 
     voxel::World source(42);
@@ -126,6 +144,14 @@ int main()
         check(rejects(valid.substr(0, length)), "truncated snapshots must fail");
     }
     auto changed = valid;
+    writeInteger(changed, 8, 1);
+    repairChecksum(changed);
+    check(rejects(changed), "legacy version cannot claim expanded dimensions");
+    changed = legacy;
+    writeInteger(changed, 8, 2);
+    repairChecksum(changed);
+    check(rejects(changed), "expanded version cannot claim legacy dimensions");
+    changed = valid;
     changed[0] = 'Q';
     check(rejects(changed), "incorrect magic must fail");
     for (const std::size_t offset : {8u, 16u, 20u, 24u, 28u, 32u}) {

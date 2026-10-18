@@ -13,14 +13,16 @@ namespace voxel {
 enum class Block : std::uint8_t {
     Air = 0, Grass = 1, Dirt = 2, Stone = 3, Sand = 4,
     Limestone = 5, Slate = 6, CoalOre = 7, CopperOre = 8, IronOre = 9,
-    Crystal = 10, Timber = 11, Planks = 12, Brick = 13, Lantern = 14, Bedrock = 15
+    Crystal = 10, Timber = 11, Planks = 12, Brick = 13, Lantern = 14, Bedrock = 15,
+    Water = 16, Leaves = 17, GlowLeaves = 18, RoofTiles = 19
 };
 
-inline constexpr std::size_t BlockCount = 16;
+inline constexpr std::size_t BlockCount = 20;
 inline constexpr std::array PlaceableBlocks{
     Block::Grass, Block::Dirt, Block::Stone, Block::Sand,
     Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre, Block::IronOre,
-    Block::Crystal, Block::Timber, Block::Planks, Block::Brick, Block::Lantern
+    Block::Crystal, Block::Timber, Block::Planks, Block::Brick, Block::Lantern,
+    Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles
 };
 
 constexpr bool isValidBlock(Block block) noexcept
@@ -47,13 +49,29 @@ constexpr std::string_view blockName(Block block) noexcept
     case Block::Brick: return "Brick";
     case Block::Lantern: return "Lantern";
     case Block::Bedrock: return "Bedrock";
+    case Block::Water: return "Water";
+    case Block::Leaves: return "Leaves";
+    case Block::GlowLeaves: return "Glow leaves";
+    case Block::RoofTiles: return "Roof tiles";
     }
     return "Unknown";
 }
 
 constexpr bool isSolid(Block block) noexcept
 {
+    return isValidBlock(block) && block != Block::Air && block != Block::Water;
+}
+
+constexpr bool isRenderable(Block block) noexcept
+{
     return isValidBlock(block) && block != Block::Air;
+}
+
+// Water has an opaque stylized surface but no collision. Solid banks remain
+// visible beside it; water hides only other water faces, avoiding internal seams.
+constexpr bool occludes(Block adjacent, Block faceMaterial) noexcept
+{
+    return isSolid(adjacent) || (adjacent == Block::Water && faceMaterial == Block::Water);
 }
 
 inline glm::vec3 blockColor(Block block) noexcept
@@ -74,6 +92,10 @@ inline glm::vec3 blockColor(Block block) noexcept
     case Block::Brick: return {0.61f, 0.30f, 0.22f};
     case Block::Lantern: return {1.0f, 0.74f, 0.30f};
     case Block::Bedrock: return {0.16f, 0.20f, 0.24f};
+    case Block::Water: return {0.08f, 0.45f, 0.61f};
+    case Block::Leaves: return {0.22f, 0.52f, 0.23f};
+    case Block::GlowLeaves: return {0.23f, 0.76f, 0.57f};
+    case Block::RoofTiles: return {0.44f, 0.29f, 0.50f};
     case Block::Air: return {0.0f, 0.0f, 0.0f};
     }
     return {1.0f, 0.0f, 1.0f};
@@ -112,14 +134,15 @@ int terrainHeight(int worldX, int worldZ, std::uint32_t seed);
 // from origin through origin + Chunk::Size - 1 cannot be represented by an int.
 void generateTerrain(Chunk& chunk, glm::ivec3 origin, std::uint32_t seed);
 
-// A fixed 5-by-5 grid of chunks, one chunk high.
+// A fixed grid of chunks, indexed with X fastest, then Z, then vertical Y.
 class World {
 public:
-    static constexpr int Radius = 2;
+    static constexpr int Radius = 4;
     static constexpr int Width = 2 * Radius + 1;
-    static constexpr std::size_t ChunkCount = Width * Width;
+    static constexpr int Height = 4;
+    static constexpr std::size_t ChunkCount = Width * Width * Height;
     static constexpr glm::ivec3 Min{-Radius * Chunk::Size, 0, -Radius * Chunk::Size};
-    static constexpr glm::ivec3 MaxExclusive{(Radius + 1) * Chunk::Size, Chunk::Size,
+    static constexpr glm::ivec3 MaxExclusive{(Radius + 1) * Chunk::Size, Height * Chunk::Size,
                                             (Radius + 1) * Chunk::Size};
 
     // Bounds describe editable cells, including air. The upper edge is excluded.
@@ -150,7 +173,7 @@ public:
 
 private:
     std::uint32_t seed_;
-    std::array<Chunk, ChunkCount> chunks_;
+    std::vector<Chunk> chunks_;
     std::array<bool, ChunkCount> dirty_{};
 };
 

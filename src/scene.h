@@ -1,22 +1,30 @@
 #pragma once
 
 #include <array>
+#include <span>
 #include <glm/vec3.hpp>
+#include "hub_buildings.h"
 
 namespace voxel {
 class World;
 
-// Feet position and view across the village square. The cavern floor is Y=3.
-inline constexpr glm::vec3 VillageSpawn{-1.5f, 4.0f, 13.5f};
+// Feet position on the arrival avenue, facing the tree island and north gate.
+inline constexpr glm::vec3 VillageSpawn{8.5f, 9.0f, 44.5f};
 inline constexpr float VillageYaw = -90.0f;
-inline constexpr float VillagePitch = -8.0f;
+inline constexpr float VillagePitch = 18.0f;
+inline constexpr glm::vec3 HeartTreeCenter{8.5f, 9.0f, 8.5f};
+inline constexpr glm::vec3 ExpeditionDeparture{8.5f, 9.0f, -49.5f};
 inline constexpr std::array<glm::vec3, 3> OreChambers{{
-    {-21.5f, 4.0f, -14.5f},
-    {28.5f, 4.0f, -12.5f},
-    {27.5f, 4.0f, 28.5f},
+    {-39.5f, 9.0f, -23.5f},
+    {45.5f, 9.0f, -19.5f},
+    {43.5f, 9.0f, 41.5f},
 }};
 
-// Replace the complete world with a seeded, enclosed village and mine sample.
+// The fixed architectural plan is shared by construction, tours, and route tests.
+std::span<const HubBuilding> sceneBuildingPlan();
+
+// Replace the world with the enclosed tree-and-water hub. No building services
+// or expedition transitions run here; this scene supplies their physical spaces.
 void buildUndergroundScene(World& world);
 
 } // namespace voxel
