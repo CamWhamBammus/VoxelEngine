@@ -137,9 +137,9 @@ void generateTerrain(Chunk& chunk, glm::ivec3 origin, std::uint32_t seed);
 // A fixed grid of chunks, indexed with X fastest, then Z, then vertical Y.
 class World {
 public:
-    static constexpr int Radius = 4;
+    static constexpr int Radius = 7;
     static constexpr int Width = 2 * Radius + 1;
-    static constexpr int Height = 4;
+    static constexpr int Height = 6;
     static constexpr std::size_t ChunkCount = Width * Width * Height;
     static constexpr glm::ivec3 Min{-Radius * Chunk::Size, 0, -Radius * Chunk::Size};
     static constexpr glm::ivec3 MaxExclusive{(Radius + 1) * Chunk::Size, Height * Chunk::Size,

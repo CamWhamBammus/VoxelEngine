@@ -90,6 +90,46 @@ void checkRoute(const voxel::World& world, const FloorMap& routes, glm::ivec3 fe
     check(reached, label + " has a grounded route from spawn");
 }
 
+void checkWaterfalls(const voxel::World& world)
+{
+    const auto falls = voxel::sceneWaterfallPlan();
+    check(falls.size() >= 2, "the landscape includes multiple substantial cascades");
+    for (std::size_t i = 0; i < falls.size(); ++i) {
+        const auto& fall = falls[i];
+        check(fall.direction == -1 || fall.direction == 1, "waterfall direction is horizontal");
+        const int middle = fall.top - 13;
+        const auto region = [&](int begin, int end, int bottom, int top, bool water,
+                                const std::string& purpose) {
+            std::optional<glm::ivec3> missing;
+            for (int u = begin; u <= end; ++u) {
+                for (int y = bottom; y <= top; ++y) {
+                    for (int side = -2; side <= 2; ++side) {
+                        const glm::ivec3 cell(fall.lip.x + fall.direction * u, y, fall.lip.y + side);
+                        const auto block = world.get(cell);
+                        if ((!voxel::World::contains(cell)
+                             || (water ? block != voxel::Block::Water : !voxel::isSolid(block))) && !missing)
+                            missing = cell;
+                    }
+                }
+            }
+            const auto label = "waterfall " + std::to_string(i + 1) + " " + purpose;
+            if (missing) std::cerr << "seed " << world.seed() << ' ' << label << " at "
+                << coordinate(*missing) << " contains " << voxel::blockName(world.get(*missing)) << '\n';
+            check(!missing, label);
+        };
+        region(-10, -1, fall.top, fall.top, true, "has a continuous source reservoir");
+        region(-10, -1, fall.top - 1, fall.top - 1, false, "source water rests on rock");
+        region(0, 0, middle, fall.top, true, "first curtain reaches the catch pool without gaps");
+        region(-1, -1, 1, fall.top - 1, false, "first cliff is grounded behind the curtain");
+        region(0, 6, middle, middle, true, "catch pool connects both curtains");
+        region(0, 6, middle - 1, middle - 1, false, "catch pool has a solid bed");
+        region(7, 7, 6, middle, true, "second curtain reaches the basin without gaps");
+        region(6, 6, 1, middle - 1, false, "second cliff is grounded behind the curtain");
+        region(8, 17, 6, 6, true, "landing connects continuously into the wider basin");
+        region(7, 17, 5, 5, false, "plunge pool and basin have solid beds");
+    }
+}
+
 // Find a real three-step bank: basin feet6 -> shelf7 -> shelf8 -> village9.
 // Validate the body on every landing, then replay jumps on one such exit.
 bool waterExit(const voxel::World& world, const FloorMap& routes)
@@ -171,7 +211,7 @@ int main()
                             visible |= world.get(position + side) == Block::Air;
                         exposed[static_cast<std::size_t>(block)] += visible;
                     }
-                    if (x < -20 || x > 37 || z < -20 || z > 37) continue;
+                    if (std::abs(x - 8) > 45 || std::abs(z - 8) > 45) continue;
                     if (block == Block::Timber && y >= 20) {
                         highestWood = std::max(highestWood, y);
                         if (y >= 24) {
@@ -179,7 +219,7 @@ int main()
                             branches[2] += z < 0; branches[3] += z > 18;
                         }
                     }
-                    if ((block == Block::Leaves || block == Block::GlowLeaves) && y >= 29) {
+                    if ((block == Block::Leaves || block == Block::GlowLeaves) && y >= 44) {
                         ++crownLeaves;
                         highestCanopy = std::max(highestCanopy, y);
                         canopyLow = glm::min(canopyLow, position);
@@ -188,7 +228,7 @@ int main()
                 }
             }
         }
-        check(closed, "bedrock seals all six outer faces across the complete sixty-four-block height");
+        check(closed, "bedrock seals all six outer faces across the complete world height");
         const auto substantial = [&](Block block, int minimum) {
             check(counts[static_cast<std::size_t>(block)] >= minimum,
                   std::string(voxel::blockName(block)) + " forms substantial hub features (count "
@@ -198,9 +238,9 @@ int main()
         substantial(Block::Timber, 1000); substantial(Block::Planks, 2500); substantial(Block::RoofTiles, 1000);
         substantial(Block::Brick, 120); substantial(Block::Lantern, 70); substantial(Block::Grass, 500);
         check(highestWater >= 25, "falling water reaches far above the lake surface");
-        check(world.get({8, 15, 8}) == Block::Timber && highestWood >= 34 && highestCanopy >= 44,
+        check(world.get({8, 15, 8}) == Block::Timber && highestWood >= 52 && highestCanopy >= 68,
               "the heart tree has a substantial central trunk and a tall crown");
-        check(crownLeaves >= 5000 && canopyHigh.x - canopyLow.x >= 40 && canopyHigh.z - canopyLow.z >= 40,
+        check(crownLeaves >= 5000 && canopyHigh.x - canopyLow.x >= 65 && canopyHigh.z - canopyLow.z >= 65,
               "the central canopy spreads broadly above the village");
         check(std::all_of(branches.begin(), branches.end(), [](int count) { return count >= 10; }),
               "large tree branches spread in all four directions");
@@ -211,9 +251,12 @@ int main()
         check(player.setFeetPosition(world, voxel::VillageSpawn) && player.grounded(),
               "arrival spawn has full player clearance and ground support");
         const auto routes = walkableRoutes(world);
-        check(std::count(routes.begin(), routes.end(), true) >= 5000, "hub has a substantial connected walking area");
+        const auto connected = std::count(routes.begin(), routes.end(), true);
+        std::cout << "Seed " << seed << ": " << connected << " connected floor cells, canopy "
+                  << coordinate(canopyHigh - canopyLow) << " reaching Y" << highestCanopy << '\n';
+        check(connected >= 14000, "hub has at least fourteen thousand connected walking cells");
         const auto buildings = voxel::sceneBuildingPlan();
-        check(buildings.size() == 28, "the hub contains twenty-eight designed buildings");
+        check(buildings.size() >= 36, "the expanded hub contains at least thirty-six designed buildings");
         for (std::size_t i = 0; i < buildings.size(); ++i) {
             const auto& building = buildings[i];
             const auto door = voxel::hubBuildingDoor(building);
@@ -221,20 +264,34 @@ int main()
             const auto room = building.origin + glm::ivec3(footprint.x / 2, 1, footprint.y / 2);
             checkRoute(world, routes, door, "building " + std::to_string(i + 1) + " door");
             checkRoute(world, routes, room, "building " + std::to_string(i + 1) + " interior");
+            using Style = voxel::HubBuildingStyle;
+            const auto roofMaterial = building.style == Style::Workshop ? Block::Brick
+                : building.style == Style::Greenhouse ? Block::Timber
+                : building.style == Style::Storehouse && building.variant % 2 == 1 ? Block::Slate : Block::RoofTiles;
             bool roof = false;
-            for (int y = room.y + 2; y <= building.origin.y + 14; ++y)
-                roof |= world.get({room.x, y, room.z}) == Block::RoofTiles;
+            for (int y = building.origin.y + voxel::hubBuildingWallHeight(building) + 1;
+                 y <= building.origin.y + voxel::hubBuildingHeight(building); ++y)
+                roof |= world.get({room.x, y, room.z}) == roofMaterial;
             check(world.get(room - glm::ivec3(0, 1, 0)) == Block::Planks && roof,
-                  "building " + std::to_string(i + 1) + " has a finished interior floor and tiled roof");
+                  "building " + std::to_string(i + 1) + " has a finished floor and its planned roof material");
         }
         checkRoute(world, routes, glm::ivec3(glm::floor(voxel::ExpeditionDeparture)), "expedition staging hall");
-        // Sample the entire center line of each cardinal bridge, not just its ends.
-        for (int coordinate = -20; coordinate <= 36; ++coordinate) {
-            if (coordinate <= -2 || coordinate >= 18) checkRoute(world, routes, {coordinate, FloorY, 8}, "east/west bridge");
+        // Walk every center-line cell from the same plan used to build bridges.
+        const auto bridges = voxel::sceneBridgePlan();
+        check(bridges.size() >= 4, "bridges link the tree island to all four districts");
+        for (std::size_t i = 0; i < bridges.size(); ++i) {
+            const auto& bridge = bridges[i];
+            const auto delta = bridge.to - bridge.from;
+            check((delta.x == 0) != (delta.y == 0), "bridge plans are nonempty and axis aligned");
+            const int length = std::max(std::abs(delta.x), std::abs(delta.y));
+            const glm::ivec2 direction(delta.x == 0 ? 0 : delta.x > 0 ? 1 : -1,
+                                       delta.y == 0 ? 0 : delta.y > 0 ? 1 : -1);
+            for (int step = 0; step <= length; ++step) {
+                const auto point = bridge.from + direction * step;
+                checkRoute(world, routes, {point.x, FloorY, point.y}, "bridge " + std::to_string(i + 1));
+            }
         }
-        for (int coordinate = -19; coordinate <= 34; ++coordinate) {
-            if (coordinate <= -2 || coordinate >= 18) checkRoute(world, routes, {8, FloorY, coordinate}, "north/south bridge");
-        }
+        checkWaterfalls(world);
         check(waterExit(world, routes), "players can jump from the basin up shallow shelves to connected village ground");
     }
     check(seedChangesGeometry, "different seeds change actual geology and foliage rather than only metadata");

@@ -352,7 +352,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         lights_.push_back({glm::vec3(position) + 0.5f,
                             block == Block::Lantern ? glm::vec3(1.15f, 0.58f, 0.18f)
                             : block == Block::Crystal ? glm::vec3(0.10f, 0.85f, 1.15f)
-                                                      : glm::vec3(0.08f, 0.48f, 0.31f),
+                            : position.y > 44 ? glm::vec3(0.38f, 0.14f, 0.29f)
+                                              : glm::vec3(0.08f, 0.48f, 0.31f),
                             block == Block::Lantern ? 11.0f : block == Block::Crystal ? 8.0f : 7.0f});
                     }
                 }

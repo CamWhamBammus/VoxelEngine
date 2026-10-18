@@ -2,11 +2,13 @@
 
 A small C++20 voxel game for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. The direction is an **entirely underground expedition game**: leave a starting village, find resources, return, and upgrade the settlement.
 
-This version is an explorable **underground hub** with 28 buildings, a giant central tree, lakes, bridges, waterfalls, and an expedition departure hall. The buildings and departure area are physical spaces only; services, village upgrades, villagers, and expedition transitions are not implemented yet.
+This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The buildings and departure area are physical spaces only; services, village upgrades, villagers, and expedition transitions are not implemented yet.
 
 ## Explore the underground hub
 
-Launch normally on the arrival avenue inside a large enclosed cavern. Four bridges connect the central tree island to waterfront paths and neighborhoods of cottages, halls, workshops, and storehouses. Every building has an accessible interior. Follow the northern avenue to the expedition departure hall, or explore the waterfalls, mineral outcrops, and crystal gardens. Shallow shoreline steps provide a way out of the basins.
+Launch normally on the arrival avenue inside a large enclosed cavern. Four long bridges connect the broad tree island to waterfront paths and distinct neighborhoods. Seven building styles—cottages, halls, workshops, storehouses, inns, towers, and greenhouses—vary in size, height, roofline, and facade. Every building has an accessible interior. Follow the northern avenue to the expedition departure hall, or explore the mineral outcrops and crystal gardens. Shallow shoreline steps provide a way out of the basins.
+
+The central tree spreads across a taller chamber, with visible branching limbs, hanging greenery, and broad rose and violet patches in its crown. Waterfalls descend from source reservoirs set into continuous cavern cliffs, through catch pools, into the lakes. Rock outcrops and crystal beds extend down to solid foundations; roads and building clearances are created before these features so they cannot cut away their supports.
 
 The cave palette includes **stone, pale limestone, dark slate, coal ore, copper ore, iron ore, and glowing crystal**. Buildings use **timber, planks, brick, roof tiles, and lanterns**. **Leaves and glowing leaves** form the tree canopy and planted borders. **Water** has a visible stylized surface but no collision.
 
@@ -16,7 +18,7 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. These details have no collision; movement follows the underlying voxel shapes.
 
-A 17-type model library dresses the hub with lantern caps, wall brackets, hanging lamps, crystal beacons, window boxes, shutters, awnings, roof braces, banners, and crate stacks. Ferns, flowers, mushrooms, reeds, lily pads, trailing vines, and shrubs soften the gardens, shores, and tree canopy. These are cosmetic models with seeded variations; lamps and beacons add light, while crates and building fittings have no interaction.
+A 17-type model library dresses the hub with lantern caps, wall brackets, hanging lamps, crystal beacons, window boxes, shutters, awnings, roof braces, banners, and crate stacks. Ferns, flowers, mushrooms, reeds, lily pads, trailing vines, and shrubs soften the gardens, shores, and tree canopy. Placement checks the ground beneath each plant's footprint, level water beneath pads, and real wall or roof attachments for fittings. These are cosmetic models with seeded variations; lamps and beacons add light, while crates and building fittings have no interaction.
 
 Stone, limestone, and slate have sparse chipped fracture edges, with fewer chips on floors. Coal, copper, and iron ore form elongated mineral fragments with a shared vein direction. Most of each fragment sits nearly flush with the rock; only a small broken edge protrudes. The geometry follows the painted shapes, extending at most 0.03 blocks for stone and 0.05 for ore. Softer, interrupted stone seams and broad shading keep the cave walls from looking like laid tiles. Their distribution is fixed by the world seed. These details remain cosmetic, so walking uses the original block shapes.
 
@@ -38,7 +40,7 @@ src/
   game.h/.cpp       Play/editor modes, movement actions, and HUD text
   player.h/.cpp     Player body, terrain collision, walking, jumping, and spawning
   scene.h/.cpp      Hub layout, landscape, tree, water, bridges, and departure hall
-  hub_buildings.h/.cpp Rotatable cottages, halls, workshops, and storehouses
+  hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
   hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
   input.h/.cpp      Keyboard and mouse controls
   camera.h/.cpp     Camera movement, view math, and visibility checks
@@ -66,8 +68,8 @@ Read these first:
 
 1. [main.cpp](src/main.cpp) shows how everything connects.
 2. [game.h](src/game.h) names the current world and camera, plus the editor's selected material and edit history. [Game::update in game.cpp](src/game.cpp) handles the player's actions in order.
-3. [world.h](src/world.h) explains the data: a `Block` is a material, a `Chunk` stores a 16×16×16 cube of blocks, and a `World` holds a 9×4×9 grid of chunks on the heap.
-4. [scene.cpp](src/scene.cpp) lays out the hub and landscape; [hub_buildings.cpp](src/hub_buildings.cpp) builds its four architectural styles. [player.cpp](src/player.cpp) handles the body and movement.
+3. [world.h](src/world.h) explains the data: a `Block` is a material, a `Chunk` stores a 16×16×16 cube of blocks, and a `World` holds a 15×6×15 grid of chunks on the heap.
+4. [scene.cpp](src/scene.cpp) lays out the hub and landscape; [hub_buildings.cpp](src/hub_buildings.cpp) builds its seven architectural styles. [player.cpp](src/player.cpp) handles the body and movement.
 5. [editing.cpp](src/editing.cpp) shows how aiming and editing work. `raycast` follows the camera's viewing direction through blocks to find a hit.
 
 For one frame, `Input::update` handles looking and fills an `InputActions` value. In play mode, `Game::update` moves the `Player` and follows its eyes with the camera; `Player` resolves movement against solid voxels. `scene.cpp` builds the hub once at startup. `Game::update` handles walking and returning to the village. Only editor mode processes targeting, block changes, saving, loading, and undo. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
@@ -186,7 +188,7 @@ Choose another save file:
 
 A missing file starts a new world and is created on the first F5 save. Its parent directory must already exist. Saves store the seed and every block; camera state and edit history are not saved.
 
-Version 2 stores the expanded 9×4×9 chunk volume. Original version 1 saves import their 5×1×5 region at the same coordinates, preserving all edits; the added space uses terrain generated from the saved seed. Saving an imported world writes version 2.
+Version 3 stores the expanded 15×6×15 chunk volume. Version 1 and version 2 saves remain readable: their original regions import at the same coordinates, preserving all edits, while added space uses terrain generated from the saved seed. Saving an imported world writes version 3.
 
 Loading validates dimensions, materials, and a checksum before replacing the active world. Saving writes and flushes a temporary sibling file, then atomically replaces the destination on macOS/Linux. Failed writes do not delete the old save. This is not a backup system: keep copies of worlds you want to preserve.
 
@@ -200,7 +202,7 @@ With `--editor`, if both `--world` and `--seed` are provided, an existing world'
 
 ## Terrain and command-line options
 
-The world contains 9×4×9 chunks, each holding 16×16×16 blocks: a **144×64×144** volume. World coordinates span `[-64, 79]` on X and Z, and `[0, 63]` on Y. Coordinates outside this volume are empty and cannot be edited. Chunk indices run along X, then Z, then vertical Y; edits also invalidate neighboring chunks across vertical seams.
+The world contains 15×6×15 chunks, each holding 16×16×16 blocks: a **240×96×240** volume. World coordinates span `[-112, 127]` on X and Z, and `[0, 95]` on Y. Coordinates outside this volume are empty and cannot be edited. Chunk indices run along X, then Z, then vertical Y; edits also invalidate neighboring chunks across vertical seams.
 
 The surface editor terrain is deterministic for a given seed. The default seed is `1337`. Greedy meshing merges adjacent exposed faces with the same material and normal. Chunks outside the camera's view are skipped during drawing, and edits rebuild affected chunks and seam neighbors. Cave decorations are generated separately and shown only in underground mode.
 
@@ -254,7 +256,7 @@ ctest --test-dir build-sanitize --output-on-failure
 
 Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
-Player tests cover collision, jumping, safe spawning, and falling through openings in the ground. Scene tests cover the full sealed shell, all 28 building entrances and interiors, bridges, the departure hall, tree and water features, shoreline jump egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Hub asset tests cover all 17 model types, seeded variants, quarter-turn rotations, placement, chunk batching, and empty worlds. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, and that all editor actions leave play worlds unchanged. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 20 material IDs and verify version 1 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
+Player tests cover collision, jumping, safe spawning, and falling through openings in the ground. Scene tests cover the full sealed shell, all 38 building entrances and interiors, bridges, the departure hall, tree and water features, shoreline jump egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Hub asset tests cover all 17 model types, seeded variants, quarter-turn rotations, placement, chunk batching, and empty worlds. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, and that all editor actions leave play worlds unchanged. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 20 material IDs and verify version 1 and version 2 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
 
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 

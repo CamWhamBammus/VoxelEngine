@@ -59,12 +59,12 @@ int main()
           "starting-solid hits must not supply an arbitrary placement face");
 
     for (const auto boundary : {
-             voxel::RayHit{{-64, 0, 0}, {-1, 0, 0}, 1.0f},
-             voxel::RayHit{{79, 0, 0}, {1, 0, 0}, 1.0f},
-             voxel::RayHit{{0, 0, -64}, {0, 0, -1}, 1.0f},
-             voxel::RayHit{{0, 0, 79}, {0, 0, 1}, 1.0f},
+             voxel::RayHit{{voxel::World::Min.x, 0, 0}, {-1, 0, 0}, 1.0f},
+             voxel::RayHit{{voxel::World::MaxExclusive.x - 1, 0, 0}, {1, 0, 0}, 1.0f},
+             voxel::RayHit{{0, 0, voxel::World::Min.z}, {0, 0, -1}, 1.0f},
+             voxel::RayHit{{0, 0, voxel::World::MaxExclusive.z - 1}, {0, 0, 1}, 1.0f},
              voxel::RayHit{{0, 0, 0}, {0, -1, 0}, 1.0f},
-             voxel::RayHit{{0, 63, 0}, {0, 1, 0}, 1.0f}}) {
+             voxel::RayHit{{0, voxel::World::MaxExclusive.y - 1, 0}, {0, 1, 0}, 1.0f}}) {
         world.set(boundary.position, voxel::Block::Stone);
         check(!voxel::placeBlock(world, boundary, voxel::Block::Grass, camera),
               "placement outside each finite world boundary must fail");

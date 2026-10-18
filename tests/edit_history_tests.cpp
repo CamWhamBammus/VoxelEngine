@@ -25,6 +25,7 @@ int main()
     const glm::ivec3 left{-1, 14, 1};
     const glm::ivec3 right{0, 14, 1};
     World world;
+    constexpr std::size_t center = World::Radius * (World::Width + 1);
     world.set(left, Block::Air);
     world.set(right, Block::Air);
     world.takeDirtyChunks();
@@ -33,23 +34,23 @@ int main()
     check(!history.undo(world) && !history.redo(world), "empty history cannot undo or redo");
     check(history.apply(world, left, Block::Grass), "first edit succeeds");
     check(history.undoCount() == 1 && history.redoCount() == 0, "successful edit is recorded");
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({39, 40}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({center - 1, center}),
         "history edits preserve seam dirty tracking");
     check(history.apply(world, right, Block::Stone), "second edit succeeds");
     world.takeDirtyChunks();
     check(history.undo(world) && world.get(right) == Block::Air,
         "undo restores the second voxel");
     check(history.undoCount() == 1 && history.redoCount() == 1, "undo updates stack counts");
-    check(world.takeDirtyChunks() == std::vector<std::size_t>({39, 40}),
+    check(world.takeDirtyChunks() == std::vector<std::size_t>({center - 1, center}),
         "undo dirties both chunks at a seam");
 
     check(!history.apply(world, left, Block::Grass), "no-op edit returns false");
     for (const Block invalid : {static_cast<Block>(voxel::BlockCount), static_cast<Block>(255)}) {
         check(!history.apply(world, right, invalid), "invalid material is rejected");
     }
-    for (const glm::ivec3 outside : {glm::ivec3(-65, 0, 0), glm::ivec3(80, 0, 0),
-             glm::ivec3(0, -1, 0), glm::ivec3(0, 64, 0), glm::ivec3(0, 0, -65),
-             glm::ivec3(0, 0, 80), glm::ivec3(std::numeric_limits<int>::min(), 0, 0),
+    for (const glm::ivec3 outside : {glm::ivec3(World::Min.x - 1, 0, 0), glm::ivec3(World::MaxExclusive.x, 0, 0),
+             glm::ivec3(0, -1, 0), glm::ivec3(0, World::MaxExclusive.y, 0), glm::ivec3(0, 0, World::Min.z - 1),
+             glm::ivec3(0, 0, World::MaxExclusive.z), glm::ivec3(std::numeric_limits<int>::min(), 0, 0),
              glm::ivec3(0, 0, std::numeric_limits<int>::max())}) {
         check(!history.apply(world, outside, Block::Stone), "out-of-world edit is rejected");
     }

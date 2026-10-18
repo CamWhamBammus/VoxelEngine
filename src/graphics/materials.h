@@ -186,15 +186,24 @@ MaterialSurface evaluateMaterial() {
         float mass = materialNoise(p * 0.45 + seed);
         vec3 pigment = mix(vec3(0.09, 0.30, 0.10), vec3(0.22, 0.48, 0.13), mass * 0.75 + leafSeed * 0.25);
         if (materialId == 18) pigment = mix(vec3(0.06, 0.40, 0.24), vec3(0.10, 0.54, 0.30), mass);
+        // Broad crown regions make the heart tree a distinct landmark. Ordinary
+        // garden trees stay green; color varies across whole boughs, not blocks.
+        float crown = smoothstep(40.0, 54.0, worldPosition.y);
+        float rose = smoothstep(0.22, 0.72, 0.5 + 0.30 * sin(worldPosition.x * 0.065)
+                                            + 0.26 * cos(worldPosition.z * 0.055));
+        vec3 blossom = mix(vec3(0.23, 0.055, 0.27), vec3(0.56, 0.16, 0.33),
+                           clamp(mass * 0.45 + leafSeed * 0.20 + n.y * 0.20 + 0.20, 0.0, 1.0));
+        vec3 crownPigment = mix(vec3(0.11, 0.27, 0.23), blossom, rose);
+        pigment = mix(pigment, crownPigment, crown);
         color = mix(pigment * 0.82, pigment * (0.95 + q.y * 0.12), leaf);
         float vein = (1.0 - smoothstep(0.015, 0.045, abs(q.x))) * leaf;
         color += (materialId == 18 ? vec3(0.015, 0.045, 0.025) : vec3(0.025, 0.04, 0.01)) * vein;
         color *= 0.91 + 0.16 * broad;
         slope = q * leaf * 0.08;
         roughness = 0.85;
-        // A tiny green fill keeps unlit canopy readable. Glow leaves remain
+        // A tiny emissive fill keeps unlit canopy readable. Glow leaves remain
         // accents within that canopy instead of bright cyan checker tiles.
-        emission = materialId == 18 ? 0.08 + leaf * 0.04 : 0.030;
+        emission = materialId == 18 ? mix(0.08 + leaf * 0.04, 0.065, crown) : 0.030;
     } else if (materialId == 19) {
         vec2 tiles = p * vec2(2.0, 2.5);
         tiles.x += mod(floor(tiles.y), 2.0) * 0.5;

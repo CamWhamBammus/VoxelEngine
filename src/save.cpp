@@ -18,10 +18,8 @@ namespace voxel {
 namespace {
 
 constexpr std::array<char, 8> Magic{'V', 'X', 'W', 'O', 'R', 'L', 'D', '\0'};
-constexpr std::uint32_t Version = 2;
+constexpr std::uint32_t Version = 3;
 constexpr std::uint32_t PayloadSize = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size;
-constexpr std::uint32_t LegacyWidth = 5;
-constexpr std::uint32_t LegacyPayloadSize = LegacyWidth * LegacyWidth * Chunk::Size * Chunk::Size * Chunk::Size;
 constexpr std::uint32_t ChecksumOffset = 2166136261u;
 
 void hashByte(std::uint32_t& checksum, std::uint8_t byte)
@@ -107,13 +105,15 @@ World decodeWorld(std::istream& input)
     const auto height = readInteger(input, checksum);
     const auto depth = readInteger(input, checksum);
     const auto payloadSize = readInteger(input, checksum);
-    if (version != Version && version != 1) {
-        throw std::runtime_error("Unsupported world snapshot version");
+    std::uint32_t expectedWidth = 0, expectedHeight = 0;
+    switch (version) {
+    case 1: expectedWidth = 5; expectedHeight = 1; break;
+    case 2: expectedWidth = 9; expectedHeight = 4; break;
+    case Version: expectedWidth = World::Width; expectedHeight = World::Height; break;
+    default: throw std::runtime_error("Unsupported world snapshot version");
     }
-    const bool legacy = version == 1;
-    const auto expectedWidth = legacy ? LegacyWidth : World::Width;
-    const auto expectedHeight = legacy ? 1u : World::Height;
-    const auto expectedPayload = legacy ? LegacyPayloadSize : PayloadSize;
+    const auto expectedPayload = expectedWidth * expectedWidth * expectedHeight
+        * Chunk::Size * Chunk::Size * Chunk::Size;
     if (chunkSize != Chunk::Size || width != expectedWidth || height != expectedHeight
         || depth != expectedWidth || payloadSize != expectedPayload) {
         throw std::runtime_error("World snapshot dimensions do not match this engine");
@@ -144,8 +144,8 @@ World decodeWorld(std::istream& input)
     std::size_t cursor = 0;
     const std::size_t chunkCount = width * depth * height;
     for (std::size_t index = 0; index < chunkCount; ++index) {
-        // Version one stored a centered 5x1x5 region. Keep those coordinates
-        // exactly; newly available chunks retain the seed's generated terrain.
+        // Older versions stored centered 5x1x5 and 9x4x9 regions. Keep their
+        // coordinates exactly; new chunks retain the seed's generated terrain.
         const int chunkX = static_cast<int>(index % width) - static_cast<int>(width / 2);
         const int chunkZ = static_cast<int>((index / width) % depth) - static_cast<int>(depth / 2);
         const int chunkY = static_cast<int>(index / (width * depth));

@@ -8,8 +8,8 @@
 namespace voxel {
 
 // Versioned, little-endian snapshot. Throws std::runtime_error for invalid
-// snapshots or failed streams. Version two stores the expanded dimensions;
-// version-one 5x1x5 snapshots keep their original coordinates when imported.
+// snapshots or failed streams. Version three stores the expanded dimensions;
+// version-one 5x1x5 and version-two 9x4x9 saves retain their original coordinates.
 // Decoding reads only the validated format size plus one trailing-data byte
 // and returns an entirely new world. New legacy-import areas use seed terrain.
 void encodeWorld(const World& world, std::ostream& output);

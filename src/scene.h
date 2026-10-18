@@ -9,19 +9,25 @@ namespace voxel {
 class World;
 
 // Feet position on the arrival avenue, facing the tree island and north gate.
-inline constexpr glm::vec3 VillageSpawn{8.5f, 9.0f, 44.5f};
+inline constexpr glm::vec3 VillageSpawn{8.5f, 9.0f, 82.5f};
 inline constexpr float VillageYaw = -90.0f;
-inline constexpr float VillagePitch = 18.0f;
+inline constexpr float VillagePitch = 12.0f;
 inline constexpr glm::vec3 HeartTreeCenter{8.5f, 9.0f, 8.5f};
-inline constexpr glm::vec3 ExpeditionDeparture{8.5f, 9.0f, -49.5f};
-inline constexpr std::array<glm::vec3, 3> OreChambers{{
-    {-39.5f, 9.0f, -23.5f},
-    {45.5f, 9.0f, -19.5f},
-    {43.5f, 9.0f, 41.5f},
+inline constexpr glm::vec3 ExpeditionDeparture{8.5f, 9.0f, -88.5f};
+inline constexpr std::array<glm::vec3, 2> ExpeditionBeacons{{
+    {-8.5f, 41.0f, -79.5f}, {25.5f, 41.0f, -79.5f}
 }};
-
 // The fixed architectural plan is shared by construction, tours, and route tests.
 std::span<const HubBuilding> sceneBuildingPlan();
+
+struct HubBridge { glm::ivec2 from, to; };
+struct HubWaterfall {
+    glm::ivec2 lip; // Top of the first fall; cascades flow along world X.
+    int direction; // +1 east, -1 west.
+    int top;
+};
+std::span<const HubBridge> sceneBridgePlan();
+std::span<const HubWaterfall> sceneWaterfallPlan();
 
 // Replace the world with the enclosed tree-and-water hub. No building services
 // or expedition transitions run here; this scene supplies their physical spaces.
