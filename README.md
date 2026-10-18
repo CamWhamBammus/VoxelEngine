@@ -16,6 +16,8 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. These details have no collision; movement follows the underlying voxel shapes.
 
+A 17-type model library dresses the hub with lantern caps, wall brackets, hanging lamps, crystal beacons, window boxes, shutters, awnings, roof braces, banners, and crate stacks. Ferns, flowers, mushrooms, reeds, lily pads, trailing vines, and shrubs soften the gardens, shores, and tree canopy. These are cosmetic models with seeded variations; lamps and beacons add light, while crates and building fittings have no interaction.
+
 Stone, limestone, and slate have sparse chipped fracture edges, with fewer chips on floors. Coal, copper, and iron ore form elongated mineral fragments with a shared vein direction. Most of each fragment sits nearly flush with the rock; only a small broken edge protrudes. The geometry follows the painted shapes, extending at most 0.03 blocks for stone and 0.05 for ore. Softer, interrupted stone seams and broad shading keep the cave walls from looking like laid tiles. Their distribution is fixed by the world seed. These details remain cosmetic, so walking uses the original block shapes.
 
 **WASD** walks, **mouse** looks, **Space** jumps, and **Shift** sprints. **R** returns you to a safe space in the village. **Escape** pauses and releases the mouse; **Tab** resumes. **H** shows the walking controls, and **Q** quits.
@@ -37,6 +39,7 @@ src/
   player.h/.cpp     Player body, terrain collision, walking, jumping, and spawning
   scene.h/.cpp      Hub layout, landscape, tree, water, bridges, and departure hall
   hub_buildings.h/.cpp Rotatable cottages, halls, workshops, and storehouses
+  hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
   input.h/.cpp      Keyboard and mouse controls
   camera.h/.cpp     Camera movement, view math, and visibility checks
   world.h/.cpp      Blocks, chunks, world storage, and terrain generation
@@ -51,6 +54,9 @@ src/
     post_process.h/.cpp Smooth edges, luminous bloom, exposure, and color
     cave_details.h/.cpp Build cosmetic crystal shards, ceiling formations, and tufts
     block_relief.h/.cpp Build sparse rock chips and shallow ore veins
+    asset_builder.h Shared triangle, box, and beam helpers for hub models
+    hub_props.cpp  Ten architectural, lighting, and supply models
+    hub_foliage.cpp Seven plant models, from ferns to hanging vines
     hud.h/.cpp      Draw text on the screen
 tests/              Behavior tests and graphics smoke checks
 CMakeLists.txt      List the source files and build targets
@@ -68,6 +74,8 @@ For one frame, `Input::update` handles looking and fills an `InputActions` value
 
 Each renderer remembers the chunk contents it last drew. It rebuilds changed chunks and their neighbors, so switching worlds or opening another view cannot lose mesh updates. This uses a small world snapshot and straightforward comparisons; no global cache or event system is needed. The renderer also uploads the solid cells to a small 3D texture when the world changes. Cave lighting samples it for contact shading and short shadow rays, so world changes update lighting alongside geometry. Decorative meshes reuse the block materials but do not enter that solid-cell texture or cast their own shadows.
 
+`hub_assets.cpp` places models against the building plan and actual terrain, then combines them into chunk meshes for drawing. `hub_props.cpp` and `hub_foliage.cpp` describe the shapes using `AssetBuilder`; model rotation and translation are handled by that shared helper. This keeps decoration separate from voxel storage and player collision.
+
 Light candidates are cached per chunk, including every source whose radius can reach its blocks or decorations. Nearby crystal and glowing-leaf blocks share fixed sources; each lantern keeps its own source. Every source that reaches a surface contributes, so stepping away cannot switch off its illumination. Candidates include neighboring chunks and rebuild after world edits. The shader skips sources outside their radius or behind the surface before checking shadows. Very dense custom lighting can increase rendering cost.
 
 `PostProcess::begin` provides the underground world with an HDR color/depth target. `finish` resolves the smooth edges, blurs only emissive color at quarter resolution, and combines it with the scene. It returns the image and depth to the original framebuffer, so block outlines still hide correctly behind walls. Its buffers resize with the window and are reused between frames.
@@ -80,6 +88,9 @@ Use this map when changing something:
 | Walking speed, jumping, or collision | [player.cpp](src/player.cpp) |
 | Cavern, tree, water, bridges, building positions, or ore deposits | [scene.cpp](src/scene.cpp) |
 | Building walls, doors, windows, or roof shapes | [hub_buildings.cpp](src/hub_buildings.cpp) |
+| Hub prop and plant placement | [hub_assets.cpp](src/hub_assets.cpp) |
+| Lantern fittings, window boxes, awnings, banners, or crates | [graphics/hub_props.cpp](src/graphics/hub_props.cpp) |
+| Ferns, flowers, mushrooms, reeds, lily pads, vines, or shrubs | [graphics/hub_foliage.cpp](src/graphics/hub_foliage.cpp) |
 | Editor starting camera position and view direction | [camera.h](src/camera.h) |
 | Village spawn and return behavior | [scene.h](src/scene.h) and [game.cpp](src/game.cpp) |
 | Zoom limits | [camera.cpp](src/camera.cpp) |
@@ -243,7 +254,7 @@ ctest --test-dir build-sanitize --output-on-failure
 
 Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
-Player tests cover collision, jumping, safe spawning, and falling through openings in the ground. Scene tests cover the full sealed shell, all 28 building entrances and interiors, bridges, the departure hall, tree and water features, shoreline jump egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, and that all editor actions leave play worlds unchanged. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 20 material IDs and verify version 1 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
+Player tests cover collision, jumping, safe spawning, and falling through openings in the ground. Scene tests cover the full sealed shell, all 28 building entrances and interiors, bridges, the departure hall, tree and water features, shoreline jump egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Hub asset tests cover all 17 model types, seeded variants, quarter-turn rotations, placement, chunk batching, and empty worlds. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, and that all editor actions leave play worlds unchanged. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 20 material IDs and verify version 1 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
 
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 

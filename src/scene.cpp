@@ -138,7 +138,6 @@ void lamp(World& world, int x, int z, int floor = Ground)
     if (!isSolid(world.get({x, floor, z}))) return;
     box(world, {x, floor + 1, z}, {x, floor + 2, z}, Block::Timber);
     world.set({x, floor + 3, z}, Block::Lantern);
-    world.set({x, floor + 4, z}, Block::RoofTiles);
 }
 
 void bridge(World& world, glm::ivec2 from, glm::ivec2 to)
@@ -208,23 +207,15 @@ void heartTree(World& world)
     }}) {
         sphere(world, crown.center, crown.radius, Block::Leaves, true);
     }
-    // Luminous accents occupy exposed crown edges, with hanging living roots.
+    // Luminous accents occupy exposed crown edges above the fine hanging vines.
     for (int z = -19; z <= 36; ++z) {
         for (int x = -21; x <= 37; ++x) {
             for (int y = 29; y <= 49; ++y) {
                 if (world.get({x, y, z}) != Block::Leaves) continue;
-                const auto variation = hash(x + y * 7, z, world.seed());
                 const bool underside = world.get({x, y - 1, z}) == Block::Air;
-                const bool luminousPatch = hash((x + 24) / 3 + y / 3, (z + 24) / 3, world.seed()) % 16 == 0;
+                const bool luminousPatch = hash((x + 24) / 3 + y / 3, (z + 24) / 3, world.seed()) % 8 == 0;
                 if (luminousPatch && (underside || world.get({x, y + 1, z}) == Block::Air))
                     world.set({x, y, z}, Block::GlowLeaves);
-                if (underside && variation % 61 == 0) {
-                    const int length = 2 + variation % 6;
-                    for (int drop = 1; drop <= length; ++drop) {
-                        if (world.get({x, y - drop, z}) != Block::Air) break;
-                        world.set({x, y - drop, z}, drop == length ? Block::GlowLeaves : Block::Leaves);
-                    }
-                }
             }
         }
     }
@@ -315,16 +306,7 @@ void expeditionGateway(World& world)
 
 void greenery(World& world)
 {
-    // Low planted borders sit on grass only, so doors and paved routes stay clear.
-    for (int z = -49; z <= 62; z += 3) {
-        for (int x = -51; x <= 65; x += 3) {
-            const auto variation = hash(x, z, world.seed());
-            if (variation % 5 != 0 || world.get({x, Ground, z}) != Block::Grass
-                || world.get({x, Ground + 1, z}) != Block::Air) continue;
-            sphere(world, {x, Ground + 1, z}, {1.4f, 0.8f, 1.4f}, Block::Leaves, true);
-            if (variation % 3 == 0) world.set({x, Ground + 2, z}, Block::GlowLeaves);
-        }
-    }
+    // Fine garden borders and trailing vines are models in hub_assets.cpp.
     // Small trees frame the waterfront without competing with the heart tree.
     for (const auto p : {glm::ivec2(-17, 25), {32, 27}, {-27, 0}, {36, 2}, {-5, -25}, {22, -25}}) {
         if (world.get({p.x, Ground, p.y}) != Block::Grass) continue;
@@ -332,18 +314,6 @@ void greenery(World& world)
         sphere(world, {p.x, 16, p.y}, {3, 3, 3}, Block::Leaves, true);
         sphere(world, {p.x + 2, 15, p.y}, {2, 2, 2}, Block::Leaves, true);
         world.set({p.x, 13, p.y + 2}, Block::GlowLeaves);
-    }
-    // Hanging vegetation breaks up the high cavern silhouette.
-    for (const auto p : {glm::ivec2(-34, -20), {48, -18}, {-40, 28}, {43, 43}, {-17, 51}}) {
-        for (int dx = -3; dx <= 3; ++dx) {
-            int y = 59;
-            while (y > 25 && world.get({p.x + dx, y, p.y}) != Block::Air) --y;
-            const int length = 4 + hash(p.x + dx, p.y, world.seed()) % 6;
-            for (int drop = 0; drop < length; ++drop) {
-                if (world.get({p.x + dx, y - drop, p.y}) == Block::Air)
-                    world.set({p.x + dx, y - drop, p.y}, drop + 1 == length ? Block::GlowLeaves : Block::Leaves);
-            }
-        }
     }
 }
 

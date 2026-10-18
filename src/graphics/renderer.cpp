@@ -3,6 +3,7 @@
 #include "graphics/cave_details.h"
 #include "graphics/block_relief.h"
 #include "graphics/materials.h"
+#include "hub_assets.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -11,6 +12,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace voxel {
 
@@ -224,10 +226,11 @@ void WorldRenderer::uploadLights(const World& world)
 {
     std::vector<glm::vec4> data;
     for (std::size_t index = 0; index < World::ChunkCount; ++index) {
-        // Details can extend one cell beyond their chunk. Include every source
-        // whose radius touches these bounds; never truncate a chunk's list.
-        const glm::vec3 minimum = glm::vec3(world.origin(index)) - 1.0f;
-        const glm::vec3 maximum = minimum + float(Chunk::Size + 2);
+        // Models can reach beyond their owning chunk. Include every source
+        // touching their full bounds; never truncate a chunk's light list.
+        const float margin = assets_[index].indexCount() ? HubAssetMargin : 1.0f;
+        const glm::vec3 minimum = glm::vec3(world.origin(index)) - margin;
+        const glm::vec3 maximum = minimum + float(Chunk::Size) + 2.0f * margin;
         lightOffsets_[index] = static_cast<int>(data.size() / 2);
         for (const auto& light : lights_) {
             const auto delta = light.position - glm::clamp(light.position, minimum, maximum);
@@ -283,6 +286,16 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             relief_[index].upload(buildBlockRelief(world, index));
             changed = true;
         }
+    }
+    std::vector<HubAssetLight> assetLights;
+    if (changed) {
+        // Plans can depend on supports farther than an adjacent voxel, so a
+        // changed world refreshes the entire small set of handcrafted models.
+        auto dressing = buildHubDressing(world);
+        for (std::size_t index = 0; index < assets_.size(); ++index) {
+            assets_[index].upload(dressing.meshes[index]);
+        }
+        assetLights = std::move(dressing.lights);
     }
     GLint activeTexture = 0, previousTexture = 0, previousLights = 0;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
@@ -356,6 +369,9 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
+        for (const auto& light : assetLights) {
+            lights_.push_back({light.position, light.color, light.radius});
+        }
         uploadLights(world);
         meshedWorld_ = world;
     }
@@ -386,8 +402,9 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
         const bool hasDetails = details_[index].indexCount() != 0 || relief_[index].indexCount() != 0;
-        const float margin = underground && hasDetails ? 1.0f : 0.0f;
-        if (meshes_[index].indexCount() == 0
+        const bool hasAssets = assets_[index].indexCount() != 0;
+        const float margin = underground ? (hasAssets ? HubAssetMargin : hasDetails ? 1.0f : 0.0f) : 0.0f;
+        if ((meshes_[index].indexCount() == 0 && !(underground && (hasDetails || hasAssets)))
             || !frustum.intersects(minimum - margin, minimum + glm::vec3(Chunk::Size + margin))) continue;
         shader_.setInt("lightOffset", lightOffsets_[index]);
         shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
@@ -401,10 +418,12 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         meshes_[index].draw();
         ++visibleChunks_;
         drawnTriangles_ += meshes_[index].indexCount() / 3;
-        if (underground && details_[index].indexCount() != 0) {
+        if (underground && (details_[index].indexCount() != 0 || hasAssets)) {
             shader_.setInt("decorative", 1);
             details_[index].draw();
             drawnTriangles_ += details_[index].indexCount() / 3;
+            assets_[index].draw();
+            drawnTriangles_ += assets_[index].indexCount() / 3;
             shader_.setInt("decorative", 0);
         }
     }
@@ -423,6 +442,7 @@ std::size_t WorldRenderer::triangleCount() const
     if (underground_) {
         for (const auto& mesh : details_) total += mesh.indexCount() / 3;
         for (const auto& mesh : relief_) total += mesh.indexCount() / 3;
+        for (const auto& mesh : assets_) total += mesh.indexCount() / 3;
     }
     return total;
 }

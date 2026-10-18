@@ -4,11 +4,15 @@
 #include "graphics/post_process.h"
 #include "graphics/renderer.h"
 #include "graphics/window.h"
+#include "graphics/cave_details.h"
+#include "graphics/block_relief.h"
+#include "hub_assets.h"
 #include "camera.h"
 #include "editing.h"
 #include "game.h"
 #include "input.h"
 #include "save.h"
+#include "scene.h"
 
 #include <GLFW/glfw3.h>
 
@@ -786,6 +790,65 @@ void verifyBlockRelief(int width, int height)
     std::cout << "Block relief passed: real depth, shallow bounds, neighbor cover, reveal and mining\n";
 }
 
+void verifyHubDressing(int width, int height)
+{
+    World world;
+    buildUndergroundScene(world);
+    const auto dressing = buildHubDressing(world);
+    std::size_t terrainTriangles = 0, undergroundTriangles = 0, assetTriangles = 0;
+    for (std::size_t index = 0; index < World::ChunkCount; ++index) {
+        terrainTriangles += buildMesh(world, index).indices.size() / 3;
+        undergroundTriangles += buildCaveDetails(world, index).indices.size() / 3
+            + buildBlockRelief(world, index).indices.size() / 3;
+        assetTriangles += dressing.meshes[index].indices.size() / 3;
+    }
+    undergroundTriangles += terrainTriangles + assetTriangles;
+    if (assetTriangles == 0 || dressing.lights.empty()) {
+        throw std::runtime_error("The hub fixture did not include models and their lights");
+    }
+    Camera camera;
+    camera.setPosition(VillageSpawn + glm::vec3(0, 1.62f, 0));
+    camera.rotate(VillageYaw + 125, VillagePitch + 25);
+    WorldRenderer renderer;
+    renderer.render(world, camera, width, height, false, false);
+    if (renderer.triangleCount() != terrainTriangles) {
+        throw std::runtime_error("Editor mode included underground hub models");
+    }
+    renderer.render(world, camera, width, height, false, true);
+    if (renderer.triangleCount() != undergroundTriangles) {
+        throw std::runtime_error("Underground rendering lost planned hub geometry");
+    }
+    constexpr int patchSize = 48;
+    const auto sample = [&] {
+        std::array<unsigned char, patchSize * patchSize * 4> pixels{};
+        glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
+                     patchSize, patchSize, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        return pixels;
+    };
+    const auto original = sample();
+    renderer.render(world, camera, width, height, false, false);
+    if (renderer.triangleCount() != terrainTriangles) {
+        throw std::runtime_error("Switching back to editor retained hub model counts");
+    }
+    const auto saved = world;
+    for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
+        for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+            for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) world.set({x,y,z}, Block::Air);
+        }
+    }
+    renderer.render(world, camera, width, height, false, true);
+    if (renderer.triangleCount() != 0 || renderer.drawnTriangles() != 0 || renderer.visibleChunks() != 0) {
+        throw std::runtime_error("Clearing the world retained stale hub model meshes");
+    }
+    world = saved;
+    renderer.render(world, camera, width, height, false, true);
+    if (renderer.triangleCount() != undergroundTriangles || sample() != original) {
+        throw std::runtime_error("Restoring the hub did not restore its models and stable lighting");
+    }
+    checkOpenGl();
+    std::cout << "Hub assets passed: exact geometry counts, mode switches, clear and restore\n";
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -942,6 +1005,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyUndergroundMaterials(width, height);
     verifyStableWorldLighting(width, height);
     verifyBlockRelief(width, height);
+    verifyHubDressing(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.

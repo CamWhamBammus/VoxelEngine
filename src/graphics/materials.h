@@ -37,8 +37,12 @@ MaterialSurface evaluateMaterial() {
             float tip = smoothstep(0.05, 0.50, fract(worldPosition.y));
             color *= mix(vec3(0.62, 0.76, 0.83), vec3(1.18, 1.03, 0.72), tip);
         }
-        return MaterialSurface(clamp(color, 0.0, 1.0), n,
-            materialId == 10 ? 0.24 : 0.88, materialId == 10 ? 0.30 + brush * 0.08 : 0.0);
+        float roughness = 0.88, emission = 0.0;
+        if (materialId == 10) { roughness = 0.24; emission = 0.30 + brush * 0.08; }
+        if (materialId == 14) { roughness = 0.22; emission = 1.0; }
+        if (materialId == 17) emission = 0.025;
+        if (materialId == 18) emission = 0.15;
+        return MaterialSurface(clamp(color, 0.0, 1.0), n, roughness, emission);
     }
     // Sample the same paint on a raised chip and on its supporting block.
     // Facet normals still light the geometry, but cannot rotate its UV axes.
