@@ -105,40 +105,24 @@ std::vector<HubAsset> planLandscapeAssets(const World& world)
         return HubAsset{kind,position,facing,hash(cell.x,cell.z,world.seed()^std::uint32_t(cell.y*73))};
     };
 
-    // Root arches straddle a paved walking line; only their two feet need ground.
-    // Clear the full arch envelope so roots never intersect terrain or buildings.
+    // Keep arches inside the tree's planted bed, facing the four approaches.
+    // The bridges are wider than these models' openings. Reserving the whole
+    // footprint plus shoulder room keeps both bridge lanes and the plaza loop
+    // clear, rather than accepting a root foot on any solid paving block.
     constexpr Bounds archBounds{{-3.95f,0,-.8f},{3.95f,3.95f,.8f}};
-    int arches=0;
-    const auto arch=[&](glm::vec3 feet,int facing) {
-        if (arches>=4 || world.get(glm::ivec3(glm::floor(feet))-glm::ivec3(0,1,0))!=Block::Path) return;
-        const auto asset=model(HubAssetKind::RootArch,feet,facing);
-        if (!clear(world,asset,archBounds)) return;
-        for (const float side : {-3.3f,3.3f}) {
-            if (!volume(world,asset,{{side-.65f,-1,-.8f},{side+.65f,0,.8f}},isSolid)) return;
-        }
-        if (add(asset,archBounds)) ++arches;
-    };
-    for (const auto p : std::array<glm::vec3,8>{{
-        {8.5f,9,-6.5f},{23.5f,9,8.5f},{8.5f,9,23.5f},{-6.5f,9,8.5f},
-        {-1.5f,9,-1.5f},{18.5f,9,-1.5f},{18.5f,9,18.5f},{-1.5f,9,18.5f}
-    }}) {
-        arch(p,0); arch(p,1);
-    }
-    for (const auto column : columns(world,6,19)) {
-        if (arches>=4) break;
-        if (std::abs(column.x-8)>23 || std::abs(column.y-8)>23) continue;
-        for (int y=40;y>=8;--y) {
-            if (world.get({column.x,y,column.y})!=Block::Path) continue;
-            const glm::vec3 p(column.x+.5f,y+1.f,column.y+.5f);
-            arch(p,0); arch(p,1); break;
-        }
+    constexpr glm::ivec3 normals[4]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
+    for (int facing=0;facing<4;++facing) {
+        const auto asset=model(HubAssetKind::RootArch,
+            HeartTreeCenter+glm::vec3(normals[facing])*10.f,facing);
+        if (clear(world,asset,archBounds)
+            && volume(world,asset,{{-4.3f,-1,-1.15f},{4.3f,0,1.15f}},natural))
+            add(asset,archBounds);
     }
 
     // Roots hang from the top of a genuine retaining face. Six clear blocks
     // below its lip leave walking headroom beneath the longest hanging stem.
     constexpr Bounds curtainBounds{{-1.6f,-3.8f,0},{1.6f,0,.55f}};
     constexpr Bounds ledgeBounds{{-2.8f,-1.1f,0},{2.8f,.35f,1.5f}};
-    constexpr glm::ivec3 normals[4]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
     const auto walls=[&](bool roots,int limit) {
         int count=0;
         for (const auto column : columns(world,roots?5:7,roots?37:53)) {

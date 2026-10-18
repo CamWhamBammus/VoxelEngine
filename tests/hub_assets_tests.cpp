@@ -142,6 +142,30 @@ void validateGarden(HubAssetKind kind, std::uint32_t variation)
           "garden models form broad overlapping patches rather than narrow spikes");
 }
 
+bool triangleIntersectsBox(const MeshData& mesh, std::size_t first, glm::vec3 low, glm::vec3 high)
+{
+    std::vector<glm::vec3> polygon;
+    for (int corner = 0; corner < 3; ++corner)
+        polygon.push_back(mesh.vertices[mesh.indices[first + corner]].position);
+    // Clip the face itself: vertex-only checks miss triangles whose edges
+    // cross a walking lane while all three corners lie outside it.
+    for (int plane = 0; plane < 6 && !polygon.empty(); ++plane) {
+        const int axis = plane / 2;
+        const auto distance = [&](glm::vec3 p) {
+            return plane % 2 == 0 ? p[axis] - low[axis] : high[axis] - p[axis];
+        };
+        std::vector<glm::vec3> clipped;
+        for (std::size_t edge = 0; edge < polygon.size(); ++edge) {
+            const auto a = polygon[edge], b = polygon[(edge + 1) % polygon.size()];
+            const float da = distance(a), db = distance(b);
+            if (da >= 0) clipped.push_back(a);
+            if ((da >= 0) != (db >= 0)) clipped.push_back(a + (b - a) * (da / (da - db)));
+        }
+        polygon = std::move(clipped);
+    }
+    return !polygon.empty();
+}
+
 void validateRootArch(std::uint32_t variation)
 {
     const auto mesh = buildHubAsset({HubAssetKind::RootArch, {}, 0, variation});
@@ -154,27 +178,40 @@ void validateRootArch(std::uint32_t variation)
         }
     }
     check(leftFoot && rightFoot, "both sides of a root arch reach the ground");
-    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-        std::vector<glm::vec3> polygon;
-        for (int corner = 0; corner < 3; ++corner)
-            polygon.push_back(mesh.vertices[mesh.indices[i + corner]].position);
-        // Clip each actual face into the central walking opening. Checking
-        // only vertices would miss a face spanning it from outside corners.
-        for (int plane = 0; plane < 3 && !polygon.empty(); ++plane) {
-            const auto distance = [plane](glm::vec3 p) {
-                return plane == 0 ? p.x + 2.4999f : plane == 1 ? 2.4999f - p.x : 2.4999f - p.y;
-            };
-            std::vector<glm::vec3> clipped;
-            for (std::size_t edge = 0; edge < polygon.size(); ++edge) {
-                const auto a = polygon[edge], b = polygon[(edge + 1) % polygon.size()];
-                const float da = distance(a), db = distance(b);
-                if (da >= 0) clipped.push_back(a);
-                if ((da >= 0) != (db >= 0)) clipped.push_back(a + (b - a) * (da / (da - db)));
-            }
-            polygon = std::move(clipped);
-        }
-        check(polygon.empty(), "root arch faces leave a five-wide opening clear below height 2.5");
+    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+        check(!triangleIntersectsBox(mesh, i, {-2.4999f,-0.0001f,-4.001f}, {2.4999f,2.4999f,4.001f}),
+              "root arch faces leave a five-wide opening clear below height 2.5");
+}
+
+void checkArchWalkingClearance(const World& world, const HubAsset& asset)
+{
+    const auto mesh = buildHubAsset(asset);
+    glm::vec3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
+    for (const auto& vertex : mesh.vertices) {
+        low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
     }
+    const auto first = glm::ivec3(glm::floor(low - glm::vec3(0.3f,3.5f,0.3f)));
+    const auto last = glm::ivec3(glm::floor(high + glm::vec3(0.3f,0,0.3f)));
+    for (int y = first.y; y <= last.y; ++y) for (int z = first.z; z <= last.z; ++z)
+        for (int x = first.x; x <= last.x; ++x) {
+            const glm::ivec3 floor{x,y,z};
+            const auto block = world.get(floor);
+            if ((block != Block::Path && block != Block::Planks)
+                || world.get(floor + glm::ivec3(0,1,0)) != Block::Air
+                || world.get(floor + glm::ivec3(0,2,0)) != Block::Air) continue;
+            // Preserve the entire tile plus the player's radius, including
+            // side paths and steps at a different height from the arch origin.
+            const auto laneLow = glm::vec3(floor) + glm::vec3(-0.3f,1.0001f,-0.3f);
+            const auto laneHigh = glm::vec3(floor) + glm::vec3(1.3f,3.5f,1.3f);
+            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                if (!triangleIntersectsBox(mesh, i, laneLow, laneHigh)) continue;
+                std::cerr << "Arch at " << asset.position.x << ',' << asset.position.y << ','
+                          << asset.position.z << " facing " << asset.facing
+                          << " intersects walking tile " << x << ',' << y << ',' << z << '\n';
+                check(false, "oriented root geometry leaves every nearby Path and Planks walking lane clear");
+                return;
+            }
+        }
 }
 
 std::size_t owner(glm::vec3 position)
@@ -261,6 +298,9 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
     const HubAsset* bay = nullptr;
     const HubAsset* boulder = nullptr;
     const HubAsset* stalactite = nullptr;
+    const HubAsset* rootArch = nullptr;
+    std::array<bool, 4> archFacings{};
+    int archCount = 0;
     const auto cell = [](glm::vec3 point) { return glm::ivec3(glm::floor(point)); };
     const auto natural = [](Block block) {
         return block == Block::Grass || block == Block::Dirt || block == Block::Stone
@@ -301,12 +341,23 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
             if (!stalactite) stalactite = &asset;
         }
         if (asset.kind == HubAssetKind::RootArch) {
+            ++archCount;
+            if (asset.facing >= 0 && asset.facing < 4) archFacings[asset.facing] = true;
+            const auto outward = turn({0,0,1}, asset.facing);
+            check(glm::length(p - (HeartTreeCenter + outward * 10.0f)) < 0.0001f,
+                  "tree-bed root arches face radially toward their bridge approach");
+            const auto bedA = turn({-4.3f,-1,-1.15f}, asset.facing);
+            const auto bedB = turn({4.3f,0,1.15f}, asset.facing);
+            check(volume(p + glm::min(bedA,bedB), p + glm::max(bedA,bedB), natural),
+                  "the whole padded arch bed stays on natural terrain instead of walking routes");
             for (const float side : {-3.3f, 3.3f}) {
                 const auto a = turn({side - 0.65f,-1,-0.8f}, asset.facing);
                 const auto b = turn({side + 0.65f,0,0.8f}, asset.facing);
                 check(volume(p + glm::min(a,b), p + glm::max(a,b), isSolid),
                       "root arch feet and flared toes have solid ground below them");
             }
+            checkArchWalkingClearance(world, asset);
+            if (!rootArch) rootArch = &asset;
         }
         if (asset.kind >= HubAssetKind::Boulder && asset.kind <= HubAssetKind::RootCurtain) {
             glm::vec3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
@@ -369,8 +420,10 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
                   "projecting facades leave player headroom through every entrance");
         }
     }
-    check(garden && coveredGarden && bay && boulder && stalactite,
+    check(garden && coveredGarden && bay && boulder && stalactite && rootArch,
           "the real hub provides garden, facade, grounded, and hanging edit fixtures");
+    check(archCount == 4 && std::all_of(archFacings.begin(), archFacings.end(), [](bool found) { return found; }),
+          "the real hub retains one safely planted arch facing each bridge approach");
     const auto mine = [&](const HubAsset* asset, glm::vec3 offset) {
         if (!asset) return;
         const auto support = cell(asset->position + turn(offset, asset->facing));
@@ -382,6 +435,12 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
     mine(bay, {-0.5f,0,-0.48f});
     mine(boulder, {0,-0.5f,0});
     mine(stalactite, {0,0.5f,0});
+    if (rootArch) {
+        const auto route = cell(rootArch->position + turn({3.3f,-0.5f,0}, rootArch->facing));
+        check(natural(edited.get(route)), "the route-edit fixture starts on a natural arch bed");
+        edited.set(route, Block::Path);
+        removed.push_back(*rootArch);
+    }
     if (coveredGarden) {
         const auto ceiling = cell(coveredGarden->position) + glm::ivec3(0,2,0);
         check(edited.get(ceiling) == Block::Air, "the garden clearance fixture starts in open air");
