@@ -12,7 +12,8 @@ namespace voxel {
 enum class HubAssetKind {
     LanternCap, WallBracket, HangingLamp, CrystalBeacon,
     WindowBox, Shutters, Awning, RoofBrace, Banner, CrateStack,
-    Fern, Flowers, Mushrooms, Reeds, LilyPads, Vines, Shrub
+    Fern, Flowers, Mushrooms, Reeds, LilyPads, Vines, Shrub,
+    PathPaving, PathEdging, PathStep
 };
 
 struct HubAsset {

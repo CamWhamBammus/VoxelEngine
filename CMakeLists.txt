@@ -29,6 +29,7 @@ add_library(VoxelCore
     src/graphics/block_relief.cpp
     src/graphics/hub_props.cpp
     src/graphics/hub_foliage.cpp
+    src/graphics/hub_paths.cpp
     src/editing.cpp
     src/save.cpp
 )

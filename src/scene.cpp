@@ -72,6 +72,10 @@ constexpr std::array<HubBridge, 4> Bridges{{
 constexpr std::array<HubWaterfall, 2> Waterfalls{{
     {{-90,-18},1,39}, {{106,-14},-1,45},
 }};
+constexpr std::array<glm::ivec3, 9> ExpeditionApproach{{
+    {8,8,-31}, {8,8,-35}, {8,14,-43}, {8,14,-46},
+    {8,22,-54}, {8,22,-57}, {8,30,-65}, {8,30,-105}, {34,30,-105},
+}};
 
 std::uint32_t hash(int x, int z, std::uint32_t seed)
 {
@@ -285,9 +289,31 @@ void street(World& world,glm::ivec3 from,glm::ivec3 to,int radius,StreetMap& str
         if (proposed[i]<0 || streets[i]>=0) continue;
         const auto p=mapPoint(i); const int y=proposed[i];
         box(world,{p.x,1,p.y},{p.x,y-1,p.y},Block::Stone);
-        world.set({p.x,y,p.y},hash(p.x,p.y,world.seed())%13==0?Block::Slate:Block::Limestone);
+        world.set({p.x,y,p.y},Block::Path);
         box(world,{p.x,y+1,p.y},{p.x,std::min(std::max(y+8,terrainHeight(p.x,p.y)+2),World::MaxExclusive.y-2),p.y},Block::Air);
         streets[i]=y;
+    }
+}
+
+void expeditionApproach(World& world,StreetMap& streets)
+{
+    // Author the main entrance before the district paths. Their intersections
+    // then inherit these tread heights, including the raised gateway landing.
+    for (std::size_t i=1;i<ExpeditionApproach.size();++i) {
+        const auto from=ExpeditionApproach[i-1],to=ExpeditionApproach[i];
+        const int length=std::abs(to.x-from.x)+std::abs(to.z-from.z);
+        const glm::ivec3 direction((to.x-from.x)/length,0,(to.z-from.z)/length);
+        const glm::ivec3 across(-direction.z,0,direction.x);
+        for (int step=0;step<=length;++step) {
+            const int floor=int(std::round(glm::mix(float(from.y),float(to.y),float(step)/length)));
+            for (int side=-3;side<=3;++side) {
+                const auto p=from+direction*step+across*side;
+                box(world,{p.x,1,p.z},{p.x,floor-1,p.z},Block::Stone);
+                world.set({p.x,floor,p.z},Block::Path);
+                box(world,{p.x,floor+1,p.z},{p.x,std::max(floor+6,terrainHeight(p.x,p.z)+2),p.z},Block::Air);
+                streets[mapIndex({p.x,p.z})]=floor;
+            }
+        }
     }
 }
 
@@ -391,7 +417,7 @@ void heartTree(World& world)
     }
     for (int z=-9;z<=25;++z) for (int x=-10;x<=26;++x) {
         const float r=glm::length((glm::vec2(x,z)-glm::vec2(Center))/glm::vec2(18,17));
-        if (r>.72f && r<=1) world.set({x,Ground,z},Block::Limestone);
+        if (r>.72f && r<=1) world.set({x,Ground,z},Block::Path);
     }
 }
 
@@ -481,6 +507,7 @@ void expeditionGateway(World& world)
     };
     const auto gateSet=[&](glm::ivec3 p,Block block) { p.y+=22; world.set(p,block); };
     gateBox({-14,1,-105},{30,Ground,-65},Block::Limestone);
+    box(world,{-14,30,-105},{30,30,-65},Block::Path);
     gateBox({-12,9,-104},{28,43,-76},Block::Air);
     for (const int x : {-11,23}) {
         gateBox({x,9,-84},{x+4,35,-76},Block::Slate);
@@ -497,28 +524,33 @@ void expeditionGateway(World& world)
     gateBox({26,9,-104},{28,33,-85},Block::Slate);
     gateBox({-12,32,-104},{28,34,-85},Block::Slate);
     gateBox({-12,9,-105},{28,34,-103},Block::Stone);
-    gateBox({3,1,-110},{39,Ground,-102},Block::Slate);
-    gateBox({4,9,-109},{14,24,-102},Block::Air);
-    gateBox({4,9,-109},{38,24,-106},Block::Air);
-    for (const int x : {-6,0,16,22})
+    for (const int x : {-6,0})
         gateBox({x,9,-102},{x+1,31,-101},Block::Limestone);
-    for (const int x : {2,15})
-        gateBox({x,9,-102},{x+1,24,-100},Block::Limestone);
-    gateBox({2,25,-102},{16,27,-100},Block::Limestone);
-    for (const int x : {3,39}) gateSet({x,14,-108},Block::Lantern);
-    gateSet({25,17,-110},Block::Crystal);
-    for (const int z : {-97,-87}) for (const int x : {-8,24}) lamp(world,x,z,30);
-    const auto floorMark=[&](int x,int z) {
-        if (isSolid(world.get({x,30,z})) && isSolid(world.get({x,29,z})))
-            world.set({x,30,z},Block::RoofTiles);
-    };
-    for (int z=-78;z<=-61;++z) {
-        floorMark(8,z);
-        if ((z+78)%5==0) for (int dx=1;dx<=4;++dx) {
-            floorMark(8-dx,z+dx);
-            floorMark(8+dx,z+dx);
-        }
+    // Carve a broad L-shaped passage from founded rock. Its right-hand opening
+    // starts immediately behind the entrance, before a north wall can read as
+    // another blocked door. The east end stays inside the sealed world shell.
+    box(world,{3,1,-110},{40,43,-98},Block::Slate);
+    box(world,{4,31,-109},{14,41,-98},Block::Air);
+    box(world,{4,31,-108},{38,41,-100},Block::Air);
+    box(world,{4,30,-109},{14,30,-98},Block::Path);
+    box(world,{4,30,-108},{38,30,-100},Block::Path);
+    for (const int x : {3,15}) box(world,{x,31,-98},{x,38,-98},Block::Timber);
+    box(world,{3,38,-98},{15,39,-98},Block::Timber);
+    world.set({14,37,-98},Block::Timber);
+    world.set({14,36,-98},Block::Lantern);
+    // The next supports and warm lights turn east, leaving the junction open.
+    for (const int x : {16,24,32}) {
+        for (const int z : {-109,-99}) box(world,{x,31,z},{x,38,z},Block::Timber);
+        box(world,{x,38,-109},{x,39,-99},Block::Timber);
+        world.set({x,37,-100},Block::Timber);
+        world.set({x,36,-100},Block::Lantern);
     }
+    // Flush timber bands guide feet around the bend without adding barriers.
+    box(world,{4,30,-108},{4,30,-98},Block::Timber);
+    box(world,{4,30,-108},{37,30,-108},Block::Timber);
+    box(world,{12,30,-102},{12,30,-98},Block::Timber);
+    box(world,{12,30,-102},{37,30,-102},Block::Timber);
+    for (const int z : {-97,-87}) for (const int x : {-8,24}) lamp(world,x,z,30);
 }
 
 void smallTree(World& world,glm::ivec2 p,int height,int spread)
@@ -539,6 +571,7 @@ void smallTree(World& world,glm::ivec2 p,int height,int spread)
 void neighborhoods(World& world)
 {
     StreetMap streets; streets.fill(-1);
+    expeditionApproach(world,streets);
     const auto avenue=[&](std::initializer_list<glm::ivec3> points) {
         for (auto p=points.begin();p+1!=points.end();++p) street(world,*p,*(p+1),2,streets);
     };
@@ -547,7 +580,6 @@ void neighborhoods(World& world)
     avenue({{8,8,48},{-2,14,63},{2,18,77},{24,18,79},{53,20,77},{72,20,70},{72,20,52},{70,18,32},{70,12,18},{65,8,8}});
     avenue({{-50,8,8},{-58,12,18},{-57,20,39},{-49,22,54},{-49,22,74},{2,18,77}});
     avenue({{-50,8,8},{-48,12,-9},{-56,20,-30},{-62,26,-44},{-62,28,-67},{-50,28,-79},{-30,28,-81},{8,30,-78}});
-    avenue({{8,8,-31},{3,12,-39},{-4,18,-51},{3,24,-64},{8,30,-78},{8,30,-98}});
     avenue({{65,8,8},{66,10,-5},{63,18,-22},{61,24,-42},{80,26,-43},{86,26,-71},{62,28,-76},{30,28,-77},{8,30,-78}});
     for (int z=World::Min.z+7;z<World::MaxExclusive.z-7;++z) {
         for (int x=World::Min.x+7;x<World::MaxExclusive.x-7;++x) {
@@ -603,7 +635,7 @@ void neighborhoods(World& world)
         for (int step=0;step<=3;++step) for (int side=-1;side<=1;++side) {
             const auto p=door+glm::ivec3(d.x*step+d.y*side,0,d.y*step-d.x*side);
             box(world,{p.x,1,p.z},{p.x,p.y-1,p.z},Block::Stone);
-            world.set(p,Block::Limestone);
+            world.set(p,Block::Path);
             box(world,p+glm::ivec3(0,1,0),p+glm::ivec3(0,4,0),Block::Air);
         }
     }
@@ -628,6 +660,7 @@ void neighborhoods(World& world)
 std::span<const HubBuilding> sceneBuildingPlan() { return Buildings; }
 std::span<const HubBridge> sceneBridgePlan() { return Bridges; }
 std::span<const HubWaterfall> sceneWaterfallPlan() { return Waterfalls; }
+std::span<const glm::ivec3> sceneExpeditionApproach() { return ExpeditionApproach; }
 
 void buildUndergroundScene(World& world)
 {

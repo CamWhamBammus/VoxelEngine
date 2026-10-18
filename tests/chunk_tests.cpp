@@ -52,7 +52,8 @@ int main()
         voxel::Block::CoalOre, voxel::Block::CopperOre, voxel::Block::IronOre,
         voxel::Block::Crystal, voxel::Block::Timber, voxel::Block::Planks,
         voxel::Block::Brick, voxel::Block::Lantern, voxel::Block::Bedrock,
-        voxel::Block::Water, voxel::Block::Leaves, voxel::Block::GlowLeaves, voxel::Block::RoofTiles
+        voxel::Block::Water, voxel::Block::Leaves, voxel::Block::GlowLeaves, voxel::Block::RoofTiles,
+        voxel::Block::Path
     };
     check(voxel::BlockCount == expectedMaterials.size(), "block count covers every stored material");
     for (std::size_t value = 0; value < expectedMaterials.size(); ++value) {

@@ -28,6 +28,9 @@ struct HubWaterfall {
 };
 std::span<const HubBridge> sceneBridgePlan();
 std::span<const HubWaterfall> sceneWaterfallPlan();
+// Floor-voxel waypoints for the seven-wide north stair and the mine's east turn.
+// Flights rise at most one block per tread; the level sections are landings.
+std::span<const glm::ivec3> sceneExpeditionApproach();
 
 // Replace the world with the enclosed tree-and-water hub. No building services
 // or expedition transitions run here; this scene supplies their physical spaces.

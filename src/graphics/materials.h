@@ -32,6 +32,17 @@ MaterialSurface evaluateMaterial() {
     if (decorative == 1) {
         float brush = floor(materialNoise(worldPosition.xz * 2.0 + worldPosition.y) * 4.0) / 4.0;
         vec3 color = surfaceColor * (0.87 + 0.18 * brush);
+        if (materialId == 20) {
+            // Broad painted grain and sparse pale flecks keep the fitted stones
+            // tactile at walking height without changing their beveled outline.
+            vec3 paint = (floor(worldPosition * 32.0) + 0.5) / 32.0;
+            vec2 uv = abs(n.y) > 0.5 ? paint.xz : vec2(paint.x + paint.z, paint.y);
+            float grain = materialNoise(uv * vec2(7.0, 11.0));
+            float stroke = materialNoise(uv * vec2(1.8, 18.0) + grain * 0.35);
+            color *= 0.87 + floor(grain * 5.0) * 0.035 + stroke * 0.09;
+            float fleck = smoothstep(0.89, 0.98, materialHash(floor(uv * 24.0)));
+            color += surfaceColor * fleck * 0.065;
+        }
         if (materialId == 10) color *= vec3(0.55, 0.95, 1.0);
         if (materialId == 1) {
             float tip = smoothstep(0.05, 0.50, fract(worldPosition.y));
@@ -288,6 +299,19 @@ MaterialSurface evaluateMaterial() {
         color += vec3(0.09, 0.22, 0.25) * gleam * smoothstep(-0.10, 0.25, plane.x);
         slope = vec2((facet - 0.5) * 0.60, (fract(facet * 13.71) - 0.5) * 0.24);
         roughness = 0.20; emission = 0.26 + 0.14 * facet;
+    } else if (materialId == 20) {
+        // The fitted slab models sit just above this recessed mortar bed.
+        // Exposed retaining faces use small, staggered masonry courses.
+        color = mix(vec3(0.22, 0.24, 0.20), vec3(0.33, 0.34, 0.28), broad);
+        if (!top) {
+            vec2 course = vec2(p.x * 1.6 + mod(floor(p.y * 3.0), 2.0) * 0.5, p.y * 3.0);
+            vec2 edge = min(fract(course), 1.0 - fract(course));
+            float joint = 1.0 - smoothstep(0.025, 0.075, min(edge.x, edge.y));
+            float shade = materialHash(floor(course) + seed);
+            vec3 stone = mix(vec3(0.43, 0.46, 0.42), vec3(0.61, 0.58, 0.46), shade);
+            color = mix(stone * (0.90 + 0.12 * broad), color * 0.78, joint);
+        }
+        roughness = 0.96;
     } else if (materialId == 14) {
         vec2 edge = min(local, 1.0 - local);
         bool metal = min(edge.x, edge.y) < 0.095 || abs(local.x - 0.5) < 0.027

@@ -17,6 +17,7 @@ constexpr std::array kinds{
     HubAssetKind::Awning, HubAssetKind::RoofBrace, HubAssetKind::Banner, HubAssetKind::CrateStack,
     HubAssetKind::Fern, HubAssetKind::Flowers, HubAssetKind::Mushrooms, HubAssetKind::Reeds,
     HubAssetKind::LilyPads, HubAssetKind::Vines, HubAssetKind::Shrub,
+    HubAssetKind::PathPaving, HubAssetKind::PathEdging, HubAssetKind::PathStep,
 };
 
 void check(bool condition, const char* message)
@@ -81,6 +82,103 @@ bool samePlan(const std::vector<HubAsset>& a, const std::vector<HubAsset>& b)
     }
     return true;
 }
+
+void validatePath(HubAssetKind kind, std::uint32_t variation)
+{
+    const auto mesh = buildHubAsset({kind, {}, 0, variation});
+    const bool step = kind == HubAssetKind::PathStep;
+    const bool edging = kind == HubAssetKind::PathEdging;
+    const glm::vec3 minimum = step ? glm::vec3(-0.5f,-0.98f,0.5f)
+        : glm::vec3(-0.5f,0,edging ? 0.34f : -0.5f);
+    const glm::vec3 maximum = step ? glm::vec3(0.5f,0.035f,0.53f)
+        : glm::vec3(0.5f,edging ? 0.09f : 0.045f,0.5f);
+    validate(mesh, minimum, maximum);
+    check(!mesh.indices.empty() && mesh.indices.size() / 3 < 70, "path models have a small triangle budget");
+    bool bevel = false, darkJoint = false, paintedStone = false;
+    float topArea = 0;
+    for (const auto& vertex : mesh.vertices) {
+        check(vertex.material == static_cast<float>(Block::Path), "the fitted path kit uses its dedicated paint material");
+        const float normal = step ? vertex.normal.z : vertex.normal.y;
+        bevel |= normal > 0.05f && normal < 0.98f;
+        darkJoint |= glm::length(vertex.color) < 0.4f;
+        paintedStone |= glm::length(vertex.color) > 0.7f;
+    }
+    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        const auto& a = mesh.vertices[mesh.indices[i]];
+        const auto& b = mesh.vertices[mesh.indices[i + 1]];
+        const auto& c = mesh.vertices[mesh.indices[i + 2]];
+        if (a.normal.y > 0.999f && a.position.y >= 0.015f)
+            topArea += std::abs(glm::cross(b.position - a.position, c.position - a.position).y) * 0.5f;
+    }
+    check(bevel && darkJoint && paintedStone, "paths have actual beveled faces and contrasting recessed joints");
+    if (kind == HubAssetKind::PathPaving)
+        check(topArea > 0.78f && topArea < 0.99f, "fitted slabs cover most of a tile while leaving narrow joints");
+}
+
+std::size_t owner(glm::vec3 position)
+{
+    const auto chunk = (glm::ivec3(glm::floor(position)) - World::Min) / Chunk::Size;
+    return static_cast<std::size_t>(chunk.x + World::Width * (chunk.z + World::Width * chunk.y));
+}
+
+bool hasPath(const std::vector<HubAsset>& plan, HubAssetKind kind, glm::ivec3 support, int facing = -1)
+{
+    const auto anchor = glm::vec3(support) + glm::vec3(0.5f,1,0.5f);
+    return std::any_of(plan.begin(), plan.end(), [&](const HubAsset& asset) {
+        return asset.kind == kind && asset.position == anchor && (facing < 0 || asset.facing == facing);
+    });
+}
+
+void checkPathPlacement(World& world)
+{
+    constexpr std::array<glm::ivec3, 4> sides{{{0,0,1}, {1,0,0}, {0,0,-1}, {-1,0,0}}};
+    const glm::ivec3 upper{15,15,15};
+    for (int facing = 0; facing < 4; ++facing) {
+        const auto lower = upper + sides[facing] - glm::ivec3(0,1,0);
+        world.set(upper, Block::Path); world.set(lower, Block::Path);
+        const auto plan = planHubAssets(world);
+        check(hasPath(plan, HubAssetKind::PathPaving, upper) && hasPath(plan, HubAssetKind::PathPaving, lower),
+              "both sides of a chunk-boundary stair retain their paving");
+        check(hasPath(plan, HubAssetKind::PathStep, upper, facing)
+              && !hasPath(plan, HubAssetKind::PathEdging, upper, facing),
+              "stair dressing faces the lower tread instead of placing a raised curb across it");
+        world.set(upper + glm::ivec3(0,1,0), Block::Stone);
+        const auto covered = planHubAssets(world);
+        check(!hasPath(covered, HubAssetKind::PathPaving, upper)
+              && !hasPath(covered, HubAssetKind::PathStep, upper, facing),
+              "covering a path removes both top and stair models");
+        world.set(upper + glm::ivec3(0,1,0), Block::Air);
+        check(samePlan(plan, planHubAssets(world)), "uncovering a path restores the exact original kit");
+        const auto before = buildHubDressing(world);
+        const auto upperOwner = owner(glm::vec3(upper) + glm::vec3(0.5f,1,0.5f));
+        const auto lowerOwner = owner(glm::vec3(lower) + glm::vec3(0.5f,1,0.5f));
+        check(upperOwner != lowerOwner && !before.meshes[upperOwner].indices.empty()
+              && !before.meshes[lowerOwner].indices.empty(), "stair models batch across horizontal and vertical chunk seams");
+        world.set(upper, Block::Air);
+        const auto mined = buildHubDressing(world);
+        check(mined.meshes[upperOwner].indices.empty() && !mined.meshes[lowerOwner].indices.empty(),
+              "mining an upper tread removes its owned geometry while preserving the lower chunk");
+        world.set(lower, Block::Air);
+    }
+
+    const glm::ivec3 left{-1,15,-1}, right{0,15,-1};
+    world.set(left, Block::Path); world.set(right, Block::Path);
+    const auto joined = planHubAssets(world);
+    check(!hasPath(joined, HubAssetKind::PathEdging, left, 1)
+          && !hasPath(joined, HubAssetKind::PathEdging, right, 3),
+          "level paving has no doubled curb at a negative-coordinate chunk seam");
+    world.set(right, Block::Planks);
+    check(!hasPath(planHubAssets(world), HubAssetKind::PathEdging, left, 1),
+          "a wooden threshold meets paving without a curb across its opening");
+    world.set(right, Block::Grass);
+    check(hasPath(planHubAssets(world), HubAssetKind::PathEdging, left, 1),
+          "an exposed soil border receives narrow edging");
+    world.set(left, Block::Air); world.set(right, Block::Air);
+    const glm::ivec3 ceiling{0, World::MaxExclusive.y - 1, 0};
+    world.set(ceiling, Block::Path);
+    check(planHubAssets(world).empty(), "a path at the world ceiling cannot create an out-of-bounds top model");
+    world.set(ceiling, Block::Air);
+}
 } // namespace
 
 int main()
@@ -90,12 +188,16 @@ int main()
     const glm::vec3 anchor{-13.25f, 22.5f, 15.75f};
     for (const auto kind : kinds) {
         varyingKinds += !same(buildHubAsset({kind, anchor, 0, 0}), buildHubAsset({kind, anchor, 0, 1}));
+        if (kind >= HubAssetKind::PathPaving)
+            check(!same(buildHubAsset({kind, {}, 0, 0}), buildHubAsset({kind, {}, 0, 1})),
+                  "each path model varies its fitted shapes or stone palette");
         for (const auto variation : {0u, 1u, 42u, std::numeric_limits<std::uint32_t>::max()}) {
             const HubAsset asset{kind, anchor, 0, variation};
             const auto original = buildHubAsset(asset);
             check(!original.indices.empty(), "every asset kind produces visible geometry");
             check(same(original, buildHubAsset(asset)), "an identical variant is deterministic");
             validate(original, anchor - HubAssetMargin, anchor + HubAssetMargin);
+            if (kind >= HubAssetKind::PathPaving) validatePath(kind, variation);
             for (int facing = 1; facing < 4; ++facing) {
                 const auto rotated = buildHubAsset({kind, anchor, facing, variation});
                 validate(rotated, anchor - HubAssetMargin, anchor + HubAssetMargin);
@@ -127,11 +229,16 @@ int main()
     const auto empty = buildHubDressing(world);
     check(empty.lights.empty(), "empty worlds do not acquire asset lights");
     for (const auto& mesh : empty.meshes) check(mesh.indices.empty(), "empty worlds have empty asset meshes");
+    checkPathPlacement(world);
 
     buildUndergroundScene(world);
     const auto before = world;
     const auto plan = planHubAssets(world);
-    check(plan.size() >= kinds.size() && plan.size() < 2000, "the hub has a bounded useful dressing plan");
+    const auto paths = std::count_if(plan.begin(), plan.end(), [](const HubAsset& asset) {
+        return asset.kind >= HubAssetKind::PathPaving;
+    });
+    check(plan.size() - paths >= 17 && plan.size() - paths < 2000, "the hub retains its bounded non-path dressing plan");
+    check(paths >= 1000 && paths < 20000, "paving follows substantial streets with a separate bounded model budget");
     check(samePlan(plan, planHubAssets(world)), "the asset plan is deterministic");
     std::array<bool, kinds.size()> present{};
     std::size_t expectedIndices = 0;
@@ -144,7 +251,7 @@ int main()
         expectedIndices += buildHubAsset(asset).indices.size();
     }
     check(std::all_of(present.begin(), present.end(), [](bool found) { return found; }),
-          "the actual hub uses all seventeen asset kinds");
+          "the actual hub uses all twenty asset kinds");
     const auto dressing = buildHubDressing(world);
     const auto repeated = buildHubDressing(world);
     std::size_t actualIndices = 0;

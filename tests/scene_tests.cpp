@@ -94,6 +94,69 @@ void checkRoute(const voxel::World& world, const Routes& routes, glm::ivec3 feet
     check(reached, label + " has a grounded route from spawn");
 }
 
+void checkDirectExpeditionApproach(const voxel::World& world)
+{
+    const auto approach=voxel::sceneExpeditionApproach();
+    check(approach.size()>=3,"the expedition approach has explicit bridge, junction, and mine endpoints");
+    if (approach.size()<3) return;
+    const auto first=approach.front(),last=approach[approach.size()-2],east=approach.back();
+    check(first==glm::ivec3(8,8,-31) && last==glm::ivec3(8,30,-105) && east==glm::ivec3(34,30,-105),
+          "the direct approach joins the north bridge to an east-turning mine passage");
+    // Walk straight along every lane, rather than accepting an arbitrary BFS
+    // detour around a blocked gateway. Reverse travel also checks stair descent.
+    for (const int direction : {-1,1}) for (int lane=-3;lane<=3;++lane) {
+        const auto start=direction<0?first:last,finish=direction<0?last:first;
+        voxel::Player player;
+        const glm::vec3 startFeet=glm::vec3(start)+glm::vec3(lane+.5f,1,.5f);
+        bool walked=player.setFeetPosition(world,startFeet) && player.grounded();
+        for (int z=start.z+direction;walked && z!=finish.z+direction;z+=direction) {
+            const auto before=player.feetPosition();
+            player.move(world,{0,0,float(direction)});
+            player.move(world,{0,-1,0});
+            const auto feet=player.feetPosition();
+            const auto floor=glm::ivec3(glm::floor(feet))-glm::ivec3(0,1,0);
+            const auto paving=world.get(floor);
+            walked=player.grounded() && std::abs(feet.z-(z+.5f))<.001f
+                && std::abs(feet.x-startFeet.x)<.001f && std::abs(feet.y-before.y)<=1.001f
+                && (paving==voxel::Block::Path || paving==voxel::Block::Planks);
+            if (!walked) std::cerr<<"seed "<<world.seed()<<" direct expedition lane "<<lane
+                <<" direction "<<direction<<" blocked near "<<coordinate(glm::ivec3(glm::floor(feet)))<<'\n';
+        }
+        const auto finishFeet=glm::vec3(finish)+glm::vec3(lane+.5f,1,.5f);
+        check(walked && glm::distance(player.feetPosition(),finishFeet)<.001f,
+              "the full seven-wide expedition approach is walkable both ways without jumping or detours");
+    }
+    voxel::Player walker;
+    bool turned=walker.setFeetPosition(world,glm::vec3(first)+glm::vec3(.5f,1,.5f));
+    const auto walk=[&](glm::vec3 step,int count) {
+        for (int i=0;turned && i<count;++i) {
+            const auto before=walker.feetPosition();
+            walker.move(world,step);
+            walker.move(world,{0,-1,0});
+            const auto feet=walker.feetPosition();
+            turned=walker.grounded() && std::abs(feet.x-before.x-step.x)<.001f
+                && std::abs(feet.z-before.z-step.z)<.001f && std::abs(feet.y-before.y)<=1.001f;
+        }
+    };
+    walk({0,0,-1},first.z-last.z);
+    turned &= glm::distance(walker.feetPosition(),glm::vec3(last)+glm::vec3(.5f,1,.5f))<.001f;
+    walk({1,0,0},east.x-last.x);
+    check(turned && glm::distance(walker.feetPosition(),glm::vec3(east)+glm::vec3(.5f,1,.5f))<.001f,
+          "players walk continuously from the bridge through the right turn and along the east mine passage");
+    for (const int x : {16,24,32}) {
+        check(world.get({x,31,-109})==voxel::Block::Timber
+              && world.get({x,31,-99})==voxel::Block::Timber
+              && world.get({x,38,-105})==voxel::Block::Timber,
+              "grounded timber frames face along the east passage rather than toward the north wall");
+    }
+    bool clear=true;
+    for (int x=8;x<=34;++x) for (int z=-108;z<=-102;++z) {
+        clear &= voxel::isSolid(world.get({x,30,z}));
+        for (int y=31;y<=35;++y) clear &= world.get({x,y,z})==voxel::Block::Air;
+    }
+    check(clear,"the full-width junction and east passage have supported floors and no posts blocking the bend");
+}
+
 void checkWaterfalls(const voxel::World& world)
 {
     const auto falls = voxel::sceneWaterfallPlan();
@@ -319,6 +382,7 @@ int main()
                   "building " + std::to_string(i + 1) + " has a finished floor and its planned roof material");
         }
         checkRoute(world, routes, glm::ivec3(glm::floor(voxel::ExpeditionDeparture)), "expedition staging hall");
+        checkDirectExpeditionApproach(world);
         // Walk every center-line cell from the same plan used to build bridges.
         const auto bridges = voxel::sceneBridgePlan();
         check(bridges.size() >= 4, "bridges link the tree island to all four districts");

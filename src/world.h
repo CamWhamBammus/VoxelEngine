@@ -14,15 +14,15 @@ enum class Block : std::uint8_t {
     Air = 0, Grass = 1, Dirt = 2, Stone = 3, Sand = 4,
     Limestone = 5, Slate = 6, CoalOre = 7, CopperOre = 8, IronOre = 9,
     Crystal = 10, Timber = 11, Planks = 12, Brick = 13, Lantern = 14, Bedrock = 15,
-    Water = 16, Leaves = 17, GlowLeaves = 18, RoofTiles = 19
+    Water = 16, Leaves = 17, GlowLeaves = 18, RoofTiles = 19, Path = 20
 };
 
-inline constexpr std::size_t BlockCount = 20;
+inline constexpr std::size_t BlockCount = 21;
 inline constexpr std::array PlaceableBlocks{
     Block::Grass, Block::Dirt, Block::Stone, Block::Sand,
     Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre, Block::IronOre,
     Block::Crystal, Block::Timber, Block::Planks, Block::Brick, Block::Lantern,
-    Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles
+    Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles, Block::Path
 };
 
 constexpr bool isValidBlock(Block block) noexcept
@@ -53,6 +53,7 @@ constexpr std::string_view blockName(Block block) noexcept
     case Block::Leaves: return "Leaves";
     case Block::GlowLeaves: return "Glow leaves";
     case Block::RoofTiles: return "Roof tiles";
+    case Block::Path: return "Fitted paving";
     }
     return "Unknown";
 }
@@ -96,6 +97,7 @@ inline glm::vec3 blockColor(Block block) noexcept
     case Block::Leaves: return {0.22f, 0.52f, 0.23f};
     case Block::GlowLeaves: return {0.23f, 0.76f, 0.57f};
     case Block::RoofTiles: return {0.44f, 0.29f, 0.50f};
+    case Block::Path: return {0.32f, 0.33f, 0.28f};
     case Block::Air: return {0.0f, 0.0f, 0.0f};
     }
     return {1.0f, 0.0f, 1.0f};

@@ -99,6 +99,7 @@ std::vector<HubAsset> planHubAssets(const World& world)
 {
     std::vector<HubAsset> assets;
     std::vector<HubAsset> planting;
+    std::vector<HubAsset> paths;
     const auto add = [&](HubAssetKind kind, glm::vec3 position, int facing = 0, std::uint32_t seed = 0) {
         if (World::contains(glm::ivec3(glm::floor(position)))) assets.push_back({kind, position, facing, seed});
     };
@@ -114,6 +115,27 @@ std::vector<HubAsset> planHubAssets(const World& world)
         for (int y = 0; y < Chunk::Size; ++y) {
             for (int z = 0; z < Chunk::Size; ++z) {
                 for (int x = 0; x < Chunk::Size; ++x) {
+                    if (chunk.get(x, y, z) == Block::Path) {
+                        const auto cell = origin + glm::ivec3(x,y,z);
+                        const auto top = glm::vec3(cell) + glm::vec3(0.5f,1.0f,0.5f);
+                        if (!air(world, top)) continue;
+                        const auto seed = variation(cell.x, cell.z, world.seed());
+                        paths.push_back({HubAssetKind::PathPaving, top, int(seed % 4), seed});
+                        constexpr glm::ivec3 sides[4]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
+                        for (int side = 0; side < 4; ++side) {
+                            const auto next = cell + sides[side];
+                            const auto neighbor = world.get(next);
+                            // A tread cap faces downhill, never into an adjoining
+                            // tread or doorway. Models stay attached to this tile.
+                            if (neighbor == Block::Air && world.get(next - glm::ivec3(0,1,0)) == Block::Path) {
+                                paths.push_back({HubAssetKind::PathStep, top, side, seed});
+                            } else if ((neighbor == Block::Air || neighbor == Block::Water || soil(neighbor))
+                                       && world.get(next + glm::ivec3(0,1,0)) == Block::Air) {
+                                paths.push_back({HubAssetKind::PathEdging, top, side, seed});
+                            }
+                        }
+                        continue;
+                    }
                     if (chunk.get(x, y, z) != Block::Lantern) continue;
                     const auto cell = origin + glm::ivec3(x, y, z);
                     const auto center = glm::vec3(cell) + 0.5f;
@@ -331,13 +353,17 @@ std::vector<HubAsset> planHubAssets(const World& world)
         planting.resize(budget);
     }
     assets.insert(assets.end(), planting.begin(), planting.end());
+    // Paving is part of the street surface, so its coverage does not compete
+    // with the decorative plant budget. Each exposed Path tile owns its kit.
+    assets.insert(assets.end(), paths.begin(), paths.end());
     return assets;
 }
 
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (asset.kind >= HubAssetKind::Fern) appendHubFoliage(mesh, asset);
+    if (asset.kind >= HubAssetKind::PathPaving) appendHubPath(mesh, asset);
+    else if (asset.kind >= HubAssetKind::Fern) appendHubFoliage(mesh, asset);
     else appendHubProp(mesh, asset);
     return mesh;
 }

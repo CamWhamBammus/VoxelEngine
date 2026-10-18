@@ -76,5 +76,6 @@ private:
 
 void appendHubProp(MeshData& mesh, const HubAsset& asset);
 void appendHubFoliage(MeshData& mesh, const HubAsset& asset);
+void appendHubPath(MeshData& mesh, const HubAsset& asset);
 
 } // namespace voxel
