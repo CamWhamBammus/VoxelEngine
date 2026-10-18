@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <utility>
 #include <glm/geometric.hpp>
 
 namespace {
@@ -18,6 +19,10 @@ constexpr std::array kinds{
     HubAssetKind::Fern, HubAssetKind::Flowers, HubAssetKind::Mushrooms, HubAssetKind::Reeds,
     HubAssetKind::LilyPads, HubAssetKind::Vines, HubAssetKind::Shrub,
     HubAssetKind::PathPaving, HubAssetKind::PathEdging, HubAssetKind::PathStep,
+    HubAssetKind::Boulder, HubAssetKind::RockLedge, HubAssetKind::StalactiteCluster,
+    HubAssetKind::RootArch, HubAssetKind::RootCurtain, HubAssetKind::BroadleafClump,
+    HubAssetKind::FernBed, HubAssetKind::MossGarden, HubAssetKind::Dormer,
+    HubAssetKind::BayWindow, HubAssetKind::Chimney, HubAssetKind::Balcony, HubAssetKind::PorchCanopy,
 };
 
 void check(bool condition, const char* message)
@@ -115,6 +120,63 @@ void validatePath(HubAssetKind kind, std::uint32_t variation)
         check(topArea > 0.78f && topArea < 0.99f, "fitted slabs cover most of a tile while leaving narrow joints");
 }
 
+void validateGarden(HubAssetKind kind, std::uint32_t variation)
+{
+    const auto mesh = buildHubAsset({kind, {}, 0, variation});
+    const float height = kind == HubAssetKind::BroadleafClump ? 2.3f : kind == HubAssetKind::FernBed ? 1.7f : 0.5f;
+    validate(mesh, {-1.35f,0,-1.35f}, {1.35f,height,1.35f});
+    check(mesh.indices.size() / 3 >= 300 && mesh.indices.size() / 3 <= 800,
+          "layered gardens retain their intended detail within a bounded triangle budget");
+    glm::vec3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
+    bool green = false, paleAccent = false;
+    for (const auto& vertex : mesh.vertices) {
+        low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
+        check(vertex.material != static_cast<float>(Block::GlowLeaves)
+              && vertex.material != static_cast<float>(Block::Crystal)
+              && vertex.material != static_cast<float>(Block::Lantern), "garden accents use painted surfaces instead of emitters");
+        green |= vertex.color.g > vertex.color.r * 1.2f && vertex.color.g > vertex.color.b * 1.2f;
+        paleAccent |= vertex.color.r > 0.5f && vertex.color.g > 0.6f;
+    }
+    check(green && paleAccent, "garden palettes combine rich foliage with pale veins or flowers");
+    check(high.x - low.x > 1.0f && high.z - low.z > 1.0f,
+          "garden models form broad overlapping patches rather than narrow spikes");
+}
+
+void validateRootArch(std::uint32_t variation)
+{
+    const auto mesh = buildHubAsset({HubAssetKind::RootArch, {}, 0, variation});
+    bool leftFoot = false, rightFoot = false;
+    for (const auto& vertex : mesh.vertices) {
+        check(vertex.position.y >= -0.0001f, "root arch feet lie on their ground plane");
+        if (std::abs(vertex.position.y) < 0.0001f) {
+            leftFoot |= vertex.position.x < -2.5f;
+            rightFoot |= vertex.position.x > 2.5f;
+        }
+    }
+    check(leftFoot && rightFoot, "both sides of a root arch reach the ground");
+    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        std::vector<glm::vec3> polygon;
+        for (int corner = 0; corner < 3; ++corner)
+            polygon.push_back(mesh.vertices[mesh.indices[i + corner]].position);
+        // Clip each actual face into the central walking opening. Checking
+        // only vertices would miss a face spanning it from outside corners.
+        for (int plane = 0; plane < 3 && !polygon.empty(); ++plane) {
+            const auto distance = [plane](glm::vec3 p) {
+                return plane == 0 ? p.x + 2.4999f : plane == 1 ? 2.4999f - p.x : 2.4999f - p.y;
+            };
+            std::vector<glm::vec3> clipped;
+            for (std::size_t edge = 0; edge < polygon.size(); ++edge) {
+                const auto a = polygon[edge], b = polygon[(edge + 1) % polygon.size()];
+                const float da = distance(a), db = distance(b);
+                if (da >= 0) clipped.push_back(a);
+                if ((da >= 0) != (db >= 0)) clipped.push_back(a + (b - a) * (da / (da - db)));
+            }
+            polygon = std::move(clipped);
+        }
+        check(polygon.empty(), "root arch faces leave a five-wide opening clear below height 2.5");
+    }
+}
+
 std::size_t owner(glm::vec3 position)
 {
     const auto chunk = (glm::ivec3(glm::floor(position)) - World::Min) / Chunk::Size;
@@ -179,6 +241,157 @@ void checkPathPlacement(World& world)
     check(planHubAssets(world).empty(), "a path at the world ceiling cannot create an out-of-bounds top model");
     world.set(ceiling, Block::Air);
 }
+
+bool containsAsset(const std::vector<HubAsset>& plan, const HubAsset& expected)
+{
+    return std::any_of(plan.begin(), plan.end(), [&](const HubAsset& asset) {
+        return asset.kind == expected.kind && asset.position == expected.position
+            && asset.facing == expected.facing;
+    });
+}
+
+// These checks use the actual scene plan. One edited copy tests all attachment
+// failures together, without generating another scene for each asset family.
+void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
+{
+    World edited = world;
+    std::vector<HubAsset> removed;
+    const HubAsset* garden = nullptr;
+    const HubAsset* coveredGarden = nullptr;
+    const HubAsset* bay = nullptr;
+    const HubAsset* boulder = nullptr;
+    const HubAsset* stalactite = nullptr;
+    const auto cell = [](glm::vec3 point) { return glm::ivec3(glm::floor(point)); };
+    const auto natural = [](Block block) {
+        return block == Block::Grass || block == Block::Dirt || block == Block::Stone
+            || block == Block::Slate || block == Block::Limestone;
+    };
+    const auto soil = [](Block block) { return block == Block::Grass || block == Block::Dirt; };
+    const auto air = [](Block block) { return block == Block::Air; };
+    const auto volume = [&](glm::vec3 low, glm::vec3 high, auto accepts) {
+        const auto first = cell(low + glm::vec3(0.0001f));
+        const auto last = cell(high - glm::vec3(0.0001f));
+        if (!World::contains(first) || !World::contains(last)) return false;
+        for (int y = first.y; y <= last.y; ++y)
+            for (int z = first.z; z <= last.z; ++z)
+                for (int x = first.x; x <= last.x; ++x)
+                    if (!accepts(world.get({x,y,z}))) return false;
+        return true;
+    };
+    for (const auto& asset : plan) {
+        const auto p = asset.position;
+        if (asset.kind >= HubAssetKind::BroadleafClump && asset.kind <= HubAssetKind::MossGarden) {
+            check(volume(p + glm::vec3(-1.35f,-1,-1.35f), p + glm::vec3(1.35f,0,1.35f), soil),
+                  "dense gardens have soil below their entire footprint");
+            check(volume(p + glm::vec3(-1.35f,0,-1.35f), p + glm::vec3(1.35f,3,1.35f), air),
+                  "dense gardens have room for their full height and broad leaves");
+            if (!garden) garden = &asset;
+            else if (!coveredGarden) coveredGarden = &asset;
+        }
+        if (asset.kind == HubAssetKind::Boulder) {
+            check(volume(p + glm::vec3(-1.8f,-1,-1.8f), p + glm::vec3(1.8f,0,1.8f), natural)
+                  && volume(p + glm::vec3(-1.8f,0,-1.8f), p + glm::vec3(1.8f,3,1.8f), air),
+                  "boulder clusters rest on natural ground with clear space above");
+            if (!boulder) boulder = &asset;
+        }
+        if (asset.kind == HubAssetKind::StalactiteCluster) {
+            check(volume(p + glm::vec3(-1.6f,0,-1.6f), p + glm::vec3(1.6f,1,1.6f), natural)
+                  && volume(p + glm::vec3(-1.6f,-4,-1.6f), p + glm::vec3(1.6f,0,1.6f), air),
+                  "stalactite clusters attach across a solid ceiling and hang into clear air");
+            if (!stalactite) stalactite = &asset;
+        }
+        if (asset.kind == HubAssetKind::RootArch) {
+            for (const float side : {-3.3f, 3.3f}) {
+                const auto a = turn({side - 0.65f,-1,-0.8f}, asset.facing);
+                const auto b = turn({side + 0.65f,0,0.8f}, asset.facing);
+                check(volume(p + glm::min(a,b), p + glm::max(a,b), isSolid),
+                      "root arch feet and flared toes have solid ground below them");
+            }
+        }
+        if (asset.kind >= HubAssetKind::Boulder && asset.kind <= HubAssetKind::RootCurtain) {
+            glm::vec3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
+            for (const auto& vertex : buildHubAsset(asset).vertices) {
+                low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
+            }
+            for (const auto& building : sceneBuildingPlan()) {
+                const auto size = hubBuildingFootprint(building);
+                const auto bodyLow = glm::vec3(building.origin) + glm::vec3(-1.5f,1,-1.5f);
+                const auto bodyHigh = glm::vec3(building.origin)
+                    + glm::vec3(size.x + 1.5f,hubBuildingHeight(building) + 5.0f,size.y + 1.5f);
+                check(!(low.x < bodyHigh.x && high.x > bodyLow.x
+                        && low.y < bodyHigh.y && high.y > bodyLow.y
+                        && low.z < bodyHigh.z && high.z > bodyLow.z),
+                      "natural rock and root meshes stay outside buildings and their projecting trim");
+            }
+        }
+        if (asset.kind < HubAssetKind::Dormer) continue;
+
+        // Attachment points are expressed in each model's local frame, so the
+        // same support checks cover all four building orientations.
+        std::array<glm::vec3, 2> supports{};
+        switch (asset.kind) {
+        case HubAssetKind::Dormer: supports = {{{-0.9f,-0.1f,0.8f}, {0.9f,-0.1f,0.8f}}}; break;
+        case HubAssetKind::BayWindow: supports = {{{-0.5f,0,-0.48f}, {0.5f,0,-0.48f}}}; break;
+        case HubAssetKind::Chimney: supports = {{{0,-0.5f,0}, {0,-0.5f,0}}}; break;
+        case HubAssetKind::Balcony: supports = {{{-1.3f,-0.5f,-0.49f}, {1.3f,-0.5f,-0.49f}}}; break;
+        case HubAssetKind::PorchCanopy: supports = {{{-1.7f,-0.4f,-0.49f}, {1.7f,-0.4f,-0.49f}}}; break;
+        default: break;
+        }
+        for (const auto support : supports)
+            check(isSolid(world.get(cell(p + turn(support, asset.facing)))),
+                  "architectural fittings meet real sills, corbels, or roof supports");
+        if (asset.kind == HubAssetKind::Balcony)
+            check(world.get(cell(p + turn({0,0.5f,-0.49f}, asset.facing))) == Block::Air
+                  && world.get(cell(p + turn({0,1.5f,-0.49f}, asset.facing))) == Block::Air,
+                  "balconies align with upper windows instead of blank wall panels");
+        if (asset.kind == HubAssetKind::BayWindow && !bay) bay = &asset;
+
+        const auto mesh = buildHubAsset(asset);
+        const auto outward = turn({0,0,1}, asset.facing);
+        const float inset = asset.kind == HubAssetKind::Dormer ? 0.65f : 0.07f;
+        glm::vec3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
+        for (const auto& vertex : mesh.vertices) {
+            low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
+            if (glm::dot(vertex.position - p, outward) > inset)
+                check(world.get(cell(vertex.position)) == Block::Air,
+                      "projecting architectural faces stay outside the solid facade");
+        }
+        // A player's entry corridor must remain free even though cosmetic
+        // models do not participate in voxel collision or the route flood fill.
+        for (const auto& building : sceneBuildingPlan()) {
+            const auto door = glm::vec3(hubBuildingDoor(building)) + glm::vec3(0.5f,0,0.5f);
+            const auto a = turn({-0.35f,0.05f,-0.35f}, building.facing);
+            const auto b = turn({0.35f,1.85f,1.5f}, building.facing);
+            const auto doorLow = door + glm::min(a,b), doorHigh = door + glm::max(a,b);
+            check(!(low.x < doorHigh.x && high.x > doorLow.x
+                    && low.y < doorHigh.y && high.y > doorLow.y
+                    && low.z < doorHigh.z && high.z > doorLow.z),
+                  "projecting facades leave player headroom through every entrance");
+        }
+    }
+    check(garden && coveredGarden && bay && boulder && stalactite,
+          "the real hub provides garden, facade, grounded, and hanging edit fixtures");
+    const auto mine = [&](const HubAsset* asset, glm::vec3 offset) {
+        if (!asset) return;
+        const auto support = cell(asset->position + turn(offset, asset->facing));
+        check(isSolid(edited.get(support)), "the removal fixture mines an existing attachment");
+        edited.set(support, Block::Air);
+        removed.push_back(*asset);
+    };
+    mine(garden, {-1.3f,-0.5f,-1.3f});
+    mine(bay, {-0.5f,0,-0.48f});
+    mine(boulder, {0,-0.5f,0});
+    mine(stalactite, {0,0.5f,0});
+    if (coveredGarden) {
+        const auto ceiling = cell(coveredGarden->position) + glm::ivec3(0,2,0);
+        check(edited.get(ceiling) == Block::Air, "the garden clearance fixture starts in open air");
+        edited.set(ceiling, Block::Stone);
+        removed.push_back(*coveredGarden);
+    }
+    const auto changed = planHubAssets(edited);
+    for (const auto& asset : removed)
+        check(!containsAsset(changed, asset), "mining a support or closing clearance removes its attached model");
+}
 } // namespace
 
 int main()
@@ -188,16 +401,19 @@ int main()
     const glm::vec3 anchor{-13.25f, 22.5f, 15.75f};
     for (const auto kind : kinds) {
         varyingKinds += !same(buildHubAsset({kind, anchor, 0, 0}), buildHubAsset({kind, anchor, 0, 1}));
-        if (kind >= HubAssetKind::PathPaving)
+        if (isPathAsset(kind) || kind >= HubAssetKind::Boulder)
             check(!same(buildHubAsset({kind, {}, 0, 0}), buildHubAsset({kind, {}, 0, 1})),
-                  "each path model varies its fitted shapes or stone palette");
+                  "each new model varies its handcrafted shape or painted palette");
         for (const auto variation : {0u, 1u, 42u, std::numeric_limits<std::uint32_t>::max()}) {
             const HubAsset asset{kind, anchor, 0, variation};
             const auto original = buildHubAsset(asset);
             check(!original.indices.empty(), "every asset kind produces visible geometry");
             check(same(original, buildHubAsset(asset)), "an identical variant is deterministic");
             validate(original, anchor - HubAssetMargin, anchor + HubAssetMargin);
-            if (kind >= HubAssetKind::PathPaving) validatePath(kind, variation);
+            if (isPathAsset(kind)) validatePath(kind, variation);
+            if (kind >= HubAssetKind::BroadleafClump && kind <= HubAssetKind::MossGarden)
+                validateGarden(kind, variation);
+            if (kind == HubAssetKind::RootArch) validateRootArch(variation);
             for (int facing = 1; facing < 4; ++facing) {
                 const auto rotated = buildHubAsset({kind, anchor, facing, variation});
                 validate(rotated, anchor - HubAssetMargin, anchor + HubAssetMargin);
@@ -235,7 +451,7 @@ int main()
     const auto before = world;
     const auto plan = planHubAssets(world);
     const auto paths = std::count_if(plan.begin(), plan.end(), [](const HubAsset& asset) {
-        return asset.kind >= HubAssetKind::PathPaving;
+        return isPathAsset(asset.kind);
     });
     check(plan.size() - paths >= 17 && plan.size() - paths < 2000, "the hub retains its bounded non-path dressing plan");
     check(paths >= 1000 && paths < 20000, "paving follows substantial streets with a separate bounded model budget");
@@ -251,7 +467,8 @@ int main()
         expectedIndices += buildHubAsset(asset).indices.size();
     }
     check(std::all_of(present.begin(), present.end(), [](bool found) { return found; }),
-          "the actual hub uses all twenty asset kinds");
+          "the actual hub uses all thirty-three asset kinds");
+    checkHubPlacement(world, plan);
     const auto dressing = buildHubDressing(world);
     const auto repeated = buildHubDressing(world);
     std::size_t actualIndices = 0;

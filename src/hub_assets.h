@@ -13,7 +13,10 @@ enum class HubAssetKind {
     LanternCap, WallBracket, HangingLamp, CrystalBeacon,
     WindowBox, Shutters, Awning, RoofBrace, Banner, CrateStack,
     Fern, Flowers, Mushrooms, Reeds, LilyPads, Vines, Shrub,
-    PathPaving, PathEdging, PathStep
+    PathPaving, PathEdging, PathStep,
+    Boulder, RockLedge, StalactiteCluster, RootArch, RootCurtain,
+    BroadleafClump, FernBed, MossGarden,
+    Dormer, BayWindow, Chimney, Balcony, PorchCanopy
 };
 
 struct HubAsset {
@@ -29,6 +32,11 @@ struct HubAssetLight {
     float radius;
 };
 
+constexpr bool isPathAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::PathPaving && kind <= HubAssetKind::PathStep;
+}
+
 // Includes full model extents for chunk culling and light candidate bounds.
 inline constexpr float HubAssetMargin = 4.0f;
 struct HubDressing {
@@ -37,6 +45,7 @@ struct HubDressing {
 };
 
 std::vector<HubAsset> planHubAssets(const World& world);
+std::vector<HubAsset> planLandscapeAssets(const World& world);
 MeshData buildHubAsset(const HubAsset& asset);
 HubDressing buildHubDressing(const World& world);
 

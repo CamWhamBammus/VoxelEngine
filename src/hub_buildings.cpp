@@ -417,7 +417,8 @@ void buildHubBuilding(World& world, const HubBuilding& b)
         box(world, b, {b.width-3, 2, 0}, {b.width-3, 2, 0}, Block::Lantern);
     }
     if (b.style==Style::Cottage) {
-        cottagePorch(world, b);
+        // Side-gabled cottages receive the lighter modeled canopy instead.
+        if (b.variant % 3 != 1) cottagePorch(world, b);
         const int top=hubBuildingWallHeight(b)+6;
         box(world, b, {b.width-2, hubBuildingWallHeight(b), 1}, {b.width-2, top-1, 1}, Block::Brick);
         box(world, b, {b.width-2, top, 1}, {b.width-2, top, 1}, Block::Slate);

@@ -21,6 +21,7 @@ add_library(VoxelCore
     src/scene.cpp
     src/hub_buildings.cpp
     src/hub_assets.cpp
+    src/hub_landscape.cpp
     src/player.cpp
     src/camera.cpp
     src/world.cpp
@@ -30,6 +31,9 @@ add_library(VoxelCore
     src/graphics/hub_props.cpp
     src/graphics/hub_foliage.cpp
     src/graphics/hub_paths.cpp
+    src/graphics/hub_nature.cpp
+    src/graphics/hub_gardens.cpp
+    src/graphics/hub_architecture.cpp
     src/editing.cpp
     src/save.cpp
 )

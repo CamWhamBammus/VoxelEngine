@@ -18,7 +18,9 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. These details have no collision; movement follows the underlying voxel shapes.
 
-A 20-type model library dresses the hub with lantern caps, wall brackets, hanging lamps, crystal beacons, window boxes, shutters, awnings, roof braces, banners, and crate stacks. Ferns, flowers, mushrooms, and shrubs form varied garden pockets; reeds and lily pads follow the water, while shallow leafy vines trail from eaves, canopies, and clear retaining faces. Placement checks ground beneath each plant's footprint and enough room for the model, keeping paving and walking headroom clear. These are cosmetic models with seeded variations; lamps and beacons add light, while crates and building fittings have no interaction.
+A 33-type model library dresses the hub with lantern fittings, building details, plants, and fitted paving. Selected cottages have projecting bay windows, roof dormers, and bracketed porch canopies; inns gain timber balconies, and masonry chimney fittings break up roof silhouettes. Details vary by building style and available support. Ferns, flowers, mushrooms, and shrubs share garden pockets with broad folded leaves, layered fern beds, and low moss cushions. Reeds and lily pads follow the water, while leafy vines trail from eaves and canopies.
+
+Faceted mossy boulders, layered rock ledges, and ceiling stalactite clusters soften the cavern's block outlines. Thick root arches frame open paths, and twisting root curtains attach to tall retaining faces. Placement checks the supporting terrain and clearance; larger nature models reserve space before small plants are scattered. These are cosmetic models with seeded variations: movement still uses the underlying voxels. Lamps and beacons add light; building fittings and plants have no interaction.
 
 Streets use a dedicated **fitted paving** material with three matching models: shallow beveled flagstones over dark joints, narrow border stones, and capped masonry stair risers. Their shapes follow exposed paving blocks and neighboring tread heights, including across chunk boundaries. Covering or removing the supporting paving removes its models. The shallow surface details are cosmetic; walking still uses the underlying voxel stairs.
 
@@ -44,6 +46,7 @@ src/
   scene.h/.cpp      Hub layout, landscape, tree, water, bridges, and departure hall
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
   hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
+  hub_landscape.cpp Attach large rocks and roots to supporting terrain
   input.h/.cpp      Keyboard and mouse controls
   camera.h/.cpp     Camera movement, view math, and visibility checks
   world.h/.cpp      Blocks, chunks, world storage, and terrain generation
@@ -61,6 +64,10 @@ src/
     asset_builder.h Shared triangle, box, and beam helpers for hub models
     hub_props.cpp  Ten architectural, lighting, and supply models
     hub_foliage.cpp Seven plant models, from ferns to hanging vines
+    hub_paths.cpp  Fitted paving, border stones, and stair caps
+    hub_nature.cpp Sculpted rocks, stalactites, and large roots
+    hub_gardens.cpp Broad leaves, fern beds, and moss cushions
+    hub_architecture.cpp Dormers, bay windows, chimneys, balconies, and canopies
     hud.h/.cpp      Draw text on the screen
 tests/              Behavior tests and graphics smoke checks
 CMakeLists.txt      List the source files and build targets
@@ -78,7 +85,7 @@ For one frame, `Input::update` handles looking and fills an `InputActions` value
 
 Each renderer remembers the chunk contents it last drew. It rebuilds changed chunks and their neighbors, so switching worlds or opening another view cannot lose mesh updates. This uses a small world snapshot and straightforward comparisons; no global cache or event system is needed. The renderer also uploads the solid cells to a small 3D texture when the world changes. Cave lighting samples it for contact shading and short shadow rays, so world changes update lighting alongside geometry. Decorative meshes reuse the block materials but do not enter that solid-cell texture or cast their own shadows.
 
-`hub_assets.cpp` places models against the building plan and actual terrain, then combines them into chunk meshes for drawing. `hub_props.cpp` and `hub_foliage.cpp` describe the shapes using `AssetBuilder`; model rotation and translation are handled by that shared helper. This keeps decoration separate from voxel storage and player collision.
+`hub_assets.cpp` places models against the building plan and actual terrain, then combines them into chunk meshes for drawing. `hub_landscape.cpp` handles support and spacing for the larger rock and root models. The `graphics/hub_*.cpp` files describe each model's shapes using `AssetBuilder`; rotation and translation are handled by that shared helper. This keeps decoration separate from voxel storage and player collision.
 
 Light candidates are cached per chunk, including every source whose radius can reach its blocks or decorations. Nearby crystal and glowing-leaf blocks share fixed sources; each lantern keeps its own source. Every source that reaches a surface contributes, so stepping away cannot switch off its illumination. Candidates include neighboring chunks and rebuild after world edits. The shader skips sources outside their radius or behind the surface before checking shadows. Very dense custom lighting can increase rendering cost.
 

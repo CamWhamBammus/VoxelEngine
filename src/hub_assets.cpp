@@ -41,7 +41,7 @@ bool soil(Block block)
 
 // Check the whole model footprint, not just its origin. This keeps wide leaves
 // on their bank and prevents a model from bridging air above a lower basin.
-bool plantedFootprint(const World& world, glm::vec3 position, float radius, bool water = false)
+bool plantedFootprint(const World& world, glm::vec3 position, float radius, bool water = false, int height = 2)
 {
     const auto low = glm::ivec3(glm::floor(position - glm::vec3(radius, 0, radius)));
     const auto high = glm::ivec3(glm::floor(position + glm::vec3(radius, 0, radius)));
@@ -49,7 +49,7 @@ bool plantedFootprint(const World& world, glm::vec3 position, float radius, bool
         for (int x = low.x; x <= high.x; ++x) {
             const auto support = world.get({x, low.y - 1, z});
             if (water ? support != Block::Water : !soil(support)) return false;
-            for (int y = low.y; y <= low.y + 1; ++y)
+            for (int y = low.y; y < low.y + height; ++y)
                 if (!World::contains({x,y,z}) || world.get({x,y,z}) != Block::Air) return false;
         }
     }
@@ -89,6 +89,18 @@ bool vineFits(const World& world, const HubAsset& asset)
     for (const auto& vertex : buildHubAsset(asset).vertices) {
         const auto offset = vertex.position - asset.position;
         if (glm::dot(offset, offset) > 0.0036f && !air(world, vertex.position)) return false;
+    }
+    return true;
+}
+
+bool facadeFits(const World& world, const HubAsset& asset, float inset = 0.07f)
+{
+    constexpr glm::vec3 outward[4]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
+    for (const auto& vertex : buildHubAsset(asset).vertices) {
+        if (!World::contains(glm::ivec3(glm::floor(vertex.position)))) return false;
+        // Brackets meet the wall; projecting faces must have room outside it.
+        if (glm::dot(vertex.position - asset.position, outward[asset.facing]) > inset
+            && !air(world, vertex.position)) return false;
     }
     return true;
 }
@@ -166,12 +178,19 @@ std::vector<HubAsset> planHubAssets(const World& world)
         const auto detail = [&](HubAssetKind kind, glm::vec3 local, int facing = 0) {
             add(kind, buildingPoint(building, local), (building.facing + facing) % 4, seed);
         };
+        const auto fitting = [&](HubAssetKind kind, glm::vec3 local, int facing = 0, float inset = 0.07f) {
+            const HubAsset asset{kind, buildingPoint(building, local), (building.facing + facing) % 4, seed};
+            if (!facadeFits(world, asset, inset)) return false;
+            assets.push_back(asset);
+            return true;
+        };
         const bool tower = building.style == HubBuildingStyle::Tower;
         const bool greenhouse = building.style == HubBuildingStyle::Greenhouse;
         const bool storehouse = building.style == HubBuildingStyle::Storehouse;
         const bool workshop = building.style == HubBuildingStyle::Workshop;
         const bool hall = building.style == HubBuildingStyle::Hall;
         const bool inn = building.style == HubBuildingStyle::Inn;
+        const bool cottage = building.style == HubBuildingStyle::Cottage;
         if (!tower && !greenhouse) {
             const float bottom = storehouse ? 3.0f : 2.0f;
             for (const int side : {0, 1}) {
@@ -186,6 +205,12 @@ std::vector<HubAsset> planHubAssets(const World& world)
                     const float center = along + 1.0f;
                     const float surface = side ? width - 0.02f : 0.02f;
                     const int facing = side ? 1 : 3;
+                    // A few projecting bays replace the flat window dressing.
+                    // Their lower corbels land on the existing window sill.
+                    if ((cottage || inn) && (along / 4 + tag) % 3 == 0
+                        && solid({wallX, bottom - 0.5f, center - 0.5f})
+                        && solid({wallX, bottom - 0.5f, center + 0.5f})
+                        && fitting(HubAssetKind::BayWindow, {surface, bottom - 0.5f, center}, facing)) continue;
                     if (solid({wallX, bottom - 0.5f, center - 0.5f})
                         && solid({wallX, bottom - 0.5f, center + 0.5f}))
                         detail(HubAssetKind::WindowBox, {surface, bottom - 0.02f, center}, facing);
@@ -203,7 +228,7 @@ std::vector<HubAsset> planHubAssets(const World& world)
             detail(HubAssetKind::Banner, {0.8f, height - 0.4f, depth - 0.04f});
 
         if (workshop || (storehouse && tag % 2 == 0)
-            || (building.style == HubBuildingStyle::Cottage && tag % 7 == 0)) {
+            || (cottage && building.variant % 3 != 1 && tag % 7 == 0)) {
             for (int row = 4; row < static_cast<int>(height); ++row) {
                 bool supported = true;
                 for (const float side : {-2.35f, 2.35f})
@@ -222,6 +247,43 @@ std::vector<HubAsset> planHubAssets(const World& world)
                 }
                 break;
             }
+        }
+        if ((cottage && building.variant % 3 == 1) || (storehouse && tag % 2 != 0)) {
+            const float canopyY = cottage ? 5.0f : 7.2f;
+            if (solid({width * 0.5f - 1.7f, canopyY - 0.4f, depth - 0.5f})
+                && solid({width * 0.5f + 1.7f, canopyY - 0.4f, depth - 0.5f}))
+                fitting(HubAssetKind::PorchCanopy, {width * 0.5f, canopyY, depth - 0.01f});
+        }
+        if (inn) {
+            float previous = -10.0f;
+            for (int start = 1; start + 2 < building.width; start += 4) {
+                const float center = start + 1.5f;
+                if (center - previous < 8.0f
+                    || !air(world, buildingPoint(building, {center, 6.5f, depth - 0.5f}))
+                    || !air(world, buildingPoint(building, {center, 7.5f, depth - 0.5f}))) continue;
+                if (solid({center - 1.3f, 5.5f, depth - 0.5f})
+                    && solid({center + 1.3f, 5.5f, depth - 0.5f}))
+                    if (fitting(HubAssetKind::Balcony, {center, 6.0f, depth - 0.01f})) previous = center;
+            }
+        }
+        if (workshop || (cottage && tag % 3 == 0)) {
+            const float cap = workshop ? hubBuildingHeight(building) : height + 6.0f;
+            const glm::vec3 chimney(workshop ? width - 2.0f : width - 1.5f, cap + 1.0f, workshop ? 1.0f : 1.5f);
+            if (solid(chimney - glm::vec3(0,0.5f,0))) {
+                const HubAsset asset{HubAssetKind::Chimney, buildingPoint(building, chimney), building.facing, seed};
+                bool clear = true;
+                for (const auto& vertex : buildHubAsset(asset).vertices)
+                    clear &= air(world, vertex.position + glm::vec3(0,0.001f,0));
+                if (clear) assets.push_back(asset);
+            }
+        }
+        if (workshop || (cottage && building.variant % 3 == 1)) {
+            // The front rests on the lowest roof course; the rear embeds in
+            // the rising roof, so a dormer never floats above its slope.
+            const glm::vec3 dormer(3.5f, height + 2.0f, depth - 1.35f);
+            if (solid(dormer + glm::vec3(-0.9f,-0.1f,0.8f))
+                && solid(dormer + glm::vec3(0.9f,-0.1f,0.8f)))
+                fitting(HubAssetKind::Dormer, dormer, 0, 0.65f);
         }
         if (!tower && !greenhouse) {
             // Half-cell Z avoids choosing the wrong roof cell after rotation.
@@ -270,7 +332,11 @@ std::vector<HubAsset> planHubAssets(const World& world)
                     for (const auto side : {glm::ivec3(4,0,0), {-4,0,0}, {0,0,4}, {0,0,-4}})
                         for (int depth = 0; depth <= 3; ++depth)
                             shore |= world.get(glm::ivec3(columnX,y-depth,columnZ) + side) == Block::Water;
-                    const auto kind = shore && slot % 2 == 0 ? Kind::Reeds : gardens[patch % 4][slot];
+                    auto kind = shore && slot % 2 == 0 ? Kind::Reeds : gardens[patch % 4][slot];
+                    if (!shore && slot == 0 && plantedFootprint(world, position, 1.35f, false, 3)) {
+                        constexpr Kind dense[]{Kind::BroadleafClump, Kind::FernBed, Kind::MossGarden};
+                        kind = dense[(patch >> 12) % 3];
+                    }
                     // Nearby blossoms share a palette, while their shapes vary.
                     const auto modelSeed = seed - seed % 3 + patch % 3;
                     plant(kind, position, (seed >> 16) % 4, modelSeed);
@@ -352,7 +418,22 @@ std::vector<HubAsset> planHubAssets(const World& world)
         });
         planting.resize(budget);
     }
+    const auto landscape = planLandscapeAssets(world);
+    // Reserve space for the larger silhouettes before scattering small plants.
+    for (const auto& feature : landscape) {
+        glm::vec3 low = feature.position, high = feature.position;
+        for (const auto& vertex : buildHubAsset(feature).vertices) {
+            low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
+        }
+        std::erase_if(planting, [&](const HubAsset& plant) {
+            const auto p = plant.position;
+            return p.x + 1.35f > low.x && p.x - 1.35f < high.x
+                && p.z + 1.35f > low.z && p.z - 1.35f < high.z
+                && p.y + 2.3f > low.y && p.y - (plant.kind == Kind::Vines ? 4.0f : 0.0f) < high.y;
+        });
+    }
     assets.insert(assets.end(), planting.begin(), planting.end());
+    assets.insert(assets.end(), landscape.begin(), landscape.end());
     // Paving is part of the street surface, so its coverage does not compete
     // with the decorative plant budget. Each exposed Path tile owns its kit.
     assets.insert(assets.end(), paths.begin(), paths.end());
@@ -362,7 +443,10 @@ std::vector<HubAsset> planHubAssets(const World& world)
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (asset.kind >= HubAssetKind::PathPaving) appendHubPath(mesh, asset);
+    if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);
+    else if (asset.kind >= HubAssetKind::BroadleafClump) appendHubGarden(mesh, asset);
+    else if (asset.kind >= HubAssetKind::Boulder) appendHubNature(mesh, asset);
+    else if (isPathAsset(asset.kind)) appendHubPath(mesh, asset);
     else if (asset.kind >= HubAssetKind::Fern) appendHubFoliage(mesh, asset);
     else appendHubProp(mesh, asset);
     return mesh;
