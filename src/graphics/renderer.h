@@ -31,6 +31,7 @@ private:
     PostProcess postProcess_;
     std::array<GpuMesh, World::ChunkCount> meshes_;
     std::array<GpuMesh, World::ChunkCount> details_;
+    std::array<GpuMesh, World::ChunkCount> relief_;
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.
     std::array<int, World::ChunkCount> lightOffsets_{}, lightCounts_{};

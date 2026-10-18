@@ -195,6 +195,9 @@ void GpuMesh::upload(const MeshData& mesh)
     glEnableVertexAttribArray(3);
     glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, stride,
                           reinterpret_cast<const void*>(offsetof(MeshVertex, material)));
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, stride,
+                          reinterpret_cast<const void*>(offsetof(MeshVertex, relief)));
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     indexCount_ = static_cast<GLsizei>(mesh.indices.size());

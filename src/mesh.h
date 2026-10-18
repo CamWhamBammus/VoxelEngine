@@ -2,6 +2,8 @@
 
 #include "world.h"
 
+#include <glm/vec4.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -14,6 +16,9 @@ struct MeshVertex {
     glm::vec3 normal;
     glm::vec3 color;
     float material = 0.0f; // Block ID; the shader patterns stay aligned to voxel coordinates.
+    // Raised surfaces carry the original block-face normal and signed height.
+    // Projecting back along it keeps their paint aligned with the flat block.
+    glm::vec4 relief{0.0f};
 };
 
 struct MeshData {

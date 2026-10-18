@@ -1,6 +1,7 @@
 #include "graphics/renderer.h"
 #include "camera.h"
 #include "graphics/cave_details.h"
+#include "graphics/block_relief.h"
 #include "graphics/materials.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -20,15 +21,18 @@ layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
 layout(location = 2) in vec3 color;
 layout(location = 3) in float material;
+layout(location = 4) in vec4 relief;
 uniform mat4 viewProjection;
 out vec3 worldPosition;
 out vec3 surfaceNormal;
 out vec3 surfaceColor;
+out vec4 reliefSurface;
 flat out int materialId;
 void main() {
     worldPosition = position;
     surfaceNormal = normal;
     surfaceColor = color;
+    reliefSurface = relief;
     materialId = int(material + 0.5);
     gl_Position = viewProjection * vec4(position, 1.0);
 }
@@ -38,6 +42,7 @@ const std::string worldFragmentShader = std::string(R"glsl(#version 410 core
 in vec3 worldPosition;
 in vec3 surfaceNormal;
 in vec3 surfaceColor;
+in vec4 reliefSurface;
 flat in int materialId;
 uniform vec3 cameraPosition;
 uniform vec3 cameraForward;
@@ -65,11 +70,12 @@ bool solid(ivec3 cell) {
 }
 
 float contactShade() {
-    vec3 normal = normalize(surfaceNormal);
-    ivec3 outside = ivec3(floor(worldPosition + normal * 0.02));
+    vec3 normal = decorative == 2 ? reliefSurface.xyz : normalize(surfaceNormal);
+    vec3 anchor = decorative == 2 ? worldPosition - normal * reliefSurface.w : worldPosition;
+    ivec3 outside = ivec3(floor(anchor + normal * 0.02));
     ivec3 u = abs(normal.x) > 0.5 ? ivec3(0, 0, 1) : ivec3(1, 0, 0);
     ivec3 v = abs(normal.y) > 0.5 ? ivec3(0, 0, 1) : ivec3(0, 1, 0);
-    vec2 position = fract(vec2(dot(worldPosition, vec3(u)), dot(worldPosition, vec3(v))));
+    vec2 position = fract(vec2(dot(anchor, vec3(u)), dot(anchor, vec3(v))));
     vec2 low = 1.0 - smoothstep(vec2(0.0), vec2(0.65), position);
     vec2 high = 1.0 - smoothstep(vec2(0.0), vec2(0.65), 1.0 - position);
     float shade = float(solid(outside - u)) * low.x + float(solid(outside + u)) * high.x
@@ -127,7 +133,7 @@ void main() {
     vec3 fogColor;
     float fog;
     if (underground != 0) {
-        float ao = decorative != 0 ? 1.0 : contactShade();
+        float ao = decorative == 1 ? 1.0 : contactShade();
         float cone = smoothstep(0.35, 0.94, dot(-viewDirection, cameraForward));
         float headlamp = 0.46 * (0.2 + 0.8 * max(dot(normal, viewDirection), 0.0))
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
@@ -261,6 +267,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         if (rebuild[index]) {
             meshes_[index].upload(buildMesh(world, index));
             details_[index].upload(buildCaveDetails(world, index));
+            relief_[index].upload(buildBlockRelief(world, index));
             changed = true;
         }
     }
@@ -359,11 +366,19 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     visibleChunks_ = drawnTriangles_ = 0;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
-        const float margin = underground && details_[index].indexCount() != 0 ? 1.0f : 0.0f;
+        const bool hasDetails = details_[index].indexCount() != 0 || relief_[index].indexCount() != 0;
+        const float margin = underground && hasDetails ? 1.0f : 0.0f;
         if (meshes_[index].indexCount() == 0
             || !frustum.intersects(minimum - margin, minimum + glm::vec3(Chunk::Size + margin))) continue;
         shader_.setInt("lightOffset", lightOffsets_[index]);
         shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
+        // Draw raised faces first so their depth can hide the block paint below.
+        if (underground && relief_[index].indexCount() != 0) {
+            shader_.setInt("decorative", 2);
+            relief_[index].draw();
+            drawnTriangles_ += relief_[index].indexCount() / 3;
+            shader_.setInt("decorative", 0);
+        }
         meshes_[index].draw();
         ++visibleChunks_;
         drawnTriangles_ += meshes_[index].indexCount() / 3;
@@ -386,7 +401,10 @@ std::size_t WorldRenderer::triangleCount() const
 {
     std::size_t total = 0;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
-    if (underground_) for (const auto& mesh : details_) total += mesh.indexCount() / 3;
+    if (underground_) {
+        for (const auto& mesh : details_) total += mesh.indexCount() / 3;
+        for (const auto& mesh : relief_) total += mesh.indexCount() / 3;
+    }
     return total;
 }
 

@@ -474,7 +474,7 @@ void verifyUndergroundMaterials(int width, int height)
             + "/" + std::to_string(lantern.z) + ", crystal RGB " + std::to_string(crystal.x)
             + "/" + std::to_string(crystal.y) + "/" + std::to_string(crystal.z));
     }
-    sample(Block::Stone);
+    sample(Block::Planks); // Neither crystal details nor rock relief belong here.
     if (renderer.triangleCount() != 12) {
         throw std::runtime_error("Replacing a crystal retained stale decorative geometry");
     }
@@ -640,6 +640,86 @@ void verifyStableWorldLighting(int width, int height)
     std::cout << "World lighting passed: camera steps, distant views, chunk neighbors and many sources\n";
 }
 
+void verifyBlockRelief(int width, int height)
+{
+    World world;
+    for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
+        for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
+            for (int x = World::Min.x; x < World::MaxExclusive.x; ++x) {
+                world.set({x, y, z}, Block::Air);
+            }
+        }
+    }
+    // The exposed +Z face and its covering neighbor belong to different chunks.
+    const glm::ivec3 ore(0, 6, Chunk::Size - 1), cover(0, 6, Chunk::Size);
+    world.set(ore, Block::CopperOre);
+    Camera camera;
+    camera.rotate(35, 25);
+    camera.setPosition({0.5f, 6.5f, Chunk::Size + 2.5f});
+    WorldRenderer renderer;
+    const int patchSize = std::max(16, std::min(512, height / 4));
+    const auto depth = [&](bool underground, WorldRenderer* freshRenderer = nullptr) {
+        auto& view = freshRenderer ? *freshRenderer : renderer;
+        view.render(world, camera, width, height, false, underground);
+        std::vector<float> pixels(static_cast<std::size_t>(patchSize) * patchSize);
+        glReadPixels(width / 2 - patchSize / 2, height / 2 - patchSize / 2,
+                     patchSize, patchSize, GL_DEPTH_COMPONENT, GL_FLOAT, pixels.data());
+        checkOpenGl();
+        return pixels;
+    };
+    const auto flat = depth(false);
+    if (renderer.triangleCount() != 12) throw std::runtime_error("Editor drew underground block relief");
+    const auto raised = depth(true);
+    const auto inverseProjection = glm::inverse(camera.projectionMatrix(static_cast<float>(width) / height));
+    const auto distance = [&](float value) {
+        const auto view = inverseProjection * glm::vec4(0, 0, value * 2 - 1, 1);
+        return -view.z / view.w;
+    };
+    std::size_t raisedPixels = 0;
+    for (std::size_t pixel = 0; pixel < raised.size(); ++pixel) {
+        const float displacement = distance(flat[pixel]) - distance(raised[pixel]);
+        if (flat[pixel] >= 1 || displacement < -0.002f || displacement > 0.16f) {
+            throw std::runtime_error("Block relief exceeded its shallow surface bounds");
+        }
+        raisedPixels += displacement > 0.01f;
+    }
+    if (raisedPixels < raised.size() / 100) {
+        throw std::runtime_error("Ore relief did not add visible surface depth");
+    }
+
+    world.set(cover, Block::Planks);
+    // From inside the cover, the hidden face's stale relief would be visible.
+    // Other exposed faces' bevels can also face this interior viewpoint, so
+    // compare with a fresh mesh instead of assuming every pixel is clear.
+    camera.setPosition({0.5f, 6.5f, Chunk::Size + 0.95f});
+    const auto covered = depth(true);
+    WorldRenderer freshRenderer;
+    const auto freshCovered = depth(true, &freshRenderer);
+    if (renderer.triangleCount() != freshRenderer.triangleCount()) {
+        throw std::runtime_error("Neighbor cover edit retained stale relief triangles");
+    }
+    for (std::size_t pixel = 0; pixel < covered.size(); ++pixel) {
+        if (std::abs(covered[pixel] - freshCovered[pixel]) > 0.00001f) {
+            throw std::runtime_error("Neighbor cover edit disagreed with freshly meshed relief depth");
+        }
+    }
+    world.set(cover, Block::Air);
+    camera.setPosition({0.5f, 6.5f, Chunk::Size + 2.5f});
+    const auto revealed = depth(true);
+    for (std::size_t pixel = 0; pixel < raised.size(); ++pixel) {
+        if (std::abs(revealed[pixel] - raised[pixel]) > 0.00001f) {
+            throw std::runtime_error("Removing a neighboring cover did not restore deterministic relief");
+        }
+    }
+    world.set(ore, Block::Air);
+    const auto mined = depth(true);
+    if (renderer.triangleCount() != 0
+        || std::any_of(mined.begin(), mined.end(), [](float value) { return value < 0.99999f; })) {
+        throw std::runtime_error("Mining an ore block retained stale relief geometry");
+    }
+    std::cout << "Block relief passed: real depth, shallow bounds, neighbor cover, reveal and mining\n";
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -794,6 +874,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyRendererCaches(width, height);
     verifyUndergroundMaterials(width, height);
     verifyStableWorldLighting(width, height);
+    verifyBlockRelief(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.

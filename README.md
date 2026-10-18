@@ -14,6 +14,8 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. Mining their supporting block removes them. These details have no collision or separate inventory items; the underlying blocks still define mining, placement, and movement.
 
+Stone, limestone, and slate also have occasional shallow raised plates. Coal, copper, and iron ore have small faceted mineral pieces embedded in their exposed faces. The raised outlines follow the painted stone plates and ore flecks, keeping the texture aligned across their tops and beveled edges. These are real meshes that catch light and overlap in the depth buffer, extending at most 0.12 blocks from the surface. Their placement is fixed by the world seed, and covering or mining a face removes its relief. They remain cosmetic, so walking and mining still use the original block shapes.
+
 **WASD** walks, **mouse** looks, **Space** jumps, and **Shift** sprints. Left click mines into your backpack; right click places the selected block; middle click picks a material. You start with **24 Stone, 24 Planks, and 8 Lanterns** to try building and lighting your own passage. Placing a lantern adds a light; mining it removes the light.
 
 | Key | Material |
@@ -52,6 +54,7 @@ src/
     materials.h    Procedural block paint, grain, facets, and moss
     post_process.h/.cpp Smooth edges, luminous bloom, exposure, and color
     cave_details.h/.cpp Build cosmetic crystal shards, ceiling formations, and tufts
+    block_relief.h/.cpp Build shallow raised stone plates and ore pieces
     hud.h/.cpp      Draw text on the screen
 tests/              Behavior tests and graphics smoke checks
 CMakeLists.txt      List the source files and build targets
@@ -93,6 +96,7 @@ Use this map when changing something:
 | Lantern lighting, shadows, or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
 | Glow, antialiasing, exposure, or final color | [graphics/post_process.cpp](src/graphics/post_process.cpp) |
 | Decorative crystal shards, ceiling formations, or moss tufts | [graphics/cave_details.cpp](src/graphics/cave_details.cpp) |
+| Raised stone faces and protruding ore pieces | [graphics/block_relief.cpp](src/graphics/block_relief.cpp) |
 
 You can learn the game logic before reading `graphics/`, the greedy meshing algorithm, or the binary save format. Those details are contained in their own modules. The `VoxelCore` build target and its tests work without an OpenGL window.
 
@@ -238,7 +242,7 @@ ctest --test-dir build-sanitize --output-on-failure
 
 Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
-Player tests cover collision, jumping, safe spawning, and falling through mined ground. Scene tests cover sealed boundaries, walkable routes, ore deposits, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors are mined or covered. Game tests verify ore inventory, body-safe placement, bedrock protection, pause, and returning inside the cavern while preserving edits. Save tests round-trip every material and retain compatibility with original version 1 saves. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
+Player tests cover collision, jumping, safe spawning, and falling through mined ground. Scene tests cover sealed boundaries, walkable routes, ore deposits, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors are mined or covered. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Game tests verify ore inventory, body-safe placement, bedrock protection, pause, and returning inside the cavern while preserving edits. Save tests round-trip every material and retain compatibility with original version 1 saves. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and mine an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup.
 
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 

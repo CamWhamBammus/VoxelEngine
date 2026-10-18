@@ -10,6 +10,16 @@ float materialHash(vec2 p) {
     q += dot(q, q.yzx + 33.33);
     return fract((q.x + q.y) * q.z);
 }
+// Integer coordinates and hashing match block_relief.cpp exactly on CPU/GPU.
+// Float noise can differ between drivers; use it only for paint and grain.
+float mineralHash(vec2 p) {
+    uvec2 cell = uvec2(ivec2(p));
+    uint h = cell.x * 0x9e3779b9u ^ cell.y * 0x85ebca6bu;
+    h ^= h >> 16; h *= 0x7feb352du;
+    h ^= h >> 15; h *= 0x846ca68bu;
+    h ^= h >> 16;
+    return float(h & 0x00ffffffu) / 16777216.0;
+}
 float materialNoise(vec2 p) {
     vec2 cell = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
     return mix(mix(materialHash(cell), materialHash(cell + vec2(1, 0)), f.x),
@@ -19,7 +29,7 @@ float materialNoise(vec2 p) {
 // Correlated shapes are sampled on a 32-pixel grid, not random bright checkers.
 MaterialSurface evaluateMaterial() {
     vec3 n = normalize(surfaceNormal);
-    if (decorative != 0) {
+    if (decorative == 1) {
         float brush = floor(materialNoise(worldPosition.xz * 2.0 + worldPosition.y) * 4.0) / 4.0;
         vec3 color = surfaceColor * (0.87 + 0.18 * brush);
         if (materialId == 10) color *= vec3(0.55, 0.95, 1.0);
@@ -30,12 +40,19 @@ MaterialSurface evaluateMaterial() {
         return MaterialSurface(clamp(color, 0.0, 1.0), n,
             materialId == 10 ? 0.24 : 0.88, materialId == 10 ? 0.30 + brush * 0.08 : 0.0);
     }
+    // Sample the same paint on a raised plate and on its supporting block.
+    // Facet normals still light the geometry, but cannot rotate its UV axes.
+    vec3 paintPosition = worldPosition;
+    if (decorative == 2) {
+        n = reliefSurface.xyz;
+        paintPosition -= n * reliefSurface.w;
+    }
     bool top = abs(n.y) > 0.5, sideX = abs(n.x) > 0.5;
     vec3 u = top || !sideX ? vec3(1, 0, 0) : vec3(0, 0, 1);
     vec3 v = top ? vec3(0, 0, 1) : vec3(0, 1, 0);
-    vec2 uv = vec2(dot(worldPosition, u), dot(worldPosition, v));
+    vec2 uv = vec2(dot(paintPosition, u), dot(paintPosition, v));
     vec2 p = (floor(uv * 32.0) + 0.5) / 32.0, local = fract(p);
-    vec3 cell = floor(worldPosition - n * 0.001);
+    vec3 cell = floor(paintPosition - n * 0.001);
     float seed = dot(cell * abs(n), vec3(17, 37, 57)) + float(materialId) * 19.0;
     float broad = materialNoise(p * 1.7 + seed);
     float chips = materialNoise(p * 5.5 + seed + 8.0);
@@ -48,6 +65,7 @@ MaterialSurface evaluateMaterial() {
         bool shale = materialId == 6 || materialId == 15;
         // Irregular mineral plates give stone broad painted planes and chipped
         // edges rather than the repeating wavy lines of a noise-only surface.
+        // block_relief.cpp uses these same centers for the raised plate outlines.
         vec2 plate = p * vec2(0.95, shale ? 2.4 : 1.15);
         vec2 tile = floor(plate), within = fract(plate);
         float nearest = 10.0, second = 10.0, plateColor = 0.0;
@@ -55,7 +73,7 @@ MaterialSurface evaluateMaterial() {
         for (int y = -1; y <= 1; ++y) {
             for (int x = -1; x <= 1; ++x) {
                 vec2 offset = vec2(x, y);
-                float h = materialHash(tile + offset + seed);
+                float h = mineralHash(tile + offset + seed);
                 vec2 center = offset + 0.18 + 0.64 * vec2(h, fract(h * 17.73));
                 vec2 delta = within - center;
                 float distance = dot(delta, delta);
@@ -87,9 +105,13 @@ MaterialSurface evaluateMaterial() {
         color += vec3(0.11, 0.15, 0.16) * rim * max(edgeLight, 0.0);
         slope = outward * bevel * (shale ? 0.28 : 0.38) + plane * 0.04;
         if (materialId >= 7 && materialId <= 9) {
-            vec2 mineralCell = floor(p * 3.0);
-            float h = materialHash(mineralCell + seed), h2 = materialHash(mineralCell + seed + 11.0);
-            vec2 q = fract(p * 3.0) - vec2(0.35 + 0.30 * h, 0.35 + 0.30 * h2);
+            // Keep the fleck centers and outline in sync with block_relief.cpp.
+            // On real facets use the continuous footprint: snapping a bevel to
+            // the paint grid would stripe its side with neighboring rock pixels.
+            vec2 mineralUV = decorative == 2 ? uv : p;
+            vec2 mineralCell = floor(mineralUV * 3.0);
+            float h = mineralHash(mineralCell + seed), h2 = mineralHash(mineralCell + seed + 11.0);
+            vec2 q = fract(mineralUV * 3.0) - vec2(0.35 + 0.30 * h, 0.35 + 0.30 * h2);
             q = mat2(0.8, -0.6, 0.6, 0.8) * q;
             float shape = max(abs(q.x) * 0.83 + abs(q.y) * 0.66, max(abs(q.x), abs(q.y)) * 0.94);
             float radius = 0.21 + 0.16 * h2;
@@ -198,7 +220,8 @@ MaterialSurface evaluateMaterial() {
             color = mix(vec3(0.39, 0.27, 0.15) * (0.90 + 0.14 * broad), color, grass);
         }
     }
-    return MaterialSurface(clamp(color, 0.0, 1.0), normalize(n + u * slope.x + v * slope.y), roughness, emission);
+    vec3 shadingNormal = decorative == 2 ? normalize(surfaceNormal) : normalize(n + u * slope.x + v * slope.y);
+    return MaterialSurface(clamp(color, 0.0, 1.0), shadingNormal, roughness, emission);
 }
 
 )glsl";
