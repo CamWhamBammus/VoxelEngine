@@ -19,7 +19,8 @@ public:
     WorldRenderer();
     ~WorldRenderer();
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
-                bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false);
+                bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false,
+                bool hubAssets = true);
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -42,6 +43,7 @@ private:
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
     bool underground_ = false;
+    bool hubAssets_ = true;
 };
 
 // Draws the selected block outline and the screen-center crosshair.

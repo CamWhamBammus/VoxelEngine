@@ -1,7 +1,7 @@
 #include "graphics/hud.h"
 #include "game.h"
 #include "equipment.h"
-#include "scene.h"
+#include "root_crossings.h"
 
 #include <algorithm>
 #include <array>
@@ -117,6 +117,7 @@ constexpr glm::vec4 Muted{0.57f,0.70f,0.69f,1};
 constexpr glm::vec4 Gold{0.95f,0.70f,0.30f,1};
 constexpr glm::vec4 Panel{0.035f,0.075f,0.085f,0.97f};
 constexpr glm::vec4 Edge{0.23f,0.37f,0.37f,1};
+constexpr glm::vec4 Leaf{0.45f,0.86f,0.60f,1};
 
 // Small colored triangles and bitmap glyphs share one buffer and draw call.
 // Coordinates start at the top-left; play UI uses logical pixels for high DPI.
@@ -219,6 +220,105 @@ void compassIcon(Drawing& out, glm::vec2 center, float scale, glm::vec2 directio
                  {0.30f,0.89f,0.79f,1});
     out.triangle(center-direction*10.0f*scale,center-across*3.5f*scale,center+across*3.5f*scale,Cream);
     out.quad(center.x-1.5f*scale,center.y-1.5f*scale,3*scale,3*scale,Gold);
+}
+
+std::string crossingTime(float seconds)
+{
+    const int tenths = std::isfinite(seconds)
+        ? static_cast<int>(std::clamp(seconds,0.0f,5999.9f)*10.0f) : 0;
+    const int minutes = tenths/600, remainder = tenths/10%60;
+    return std::to_string(minutes)+":"+(remainder<10 ? "0" : "")
+        +std::to_string(remainder)+"."+std::to_string(tenths%10);
+}
+
+void wrappedDescription(Drawing& out, std::string_view text, float x, float y,
+                        std::size_t columns)
+{
+    for (int row=0; row<2 && !text.empty(); ++row) {
+        std::size_t length=std::min(columns,text.size());
+        if (length<text.size()) {
+            const auto space=text.rfind(' ',length);
+            if (space!=std::string_view::npos && space>0) length=space;
+        }
+        out.text(text.substr(0,length),x,y+row*14.0f,1,Cream);
+        text.remove_prefix(length);
+        while (!text.empty() && text.front()==' ') text.remove_prefix(1);
+    }
+}
+
+void crossingPicker(Drawing& out, const Game& game, float width, float height)
+{
+    out.quad(0,0,width,height,{0.01f,0.025f,0.035f,0.72f});
+    constexpr float panelWidth=578, panelHeight=420;
+    const float x=(width-panelWidth)*0.5f, y=(height-panelHeight)*0.5f;
+    out.quad(x+6,y+7,panelWidth,panelHeight,{0,0,0,0.35f});
+    out.frame(x,y,panelWidth,panelHeight,Edge);
+    out.quad(x+2,y+2,panelWidth-4,3,Leaf);
+    out.text("ROOT CROSSINGS",x+23,y+18,2,Leaf);
+    out.text("LUSH CAVES / 10 PLAYABLE LAYOUTS",x+24,y+43,1,Muted);
+    out.text("ESC - CLOSE",x+panelWidth-90,y+22,1,Muted);
+
+    const auto catalog=rootCrossingCatalog();
+    const int selection=std::clamp(game.crossingMenuSelection(),0,RootCrossingCount-1);
+    constexpr float cardWidth=260, cardHeight=43;
+    for (int index=0; index<RootCrossingCount; ++index) {
+        const auto& info=catalog[index];
+        const bool selected=index==selection;
+        const float cardX=x+23+(index/5)*(cardWidth+12);
+        const float cardY=y+66+(index%5)*49;
+        out.frame(cardX,cardY,cardWidth,cardHeight,selected ? Gold : Edge,
+                  selected ? glm::vec4(0.09f,0.19f,0.16f,1) : Panel);
+        out.quad(cardX+7,cardY+8,18,25,selected ? Gold : glm::vec4(0.12f,0.22f,0.21f,1));
+        out.centered(std::to_string((index+1)%10),cardX+16,cardY+16,1.25f,
+                     selected ? Panel : Muted);
+        const float namePixel=std::min(1.25f,213.0f/std::max(1.0f,info.name.size()*6.0f));
+        out.text(info.name,cardX+33,cardY+9,namePixel,selected ? Cream : Muted);
+        out.text(info.difficulty,cardX+33,cardY+27,1,selected ? Leaf : Muted);
+    }
+    out.quad(x+23,y+316,panelWidth-46,1,Edge);
+    wrappedDescription(out,catalog[selection].description,x+24,y+330,88);
+    out.text("CYAN CHECKPOINT / GOLD EXIT / FALLS RESET",x+24,y+359,0.9f,Leaf);
+    out.text("UP/DOWN OR 1-9/0 - SELECT",x+24,y+376,1,Muted);
+    out.text("WASD MOVE / SPACE JUMP / SHIFT SPRINT",x+24,y+395,1,Muted);
+    out.frame(x+360,y+370,194,34,Gold,{0.72f,0.49f,0.20f,1});
+    out.centered("ENTER - START",x+457,y+382,1.5f,Panel);
+}
+
+void crossingProgress(Drawing& out, const Game& game, float width, float height)
+{
+    const int index=game.rootCrossingIndex();
+    if (index<0 || index>=RootCrossingCount) return;
+    const auto& info=rootCrossingCatalog()[index];
+    constexpr float panelWidth=420;
+    const float center=width*0.5f, x=center-panelWidth*0.5f;
+    out.frame(x,16,panelWidth,83,Edge);
+    out.quad(x+2,18,3,79,Leaf);
+    out.text("ROOT CROSSING "+std::to_string(index+1)+" / "+std::to_string(RootCrossingCount),
+             x+17,28,1,Leaf);
+    out.text(info.difficulty,x+panelWidth-15-info.difficulty.size()*6,28,1,Muted);
+    const float namePixel=std::min(1.75f,386.0f/std::max(1.0f,info.name.size()*6.0f));
+    out.text(info.name,x+17,45,namePixel,Cream);
+    out.text("TIME "+crossingTime(game.crossingElapsed()),x+17,70,1,Cream);
+    out.text("FALLS "+std::to_string(game.crossingFalls()),x+155,70,1,Muted);
+    out.text(game.crossingCompleted() ? "EXIT REACHED"
+                 : game.crossingCheckpointReached() ? "CHECKPOINT SAVED" : "CHECKPOINT AHEAD",
+             x+271,70,1,game.crossingCompleted() || game.crossingCheckpointReached() ? Leaf : Muted);
+    const auto best=game.crossingBestTime();
+    out.text(best>0 ? "SESSION BEST "+crossingTime(best) : "CYAN CHECKPOINT / GOLD EXIT",
+             x+17,86,0.75f,Muted);
+    if (game.crossingCompleted()) {
+        out.frame(center-170,113,340,62,Leaf);
+        out.centered("CROSSING COMPLETE",center,126,1.75f,Leaf);
+        out.centered("N - NEXT   SHIFT+R - RETRY   B - VILLAGE",center,153,1,Cream);
+    } else if (game.status.starts_with("RETURNED") || game.status.starts_with("CHECKPOINT")
+               || game.status.starts_with("NEW ATTEMPT")) {
+        const auto feedback=std::string_view(game.status).substr(0,game.status.find(" | "));
+        out.frame(center-170,109,340,24,Edge);
+        out.centered(feedback.substr(0,52),center,117,1,Leaf);
+    }
+    out.frame(x,height-165,panelWidth,37,Edge);
+    out.centered("N/P CHANGE  R CHECKPOINT  SHIFT+R RESTART",center,height-155,1,Cream);
+    out.centered("F6 ALL COURSES  B VILLAGE  H CONTROLS",center,height-142,1,Muted);
 }
 
 class SavedState {
@@ -381,15 +481,17 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (game.editorMode() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
     if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
     // Preserve the layout on small windows, then apply the display's DPI scale.
+    const float minWidth=game.crossingMenuOpen() ? 620.0f : 460.0f;
+    const float minHeight=game.crossingMenuOpen() ? 470.0f : 440.0f;
     const float scale = std::min({std::clamp(contentScale,0.5f,4.0f),
-                                 framebufferWidth / 460.0f, framebufferHeight / 440.0f});
+                                 framebufferWidth / minWidth, framebufferHeight / minHeight});
     const float width = framebufferWidth / scale, height = framebufferHeight / scale;
     Drawing drawing(width,height);
     drawing.vertices.reserve(24000);
     const auto& equipment = game.equipment;
     const auto selected = equipment.selectedTool();
 
-    const auto offset = HeartTreeCenter - game.camera.position();
+    const auto offset = game.compassTarget() - game.camera.position();
     const glm::vec2 target(offset.x,offset.z);
     const auto forward3 = game.camera.forward();
     glm::vec2 forward(forward3.x,forward3.z);
@@ -425,13 +527,14 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     std::string hint;
     if (selected == Tool::Pickaxe) {
         title += " - TIER " + std::to_string(equipment.pickaxeTier);
-        hint = "UPGRADE AT THE BLACKSMITH";
+        hint = game.rootCrossingActive() ? "MINING COMING LATER" : "UPGRADE AT THE BLACKSMITH";
     } else if (selected == Tool::Lantern) {
         hint = "WARM LIGHT WHILE EQUIPPED";
     } else {
         const int distance = static_cast<int>(std::round(glm::length(target)));
         const int bearing = static_cast<int>(std::round(glm::degrees(std::atan2(needle.x,-needle.y))));
-        hint = "HEART TREE " + std::to_string(distance) + "M";
+        hint = std::string(game.rootCrossingActive() ? "EXIT " : "HEART TREE ")
+            + std::to_string(distance) + "M";
         if (distance > 1)
             hint += "  " + std::to_string(std::abs(bearing)) + " DEG " + (bearing < 0 ? "LEFT" : "RIGHT");
     }
@@ -440,10 +543,18 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     drawing.centered(title,center,barTop-33,1.5f,Cream);
     drawing.centered(hint,center,barTop-16,1,Muted);
 
-    if (game.nearBlacksmith() && !game.smithOpen()) {
+    if (game.rootCrossingActive() && !game.crossingMenuOpen())
+        crossingProgress(drawing,game,width,height);
+
+    if (game.nearBlacksmith() && !game.menuOpen()) {
         constexpr float promptWidth = 160;
         drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Edge);
         drawing.centered("E - BLACKSMITH",center,height*0.5f+43,1.25f,Gold);
+    }
+    if (game.nearExpeditionGate() && !game.menuOpen()) {
+        constexpr float promptWidth=234;
+        drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Leaf);
+        drawing.centered("E - ROOT CROSSING TESTS",center,height*0.5f+43,1.25f,Leaf);
     }
     if (game.smithOpen()) {
         drawing.quad(0,0,width,height,{0.01f,0.025f,0.035f,0.55f});
@@ -486,6 +597,7 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
         drawing.centered("E / ESC - CLOSE",center,y+268,1, Cream);
         drawing.centered("STARTER GIFT: 12 COPPER",center,y+283,1,Muted);
     }
+    if (game.crossingMenuOpen()) crossingPicker(drawing,game,width,height);
     render(drawing, shader_, vao_, buffer_);
 }
 

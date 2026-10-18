@@ -1,6 +1,7 @@
 #include "graphics_smoke.h"
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
+#include "root_crossing_hud_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -15,6 +16,7 @@
 #include "input.h"
 #include "save.h"
 #include "scene.h"
+#include "root_crossings.h"
 
 #include <GLFW/glfw3.h>
 
@@ -922,6 +924,14 @@ void verifyHubDressing(int width, int height)
         return pixels;
     };
     const auto original = sample();
+    renderer.render(world, camera, width, height, false, true, 0, false, false);
+    if (renderer.triangleCount() != undergroundTriangles - assetTriangles) {
+        throw std::runtime_error("Root Crossing render mode retained village fixtures");
+    }
+    renderer.render(world, camera, width, height, false, true);
+    if (renderer.triangleCount() != undergroundTriangles || sample() != original) {
+        throw std::runtime_error("Returning from Root Crossing mode lost village fixtures or lighting");
+    }
     renderer.render(world, camera, width, height, false, false);
     if (renderer.triangleCount() != terrainTriangles) {
         throw std::runtime_error("Switching back to editor retained hub model counts");
@@ -942,7 +952,39 @@ void verifyHubDressing(int width, int height)
         throw std::runtime_error("Restoring the hub did not restore its models and stable lighting");
     }
     checkOpenGl();
-    std::cout << "Hub assets passed: exact geometry counts, mode switches, clear and restore\n";
+    std::cout << "Hub assets passed: exact geometry counts, editor/course mode switches, clear and restore\n";
+}
+
+void verifyRootCrossingRendering(int width, int height)
+{
+    Options options;
+    options.rootCrossing = 0;
+    options.smokeTest = true;
+    Game game(options);
+    WorldRenderer renderer;
+    width = std::min(width, 960);
+    height = std::min(height, 540);
+    for (int course = 0; course < RootCrossingCount; ++course) {
+        if (course != 0) {
+            InputActions next;
+            next.active = true;
+            next.crossingStep = 1;
+            game.update(next);
+        }
+        renderer.render(game.world, game.camera, width, height, false, true, 2.0f, false, false);
+        checkOpenGl();
+        if (game.rootCrossingIndex() != course || renderer.drawnTriangles() < 1000)
+            throw std::runtime_error("Root Crossing level switch lost its cave geometry");
+        verifyFrame(width, height, {});
+    }
+    InputActions back;
+    back.active = back.returnToHub = true;
+    game.update(back);
+    renderer.render(game.world, game.camera, width, height, false, true);
+    checkOpenGl();
+    if (game.rootCrossingActive() || renderer.drawnTriangles() < 1000)
+        throw std::runtime_error("Returning from the course collection lost the hub scene");
+    std::cout << "Root Crossings passed: all ten cave views, consecutive switches, and return to hub\n";
 }
 
 } // namespace
@@ -1104,6 +1146,8 @@ int runGraphicsSmokeTest(const Options& options)
     verifyHubDressing(width, height);
     verifyWaterRendering(width, height);
     verifyPlayHud(width, height);
+    verifyRootCrossingHud(width, height);
+    verifyRootCrossingRendering(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
@@ -1118,12 +1162,14 @@ int runGraphicsSmokeTest(const Options& options)
         if (width <= 0 || height <= 0) {
             throw std::runtime_error("Smoke test framebuffer is empty");
         }
-        renderer.render(game.world, game.camera, width, height, false, !game.editorMode());
+        renderer.render(game.world, game.camera, width, height, false, !game.editorMode(), 0.0f,
+                        game.equipment.selectedTool() == Tool::Lantern, !game.rootCrossingActive());
         float scaleX, scaleY;
         glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
         overlay.draw(game.target, game.camera, width, height, scaleY);
-        hud.draw(game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
-                                 renderer.triangleCount(), 0.0, true, false), width, height, scaleY);
+        if (!game.rootCrossingActive())
+            hud.draw(game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
+                                     renderer.triangleCount(), 0.0, true, false), width, height, scaleY);
         if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
         if (frame == 2) {
             verifyFrame(width, height, options.screenshot);

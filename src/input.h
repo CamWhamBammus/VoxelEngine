@@ -23,6 +23,12 @@ struct InputActions {
     bool interact = false;
     bool upgrade = false;
     bool closeMenu = false;
+    bool crossingMenu = false;
+    std::optional<int> selectedCrossing; // 0–9 while the test picker is open.
+    int crossingMenuStep = 0;
+    int crossingStep = 0;
+    bool returnToHub = false;
+    bool restartCrossing = false;
     // Editing requests are emitted only in --editor mode.
     bool save = false;
     bool load = false;
@@ -71,7 +77,8 @@ public:
     Input(const Input&) = delete;
     Input& operator=(const Input&) = delete;
 
-    void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false);
+    void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false,
+                bool crossingPicker = false);
     const InputActions& actions() const { return actions_; }
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
@@ -95,6 +102,13 @@ private:
         bool interact = false;
         bool upgrade = false;
         std::array<bool, 3> tools{};
+        std::array<bool, 10> courses{};
+        bool crossingMenu = false;
+        bool menuPrevious = false;
+        bool menuNext = false;
+        bool previousCrossing = false;
+        bool nextCrossing = false;
+        bool returnToHub = false;
     };
 
     bool keyDown(int key) const;

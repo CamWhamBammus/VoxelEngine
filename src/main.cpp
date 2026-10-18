@@ -52,7 +52,7 @@ int main(int argc, char** argv)
             const float deltaSeconds = static_cast<float>(now - previousTime);
             previousTime = now;
 
-            input.update(game.camera, deltaSeconds, game.editorMode(), game.smithOpen());
+            input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen());
             game.update(input.actions(), deltaSeconds);
 
             int width, height;
@@ -63,10 +63,10 @@ int main(int argc, char** argv)
             }
             renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
                             static_cast<float>(now), !game.editorMode()
-                                && game.equipment.selectedTool() == voxel::Tool::Lantern);
+                                && game.equipment.selectedTool() == voxel::Tool::Lantern, !game.rootCrossingActive());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
-            if (input.captured() && !game.smithOpen()) {
+            if (input.captured() && !game.menuOpen()) {
                 selection.draw(game.target, game.camera, width, height, scaleY);
             }
 
@@ -78,14 +78,16 @@ int main(int argc, char** argv)
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
                 const char* title = game.editorMode()
-                    ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor") : "Underground Village";
+                    ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor")
+                    : game.rootCrossingActive() ? "Root Crossing Playtest" : "Underground Village";
                 glfwSetWindowTitle(window.handle(), title);
                 if (sampleSeconds >= 0.25) {
                     sampleStart = now;
                     sampleFrames = 0;
                 }
             }
-            hud.draw(statusText, width, height, scaleY);
+            if ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible())
+                hud.draw(statusText, width, height, scaleY);
             if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
             window.present();
         }

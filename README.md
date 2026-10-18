@@ -2,7 +2,7 @@
 
 A small C++20 voxel game for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. The direction is an **entirely underground expedition game**: leave a starting village, find resources, return, and upgrade the settlement.
 
-This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. Other building services, village upgrades, villagers, and expedition transitions are not implemented yet.
+This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. A **ten-course Root Crossing test collection** is the first playable expedition section. Full expeditions, other building services, village upgrades, and villagers are not implemented yet.
 
 ## Explore the underground hub
 
@@ -38,11 +38,38 @@ Successful upgrades save the pickaxe tier and ore balances to **`progress.vxp` i
 
 The hub follows a fixed architectural plan, with seeded variations in rock, ore, and foliage. The terrain resets on launch and does not load or overwrite editor saves. Use `--seed N` to change the variation. The original surface editor remains available through `--editor`.
 
+## Test the Root Crossings
+
+Press **F6** during play to open the ten-course picker, or approach the north expedition gate and press **E**. Use **Up / Down** or **1–9 / 0** to select a course, then **Enter** to start. **Escape** closes the picker. You can also launch a particular course directly:
+
+```sh
+./build/VoxelEngine --root-crossing 1
+```
+
+The number accepts **1 through 10**. Each course is an enclosed lush grotto with rooted timber crossings, planted landings, trees, luminous foliage, and water below. The main routes use ordinary walking jumps; **Shift** still sprints. Walk through the **cyan checkpoint** to activate it and reach the **amber exit markers** to finish. Falling below the route returns you to your last checkpoint automatically.
+
+| Course | Route to try |
+| --- | --- |
+| 1. Fallen Elder | A wide introductory root with two broken spans |
+| 2. Braided Roots | Weaving turns across the grotto |
+| 3. Forked Grove | A broad western route and a narrow eastern shortcut |
+| 4. Root Stair | A rising ridge followed by a descending route |
+| 5. Elder Spiral | A climbing loop around an ancient tree |
+| 6. Hanging Garden | High roots attached to the cave canopy |
+| 7. Waterfall Ledge | A wall-side crossing beside a cascade |
+| 8. Garden Knots | Jumps between planted root knots |
+| 9. Broken Crown | Narrow branches with changes in height |
+| 10. Tangled Heart | A longer mixture of turns, climbs, and gaps |
+
+**N / P** switches to the next or previous course. **R** returns to the active checkpoint; **Shift+R** starts a fresh attempt at the entrance. **F6** reopens the picker, and **B** returns to the village. The HUD tracks time, falls, checkpoint activation, and the best time for each course during the current session. The compass points toward the course exit. Pausing or opening a menu pauses the timer.
+
+These are individual movement tests: finishing grants no resources and does not change your saved equipment. Session best times reset when you quit. Ore mining, treasure rewards, and chaining sections into complete expeditions come later. Terrain editing remains exclusive to the separate editor; `--root-crossing` cannot be combined with `--editor` or `--world`.
+
 ## Planned expedition loop
 
-Expeditions will assemble compatible sections into a route: entrance, challenges with optional ore branches, then a main treasure chest that rewards the run and returns the player to the hub. Pickaxe tier gates ore extraction. Depth selects the world's theme, from lush caves near the surface to lava caverns deeper down. The central heart tree is the planned access point for a literal skill tree. These systems are the design direction; they are not implemented yet.
+Expeditions will assemble compatible sections into a route: entrance, challenges with optional ore branches, then a main treasure chest that rewards the run and returns the player to the hub. Pickaxe tier gates ore extraction. Depth selects the world's theme, from lush caves near the surface to lava caverns deeper down. The central heart tree is the planned access point for a literal skill tree. The Root Crossing collection tests the first section type; the complete expedition loop and progression systems are not implemented yet.
 
-The initial section candidates are parkour, crystal-routing puzzles, timed environmental hazards, hidden ore rooms, and branching exploration. They can provide risk and variety with simple object movement and effects before creature animation is needed.
+The lush-world section ideas to revisit after Root Crossing are Flooded Grotto, Overgrown Mine, Rootwell Ascent, Ancient Water Garden, Lantern Grove, Hidden Sanctuary, and the final Rootbound Vault. They combine exploration, ore branches, observation, water puzzles, and parkour. They can provide risk and variety with simple object movement and effects before creature animation is needed.
 
 ## Understand the code
 
@@ -57,6 +84,7 @@ src/
   equipment.h/.cpp  Tool selection, pickaxe upgrade costs, and progress profiles
   player.h/.cpp     Player body, terrain collision, walking, jumping, and spawning
   scene.h/.cpp      Hub layout, landscape, tree, water, bridges, and departure hall
+  root_crossings.h/.cpp Ten lush crossing layouts, shared landings, and cave construction
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
   hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
   hub_landscape.cpp Attach large rocks and roots to supporting terrain
@@ -122,6 +150,7 @@ Use this map when changing something:
 | Ferns, flowers, mushrooms, reeds, lily pads, vines, or shrubs | [graphics/hub_foliage.cpp](src/graphics/hub_foliage.cpp) |
 | Editor starting camera position and view direction | [camera.h](src/camera.h) |
 | Village spawn and return behavior | [scene.h](src/scene.h) and [game.cpp](src/game.cpp) |
+| Root Crossing paths, jumps, checkpoints, and environment | [root_crossings.cpp](src/root_crossings.cpp) |
 | Zoom limits | [camera.cpp](src/camera.cpp) |
 | Block colors and names | [world.h](src/world.h) |
 | Terrain shape | `terrainHeight` and `generateTerrain` in [world.cpp](src/world.cpp) |
@@ -285,6 +314,8 @@ Tests cover storage bounds, material validation, camera math, command-line parsi
 
 Player tests cover collision, one-block stair climbing, headroom, jumping, safe spawning, and falling through openings in the ground. Scene tests walk three-dimensional routes to all 38 building entrances and interiors, bridges, and the departure hall, including direct travel in both directions on every lane of the mine approach. They also cover the sealed shell, connected solid foundations, tree and water features, shoreline stair egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Hub asset tests cover all 38 model types, seeded variants, quarter-turn rotations, placement, chunk batching, and empty worlds. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, tool selection, blacksmith reach and menu behavior, and that all editor actions leave play worlds unchanged. Equipment tests cover upgrade costs and limits, profile validation and round-trips, failed writes, and progress restoration. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 21 material IDs and verify version 1 and version 2 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, opaque scene snapshots, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup. Water checks cover visible lakebeds, foreground occlusion, animation, and fresh snapshots after edits and view changes.
 
+Root Crossing tests traverse all ten main routes with the actual player physics at 30 and 60 FPS, check the optional fork, and verify that solid roots connect each landing to the cave terrain. They also check safe reset landings, real jump gaps, deterministic layouts, selection, timing, checkpoints, completion, and unchanged equipment. Native checks render all ten rooms, switch back to the hub, and verify the picker, compass, and completion HUD at different display scales.
+
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 
-This is a finite hub prototype with a tool hotbar and saved blacksmith pickaxe upgrades. Other building services, expedition transitions, mining, village upgrades, NPCs, enemies, loot containers, general crafting, and chunk streaming are not implemented yet.
+This is a finite hub prototype with a tool hotbar, saved blacksmith pickaxe upgrades, and ten selectable Root Crossing movement tests. Full expeditions, other building services, mining, village upgrades, NPCs, enemies, loot containers, general crafting, and chunk streaming are not implemented yet.

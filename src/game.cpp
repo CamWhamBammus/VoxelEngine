@@ -37,6 +37,15 @@ Options parseOptions(std::span<const std::string_view> arguments)
             if (result.ec != std::errc{} || result.ptr != seed.data() + seed.size()) {
                 throw std::invalid_argument("Seed must be an integer from 0 to 4294967295");
             }
+        } else if (argument == "--root-crossing") {
+            int number = 0;
+            const auto crossing = value();
+            const auto result = std::from_chars(crossing.data(), crossing.data() + crossing.size(), number);
+            if (result.ec != std::errc{} || result.ptr != crossing.data() + crossing.size()
+                || number < 1 || number > RootCrossingCount) {
+                throw std::invalid_argument("Root Crossing must be an integer from 1 to 10");
+            }
+            options.rootCrossing = number - 1;
         } else if (argument == "--reach") {
             const auto reach = value();
             const auto result = std::from_chars(reach.data(), reach.data() + reach.size(), options.editReach);
@@ -54,6 +63,9 @@ Options parseOptions(std::span<const std::string_view> arguments)
             throw std::invalid_argument("Unknown option: " + std::string(argument));
         }
     }
+    if (options.rootCrossing >= 0 && (options.editor || options.worldExplicit) && !options.help) {
+        throw std::invalid_argument("Root Crossing tests cannot be combined with --editor or --world");
+    }
     if (options.worldExplicit && !options.editor && !options.help) {
         throw std::invalid_argument("Use --editor with --world; game runs start with fresh terrain");
     }
@@ -64,10 +76,16 @@ Options parseOptions(std::span<const std::string_view> arguments)
 // An explicit --seed starts fresh unless an explicit existing world file was requested.
 Game::Game(const Options& options)
     : world(options.seed), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach),
-      editorMode_(options.editor), progressPath_(options.progressPath)
+      editorMode_(options.editor), progressPath_(options.smokeTest || options.editor ? "" : options.progressPath)
 {
     if (editReach_ < 1 || editReach_ > 64) {
         throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
+    }
+    if (options.rootCrossing < -1 || options.rootCrossing >= RootCrossingCount) {
+        throw std::invalid_argument("Root Crossing index must be from 0 to 9, or -1 for the hub");
+    }
+    if (options.rootCrossing >= 0 && (editorMode_ || options.worldExplicit)) {
+        throw std::invalid_argument("Root Crossing tests cannot be combined with --editor or --world");
     }
     if (options.worldExplicit && !editorMode_) {
         throw std::invalid_argument("Use --editor with --world");
@@ -83,14 +101,18 @@ Game::Game(const Options& options)
         status = "New world - F5 to save";
     }
     if (!editorMode_) {
-        buildUndergroundScene(world);
-        if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
-        status = "BLACKSMITH: SOUTHWEST WORKSHOP | 12 STARTER COPPER";
+        if (options.rootCrossing >= 0) startRootCrossing(options.rootCrossing);
+        else {
+            buildUndergroundScene(world);
+            if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
+            status = "F6 ROOT CROSSING TESTS | BLACKSMITH SOUTHWEST | 12 STARTER COPPER";
+        }
         if (!progressPath_.empty()) {
             try {
                 if (std::filesystem::exists(progressPath_)) {
                     equipment = loadEquipment(progressPath_);
-                    status = "EQUIPMENT LOADED | BLACKSMITH: SOUTHWEST WORKSHOP";
+                    if (!rootCrossingActive())
+                        status = "EQUIPMENT LOADED | F6 ROOT CROSSING TESTS | BLACKSMITH SOUTHWEST";
                 }
             } catch (const std::exception& error) {
                 progressError_ = std::string("Progress unavailable: ") + error.what();
@@ -159,9 +181,43 @@ bool Game::returnToVillage()
 
 void Game::updatePlay(const InputActions& actions, float deltaSeconds)
 {
-    if (actions.closeMenu) { smithOpen_ = false; return; }
+    if (actions.closeMenu) { smithOpen_ = crossingMenuOpen_ = false; return; }
     if (!actions.active) return;
-    if (actions.respawn || player.feetPosition().y < -16.0f) {
+    if (actions.crossingMenu) {
+        if (crossingMenuOpen_) crossingMenuOpen_ = false;
+        else openCrossingMenu();
+        return;
+    }
+    if (actions.returnToHub && rootCrossingActive()) {
+        leaveRootCrossing();
+        return;
+    }
+    if (crossingMenuOpen_) {
+        if (actions.selectedCrossing && *actions.selectedCrossing >= 0
+            && *actions.selectedCrossing < RootCrossingCount) {
+            crossingMenuSelection_ = *actions.selectedCrossing;
+        } else if (actions.crossingMenuStep != 0) {
+            crossingMenuSelection_ = (crossingMenuSelection_
+                + (actions.crossingMenuStep > 0 ? 1 : RootCrossingCount - 1)) % RootCrossingCount;
+        }
+        if (actions.upgrade) startRootCrossing(crossingMenuSelection_);
+        return; // The picker never moves the player or selects equipment.
+    }
+    if (rootCrossingActive()) {
+        if (actions.crossingStep != 0) {
+            startRootCrossing((rootCrossingIndex_
+                + (actions.crossingStep > 0 ? 1 : RootCrossingCount - 1)) % RootCrossingCount);
+            return;
+        }
+        if (actions.restartCrossing || actions.respawn) {
+            resetRootCrossing(actions.restartCrossing);
+            return;
+        }
+        if (player.feetPosition().y < crossingCourse_.resetY) {
+            resetRootCrossing(false, true);
+            return;
+        }
+    } else if (actions.respawn || player.feetPosition().y < -16.0f) {
         status = returnToVillage() ? "Returned to the village"
                                    : "No safe space at the village entrance";
         return;
@@ -173,23 +229,144 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     if (smithOpen_) {
         if (actions.interact) smithOpen_ = false;
         else if (actions.upgrade) upgradeEquipment();
-        return; // The station menu freezes movement and tool selection.
+        return;
     }
     if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
         equipment.selectedSlot = *actions.selectedTool;
     else if (actions.toolStep != 0)
         equipment.selectedSlot = (equipment.selectedSlot + (actions.toolStep > 0 ? 1 : ToolCount - 1)) % ToolCount;
+    if (actions.interact && nearExpeditionGate()) {
+        openCrossingMenu();
+        return;
+    }
     if (actions.interact && nearBlacksmith()) {
         smithOpen_ = true;
         return;
     }
     player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
     camera.setPosition(player.eyePosition());
+    if (rootCrossingActive()) updateRootCrossing(deltaSeconds);
+}
+
+void Game::openCrossingMenu()
+{
+    smithOpen_ = false;
+    crossingMenuOpen_ = true;
+    if (rootCrossingActive()) crossingMenuSelection_ = rootCrossingIndex_;
+}
+
+void Game::positionForCrossing(glm::vec3 feet, bool checkpoint)
+{
+    if (!player.setFeetPosition(world, feet) || !player.grounded())
+        throw std::runtime_error("Root Crossing landing has no supported space for the player");
+    float yaw = crossingCourse_.spawnYaw;
+    if (checkpoint) {
+        // A winding course may have turned since its entrance. Point a reset
+        // toward the next landing so the player can immediately continue.
+        auto direction = crossingCourse_.finish - feet;
+        const auto waypoint = std::find(crossingCourse_.route.begin(), crossingCourse_.route.end(),
+                                        crossingCourse_.checkpoint);
+        if (waypoint != crossingCourse_.route.end() && waypoint + 1 != crossingCourse_.route.end())
+            direction = *(waypoint + 1) - feet;
+        if (std::hypot(direction.x, direction.z) > .001f)
+            yaw = glm::degrees(std::atan2(direction.z, direction.x));
+    }
+    camera.reset();
+    const auto facing = camera.forward();
+    camera.rotate(yaw - glm::degrees(std::atan2(facing.z, facing.x)),
+                  -8.0f - glm::degrees(std::asin(facing.y)));
+    camera.setPosition(player.eyePosition());
+}
+
+void Game::startRootCrossing(int index)
+{
+    if (index < 0 || index >= RootCrossingCount) return;
+    crossingCourse_ = buildRootCrossing(world, index);
+    rootCrossingIndex_ = crossingMenuSelection_ = index;
+    smithOpen_ = crossingMenuOpen_ = false;
+    crossingCompleted_ = crossingCheckpointReached_ = false;
+    crossingElapsed_ = 0.0f;
+    crossingFalls_ = 0;
+    target.reset();
+    positionForCrossing(crossingCourse_.spawn);
+    status = std::string(rootCrossingCatalog()[index].name) + " | REACH THE GOLD FINISH MARKER";
+}
+
+void Game::leaveRootCrossing()
+{
+    buildUndergroundScene(world);
+    rootCrossingIndex_ = -1;
+    crossingCompleted_ = crossingCheckpointReached_ = crossingMenuOpen_ = false;
+    crossingElapsed_ = 0.0f;
+    crossingFalls_ = 0;
+    if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
+    status = "RETURNED TO GLOWROOT HAVEN | F6 ROOT CROSSING TESTS";
+}
+
+void Game::resetRootCrossing(bool fullRestart, bool fallen)
+{
+    if (fullRestart) {
+        crossingCheckpointReached_ = false;
+        crossingElapsed_ = 0.0f;
+        crossingFalls_ = 0;
+    } else if (fallen) {
+        ++crossingFalls_;
+    }
+    crossingCompleted_ = false;
+    positionForCrossing(crossingCheckpointReached_ ? crossingCourse_.checkpoint : crossingCourse_.spawn,
+                        crossingCheckpointReached_);
+    status = fullRestart ? "NEW ATTEMPT | REACH THE GOLD FINISH MARKER"
+        : crossingCheckpointReached_ ? "RETURNED TO CHECKPOINT | SHIFT+R STARTS A NEW ATTEMPT"
+                                     : "RETURNED TO START | SHIFT+R STARTS A NEW ATTEMPT";
+}
+
+void Game::updateRootCrossing(float deltaSeconds)
+{
+    if (crossingCompleted_) return;
+    // Match the physics step cap. Pauses and long background frames cannot
+    // inflate a run while the player is not actually being simulated.
+    if (std::isfinite(deltaSeconds) && deltaSeconds > 0.0f)
+        crossingElapsed_ += std::min(deltaSeconds, 0.1f);
+    if (player.feetPosition().y < crossingCourse_.resetY) {
+        resetRootCrossing(false, true);
+        return;
+    }
+    const auto onLanding = [&](glm::vec3 landing, float radius) {
+        const auto offset = player.feetPosition() - landing;
+        return player.grounded() && std::abs(offset.y) < 0.75f
+            && offset.x * offset.x + offset.z * offset.z < radius * radius;
+    };
+    if (!crossingCheckpointReached_ && onLanding(crossingCourse_.checkpoint, 2.75f)) {
+        crossingCheckpointReached_ = true;
+        status = "CHECKPOINT REACHED | R RETURNS HERE | SHIFT+R RESTARTS";
+    }
+    if (onLanding(crossingCourse_.finish, 2.0f)) {
+        crossingCompleted_ = true;
+        auto& best = crossingBestTimes_[rootCrossingIndex_];
+        if (crossingElapsed_ > 0.0f && (best == 0.0f || crossingElapsed_ < best)) best = crossingElapsed_;
+        status = "CROSSING COMPLETE | N NEXT | P PREVIOUS | SHIFT+R RETRY | B HUB";
+    }
+}
+
+float Game::crossingBestTime() const
+{
+    return rootCrossingActive() ? crossingBestTimes_[rootCrossingIndex_] : 0.0f;
+}
+
+bool Game::nearExpeditionGate() const
+{
+    return !editorMode_ && !rootCrossingActive()
+        && glm::distance(player.feetPosition(), ExpeditionDeparture) <= 8.0f;
+}
+
+glm::vec3 Game::compassTarget() const
+{
+    return rootCrossingActive() ? crossingCourse_.finish : HeartTreeCenter;
 }
 
 bool Game::nearBlacksmith() const
 {
-    if (editorMode_) return false;
+    if (editorMode_ || rootCrossingActive()) return false;
     const auto station = sceneBlacksmithStation();
     const auto support = glm::ivec3(glm::floor(station)) - glm::ivec3(0, 1, 0);
     if (!isSolid(world.get(support)) || !isSolid(world.get(support - glm::ivec3(0, 1, 0)))) return false;
@@ -320,19 +497,29 @@ bool Game::hasUnsavedChanges() const
 std::string Game::playStatusText(bool captured, bool showHelp) const
 {
     std::ostringstream text;
-    text << "GLOWROOT HAVEN | VILLAGE HUB";
+    if (rootCrossingActive()) {
+        text << "ROOT CROSSING " << rootCrossingIndex_ + 1 << "/" << RootCrossingCount
+             << " | " << rootCrossingCatalog()[rootCrossingIndex_].name;
+    } else text << "GLOWROOT HAVEN | VILLAGE HUB";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
-    text << "\n" << status
-         << "\nH CONTROLS";
+    if (!crossingMenuOpen_) text << "\n" << status;
+    text << "\nH CONTROLS | F6 ROOT CROSSING TESTS";
     if (showHelp) {
         text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
              << "\nSCROLL / [ ] CHANGE TOOL | TAB RESUME"
-             << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS"
-             << "\nE BLACKSMITH | ENTER UPGRADE | ESC CLOSE / PAUSE"
-             << "\nR RETURN TO VILLAGE | Q QUIT"
-             << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
-             << "\nTERRAIN RESETS ON LAUNCH | EQUIPMENT UPGRADES ARE SAVED"
-             << "\nMINING AND EXPEDITIONS COMING LATER";
+             << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS";
+        if (rootCrossingActive()) {
+            text << "\nN NEXT TEST | P PREVIOUS | B RETURN TO HUB"
+                 << "\nR CHECKPOINT | SHIFT+R RESTART ATTEMPT"
+                 << "\nCOMPASS POINTS TO THE FINISH | FALLS RESET TO CHECKPOINT"
+                 << "\nESC PAUSE | Q QUIT | TESTS DO NOT AWARD ORE";
+        } else {
+            text << "\nE BLACKSMITH / EXPEDITION GATE | ENTER CONFIRM | ESC CLOSE / PAUSE"
+                 << "\nR RETURN TO VILLAGE | Q QUIT"
+                 << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
+                 << "\nTERRAIN RESETS ON LAUNCH | EQUIPMENT UPGRADES ARE SAVED"
+                 << "\nMINING AND FULL EXPEDITIONS COMING LATER";
+        }
     }
     return text.str();
 }

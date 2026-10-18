@@ -261,7 +261,7 @@ void WorldRenderer::uploadLights(const World& world)
 }
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
-                           bool wireframe, bool underground, float timeSeconds, bool carriedLantern)
+                           bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -281,7 +281,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         if (index >= layer) rebuild[index - layer] = true;
         if (index + layer < meshes_.size()) rebuild[index + layer] = true;
     }
-    bool changed = false;
+    bool changed = hubAssets != hubAssets_;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (rebuild[index]) {
             auto opaque = buildMesh(world, index);
@@ -297,7 +297,9 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     if (changed) {
         // Plans can depend on supports farther than an adjacent voxel, so a
         // changed world refreshes the entire small set of handcrafted models.
-        auto dressing = buildHubDressing(world);
+        // Expedition test rooms keep voxel roots and natural cave details but
+        // do not inherit fittings from the village's fixed architectural plan.
+        auto dressing = hubAssets ? buildHubDressing(world) : HubDressing{};
         for (std::size_t index = 0; index < assets_.size(); ++index) {
             assets_[index].upload(dressing.meshes[index]);
         }
@@ -386,6 +388,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         }
         uploadLights(world);
         meshedWorld_ = world;
+        hubAssets_ = hubAssets;
     }
     glViewport(0, 0, width, height);
     if (underground) postProcess_.begin(width, height);

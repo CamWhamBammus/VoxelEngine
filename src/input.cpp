@@ -58,6 +58,15 @@ Input::Buttons Input::readButtons() const
         .interact = keyDown(GLFW_KEY_E),
         .upgrade = keyDown(GLFW_KEY_ENTER) || keyDown(GLFW_KEY_KP_ENTER),
         .tools = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3)},
+        .courses = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3),
+                    keyDown(GLFW_KEY_4), keyDown(GLFW_KEY_5), keyDown(GLFW_KEY_6),
+                    keyDown(GLFW_KEY_7), keyDown(GLFW_KEY_8), keyDown(GLFW_KEY_9), keyDown(GLFW_KEY_0)},
+        .crossingMenu = keyDown(GLFW_KEY_F6),
+        .menuPrevious = keyDown(GLFW_KEY_UP),
+        .menuNext = keyDown(GLFW_KEY_DOWN),
+        .previousCrossing = keyDown(GLFW_KEY_P),
+        .nextCrossing = keyDown(GLFW_KEY_N),
+        .returnToHub = keyDown(GLFW_KEY_B),
     };
 }
 
@@ -69,7 +78,7 @@ void Input::capture(bool enabled)
     glfwGetCursorPos(window_, &cursorX_, &cursorY_);
 }
 
-void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool modal)
+void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool modal, bool crossingPicker)
 {
     actions_ = {};
     if (!editorMode) wireframe_ = false;
@@ -90,7 +99,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     }
 
     if (!editorMode && modal) {
-        // Closing the forge returns directly to play. Focus loss still releases
+        // Closing a menu returns directly to play. Focus loss still releases
         // the mouse, and Tab can recapture it without a stale pointer jump.
         actions_.closeMenu = pressed(buttons.releaseMouse, previous.releaseMouse)
             || pressed(buttons.toggleMouse, previous.toggleMouse);
@@ -137,6 +146,17 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     } else {
         actions_.interact = pressed(buttons.interact, previous.interact);
         actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
+        actions_.crossingMenu = pressed(buttons.crossingMenu, previous.crossingMenu);
+        actions_.crossingStep = static_cast<int>(pressed(buttons.nextCrossing, previous.nextCrossing))
+            - static_cast<int>(pressed(buttons.previousCrossing, previous.previousCrossing));
+        actions_.returnToHub = pressed(buttons.returnToHub, previous.returnToHub);
+        actions_.restartCrossing = resetCamera && shift;
+        if (crossingPicker) {
+            for (int course = 0; course < 10; ++course)
+                if (pressed(buttons.courses[course], previous.courses[course])) actions_.selectedCrossing = course;
+            actions_.crossingMenuStep = static_cast<int>(pressed(buttons.menuNext, previous.menuNext))
+                - static_cast<int>(pressed(buttons.menuPrevious, previous.menuPrevious));
+        }
         for (int slot = 0; slot < 3; ++slot)
             if (pressed(buttons.tools[slot], previous.tools[slot])) actions_.selectedTool = slot;
         actions_.toolStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))

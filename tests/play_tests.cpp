@@ -274,7 +274,7 @@ int main()
             expedition.update(actions, 1000.0f);
             check(expedition.player.feetPosition() == feet, "exploration has no challenge countdown or time limit");
             check(!expedition.target, "returning to the village does not enable editor targeting");
-            check(expedition.statusText(0, 0, 0, 0, true, true).find("MINING AND EXPEDITIONS COMING LATER") != std::string::npos,
+            check(expedition.statusText(0, 0, 0, 0, true, true).find("MINING AND FULL EXPEDITIONS COMING LATER") != std::string::npos,
                   "hub controls accurately identify the current development scope");
         }
     } catch (const std::exception& error) {
