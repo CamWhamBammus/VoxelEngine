@@ -40,7 +40,7 @@ MaterialSurface evaluateMaterial() {
         return MaterialSurface(clamp(color, 0.0, 1.0), n,
             materialId == 10 ? 0.24 : 0.88, materialId == 10 ? 0.30 + brush * 0.08 : 0.0);
     }
-    // Sample the same paint on a raised plate and on its supporting block.
+    // Sample the same paint on a raised chip and on its supporting block.
     // Facet normals still light the geometry, but cannot rotate its UV axes.
     vec3 paintPosition = worldPosition;
     if (decorative == 2) {
@@ -63,12 +63,11 @@ MaterialSurface evaluateMaterial() {
     if (materialId == 3 || materialId == 5 || materialId == 6 || materialId == 15
         || (materialId >= 7 && materialId <= 9)) {
         bool shale = materialId == 6 || materialId == 15;
-        // Irregular mineral plates give stone broad painted planes and chipped
-        // edges rather than the repeating wavy lines of a noise-only surface.
-        // block_relief.cpp uses these same centers for the raised plate outlines.
-        vec2 plate = p * vec2(0.95, shale ? 2.4 : 1.15);
+        // These irregular fracture lines also anchor the occasional rock chips
+        // in block_relief.cpp. Color strokes continue across their boundaries.
+        vec2 plate = p * vec2(1.35, shale ? 3.2 : 1.65);
         vec2 tile = floor(plate), within = fract(plate);
-        float nearest = 10.0, second = 10.0, plateColor = 0.0;
+        float nearest = 10.0, second = 10.0;
         vec2 plane = vec2(0.0), secondPlane = vec2(0.0);
         for (int y = -1; y <= 1; ++y) {
             for (int x = -1; x <= 1; ++x) {
@@ -79,51 +78,74 @@ MaterialSurface evaluateMaterial() {
                 float distance = dot(delta, delta);
                 if (distance < nearest) {
                     second = nearest; secondPlane = plane;
-                    nearest = distance; plane = delta; plateColor = h;
+                    nearest = distance; plane = delta;
                 } else if (distance < second) { second = distance; secondPlane = delta; }
             }
         }
-        // A broad chipped bevel and one-sided painted edge lift the planes.
-        // Broken dark seams avoid a uniform outline around every stone tile.
-        float edge = sqrt(second) - sqrt(nearest) - smoothstep(0.58, 0.84, chips) * 0.055;
-        float crack = 1.0 - smoothstep(0.012, 0.045, edge);
-        float bevel = 1.0 - smoothstep(0.035, 0.20, edge);
+        // Broad painted planes carry the rock. Break the seams into occasional
+        // fissures instead of outlining every region like laid cobblestones.
+        float edge = sqrt(second) - sqrt(nearest);
+        float fracture = smoothstep(0.49, 0.76, chips * 0.65 + broad * 0.35);
+        float crack = (1.0 - smoothstep(0.008, 0.040, edge)) * fracture;
+        float bevel = 1.0 - smoothstep(0.02, 0.19, edge);
         vec2 outward = normalize(plane - secondPlane);
         float edgeLight = dot(outward, normalize(vec2(-0.55, 0.83)));
-        float stroke = materialNoise(vec2(p.x * 0.8 - p.y * 0.35, p.y * 7.0 + p.x * 1.6) + seed);
-        stroke = floor(stroke * 5.0) / 5.0;
-        vec3 cool = shale ? vec3(0.23, 0.34, 0.46) : vec3(0.37, 0.50, 0.59);
-        vec3 warm = shale ? vec3(0.36, 0.36, 0.43) : vec3(0.67, 0.61, 0.47);
-        vec3 pigment = mix(cool, warm, smoothstep(0.20, 0.85, plateColor));
-        color = mix(surfaceColor, pigment, materialId == 5 ? 0.70 : 0.58);
+        float stroke = materialNoise(vec2(p.x * 0.8 - p.y * 0.35, p.y * 5.0 + p.x * 1.6) + seed);
+        vec3 cool = shale ? vec3(0.27, 0.34, 0.42) : vec3(0.43, 0.49, 0.54);
+        vec3 warm = shale ? vec3(0.36, 0.35, 0.40) : vec3(0.58, 0.55, 0.48);
+        vec3 pigment = mix(cool, warm, smoothstep(0.22, 0.80, broad));
+        color = mix(surfaceColor, pigment, materialId == 5 ? 0.32 : 0.42);
         if (materialId == 15) color *= 0.65;
-        if (materialId >= 7 && materialId <= 9) color = mix(vec3(0.36, 0.42, 0.49), pigment, 0.24);
-        color *= 0.79 + 0.21 * stroke + 0.13 * clamp(dot(plane, vec2(-0.6, 0.8)) + 0.5, 0.0, 1.0);
-        color *= 1.0 + bevel * (0.19 * edgeLight - 0.09);
-        color *= 1.0 - crack * (0.22 + 0.25 * smoothstep(0.28, 0.72, chips));
-        float rim = smoothstep(0.025, 0.055, edge) * (1.0 - smoothstep(0.055, 0.12, edge));
-        color += vec3(0.11, 0.15, 0.16) * rim * max(edgeLight, 0.0);
-        slope = outward * bevel * (shale ? 0.28 : 0.38) + plane * 0.04;
+        if (materialId >= 7 && materialId <= 9) color = mix(vec3(0.39, 0.43, 0.47), pigment, 0.28);
+        // Overlapping broad and narrow brush marks suggest rock layers. They
+        // never reset at a fracture, avoiding a wall full of separate tiles.
+        float strata = materialNoise(vec2(p.x * 1.8 + broad * 0.3, p.y * (shale ? 11.0 : 6.0)) + seed + 5.0);
+        float brush = smoothstep(0.28, 0.48, strata) * 0.5 + smoothstep(0.56, 0.74, strata) * 0.5;
+        color *= 0.81 + 0.12 * stroke + 0.11 * brush;
+        color *= 1.0 + bevel * fracture * (0.045 * edgeLight - 0.015);
+        color *= 1.0 - crack * 0.21;
+        // A short upper-edge accent reads as a chipped surface in flat light.
+        float rim = smoothstep(0.025, 0.05, edge) * (1.0 - smoothstep(0.05, 0.09, edge));
+        color += vec3(0.040, 0.045, 0.045) * rim * max(edgeLight, 0.0) * fracture;
+        slope = outward * bevel * fracture * (shale ? 0.08 : 0.10);
         if (materialId >= 7 && materialId <= 9) {
-            // Keep the fleck centers and outline in sync with block_relief.cpp.
-            // On real facets use the continuous footprint: snapping a bevel to
-            // the paint grid would stripe its side with neighboring rock pixels.
+            // These elongated, asymmetric fragments also define the attached
+            // ore geometry in block_relief.cpp. Nearby pieces share a direction.
             vec2 mineralUV = decorative == 2 ? uv : p;
-            vec2 mineralCell = floor(mineralUV * 3.0);
-            float h = mineralHash(mineralCell + seed), h2 = mineralHash(mineralCell + seed + 11.0);
-            vec2 q = fract(mineralUV * 3.0) - vec2(0.35 + 0.30 * h, 0.35 + 0.30 * h2);
-            q = mat2(0.8, -0.6, 0.6, 0.8) * q;
-            float shape = max(abs(q.x) * 0.83 + abs(q.y) * 0.66, max(abs(q.x), abs(q.y)) * 0.94);
-            float radius = 0.21 + 0.16 * h2;
-            if (h > 0.48 && shape < radius + 0.035) {
-                vec3 ore = materialId == 7 ? vec3(0.065, 0.080, 0.095)
-                    : (materialId == 8 ? vec3(0.68, 0.34, 0.16) : vec3(0.58, 0.57, 0.50));
-                if (materialId == 8 && h2 > 0.77) ore = mix(ore, vec3(0.20, 0.42, 0.34), 0.58);
-                float facet = q.x + q.y * 0.7 > 0.0 ? 1.17 : 0.78;
-                color = shape > radius ? vec3(0.16, 0.19, 0.20) : ore * facet;
-                if (shape < radius && q.y > radius * 0.40) color += vec3(0.07, 0.065, 0.05);
-                roughness = materialId == 7 ? 0.64 : 0.48;
-                slope += vec2(sign(q.x), sign(q.y)) * 0.12;
+            vec2 mineralCell = floor(mineralUV * 2.0);
+            float h = mineralHash(mineralCell + seed);
+            float h2 = mineralHash(mineralCell + seed + 11.0);
+            float h3 = mineralHash(mineralCell + seed + 23.0);
+            float direction = mineralHash(floor(mineralCell / 3.0) + seed + 47.0) > 0.5 ? 1.0 : -1.0;
+            vec2 along = vec2(0.8, direction * 0.6), across = vec2(-direction * 0.6, 0.8);
+            vec2 offset = mineralUV * 2.0 - mineralCell - vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);
+            vec2 q = vec2(dot(offset, along), dot(offset, across));
+            float halfLength = 0.32 + 0.13 * h2, halfWidth = 0.10 + 0.05 * h3;
+            vec2 corners[4] = vec2[4](vec2(-halfLength, -halfWidth * 0.15), vec2(-halfLength * 0.25, -halfWidth),
+                                      vec2(halfLength, halfWidth * 0.2), vec2(halfLength * 0.20, halfWidth));
+            float edgeDistance = -10.0;
+            for (int i = 0; i < 4; ++i) {
+                vec2 side = corners[(i + 1) % 4] - corners[i];
+                edgeDistance = max(edgeDistance, dot(q - corners[i], normalize(vec2(side.y, -side.x))));
+            }
+            if (h > 0.32 && edgeDistance < 0.035) {
+                vec3 ore = materialId == 7 ? vec3(0.075, 0.090, 0.105)
+                    : (materialId == 8 ? vec3(0.72, 0.36, 0.15) : vec3(0.53, 0.55, 0.57));
+                if (materialId == 8 && h2 > 0.90) ore = mix(ore, vec3(0.20, 0.40, 0.31), 0.48);
+                if (edgeDistance <= 0.0) {
+                    float upper = clamp(q.y / halfWidth * 0.5 + 0.5, 0.0, 1.0);
+                    vec3 mineral = ore * (0.78 + 0.29 * upper + 0.06 * stroke);
+                    // Painted highlights remain broad, with a small broken glint.
+                    float glint = smoothstep(-0.045, -0.012, edgeDistance) * upper;
+                    mineral += (materialId == 7 ? vec3(0.025, 0.035, 0.045) : vec3(0.09, 0.075, 0.045)) * glint;
+                    float exposed = smoothstep(-0.95, -0.15, q.x / halfLength)
+                        * smoothstep(-1.0, -0.2, q.y / halfWidth);
+                    color = mix(color, mineral, exposed);
+                    roughness = mix(roughness, materialId == 7 ? 0.77 : 0.67, exposed);
+                    slope += across * 0.055 * exposed;
+                } else {
+                    color *= 0.72 + 0.28 * smoothstep(0.0, 0.035, edgeDistance);
+                }
             }
         }
     } else if (materialId == 11 || materialId == 12) {

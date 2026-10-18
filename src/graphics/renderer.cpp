@@ -135,11 +135,11 @@ void main() {
     if (underground != 0) {
         float ao = decorative == 1 ? 1.0 : contactShade();
         float cone = smoothstep(0.35, 0.94, dot(-viewDirection, cameraForward));
-        float headlamp = 0.46 * (0.2 + 0.8 * max(dot(normal, viewDirection), 0.0))
+        float headlamp = 0.24 * (0.2 + 0.8 * max(dot(normal, viewDirection), 0.0))
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
-        vec3 ambient = mix(vec3(0.10, 0.055, 0.19), vec3(0.025, 0.14, 0.17),
+        vec3 ambient = mix(vec3(0.04, 0.028, 0.075), vec3(0.018, 0.064, 0.075),
                            surfaceNormal.y * 0.5 + 0.5);
-        vec3 light = (ambient + vec3(0.68, 0.91, 1.08) * headlamp) * ao;
+        vec3 light = (ambient + vec3(0.82, 0.91, 1.0) * headlamp) * ao;
         vec3 pointLight = vec3(0.0);
         vec3 highlight = vec3(0.0);
         vec3 start = worldPosition + surfaceNormal * 0.03;

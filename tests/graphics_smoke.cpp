@@ -678,8 +678,11 @@ void verifyBlockRelief(int width, int height)
     std::size_t raisedPixels = 0;
     for (std::size_t pixel = 0; pixel < raised.size(); ++pixel) {
         const float displacement = distance(flat[pixel]) - distance(raised[pixel]);
-        if (flat[pixel] >= 1 || displacement < -0.002f || displacement > 0.16f) {
-            throw std::runtime_error("Block relief exceeded its shallow surface bounds");
+        // Ore rises at most 0.050 units; allow a small margin for resolved
+        // depth and projection precision without accepting the old tall caps.
+        if (flat[pixel] >= 1 || displacement < -0.002f || displacement > 0.060f) {
+            throw std::runtime_error("Block relief exceeded its shallow surface bounds: "
+                + std::to_string(displacement));
         }
         raisedPixels += displacement > 0.01f;
     }

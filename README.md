@@ -14,7 +14,7 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. Mining their supporting block removes them. These details have no collision or separate inventory items; the underlying blocks still define mining, placement, and movement.
 
-Stone, limestone, and slate also have occasional shallow raised plates. Coal, copper, and iron ore have small faceted mineral pieces embedded in their exposed faces. The raised outlines follow the painted stone plates and ore flecks, keeping the texture aligned across their tops and beveled edges. These are real meshes that catch light and overlap in the depth buffer, extending at most 0.12 blocks from the surface. Their placement is fixed by the world seed, and covering or mining a face removes its relief. They remain cosmetic, so walking and mining still use the original block shapes.
+Stone, limestone, and slate have sparse chipped fracture edges, with fewer chips on floors. Coal, copper, and iron ore form elongated mineral fragments with a shared vein direction. Most of each fragment sits nearly flush with the rock; only a small broken edge protrudes. The geometry follows the painted shapes, extending at most 0.03 blocks for stone and 0.05 for ore. Softer, interrupted stone seams and broad shading keep the cave walls from looking like laid tiles. Placement is fixed by the world seed, and covering or mining a face removes its relief. These details remain cosmetic, so walking and mining use the original block shapes.
 
 **WASD** walks, **mouse** looks, **Space** jumps, and **Shift** sprints. Left click mines into your backpack; right click places the selected block; middle click picks a material. You start with **24 Stone, 24 Planks, and 8 Lanterns** to try building and lighting your own passage. Placing a lantern adds a light; mining it removes the light.
 
@@ -54,7 +54,7 @@ src/
     materials.h    Procedural block paint, grain, facets, and moss
     post_process.h/.cpp Smooth edges, luminous bloom, exposure, and color
     cave_details.h/.cpp Build cosmetic crystal shards, ceiling formations, and tufts
-    block_relief.h/.cpp Build shallow raised stone plates and ore pieces
+    block_relief.h/.cpp Build sparse rock chips and shallow ore veins
     hud.h/.cpp      Draw text on the screen
 tests/              Behavior tests and graphics smoke checks
 CMakeLists.txt      List the source files and build targets
@@ -96,7 +96,7 @@ Use this map when changing something:
 | Lantern lighting, shadows, or the selection outline | [graphics/renderer.cpp](src/graphics/renderer.cpp) |
 | Glow, antialiasing, exposure, or final color | [graphics/post_process.cpp](src/graphics/post_process.cpp) |
 | Decorative crystal shards, ceiling formations, or moss tufts | [graphics/cave_details.cpp](src/graphics/cave_details.cpp) |
-| Raised stone faces and protruding ore pieces | [graphics/block_relief.cpp](src/graphics/block_relief.cpp) |
+| Chipped stone edges and embedded ore veins | [graphics/block_relief.cpp](src/graphics/block_relief.cpp) |
 
 You can learn the game logic before reading `graphics/`, the greedy meshing algorithm, or the binary save format. Those details are contained in their own modules. The `VoxelCore` build target and its tests work without an OpenGL window.
 

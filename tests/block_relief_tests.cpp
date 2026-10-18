@@ -62,18 +62,30 @@ float paintHash(glm::vec2 p)
 
 bool paintedOre(glm::vec2 uv, float seed)
 {
-    const auto tile = glm::floor(uv * 3.0f);
+    const auto tile = glm::floor(uv * 2.0f);
     const float h = paintHash(tile + seed), h2 = paintHash(tile + seed + 11.0f);
-    const auto local = uv * 3.0f - tile - (0.35f + 0.30f * glm::vec2(h, h2));
-    const auto q = glm::abs(glm::vec2(local.x * 0.8f + local.y * 0.6f,
-                                    -local.x * 0.6f + local.y * 0.8f));
-    const float shape = std::max(q.x * 0.83f + q.y * 0.66f, std::max(q.x, q.y) * 0.94f);
-    return h > 0.48f && shape <= 0.21f + 0.16f * h2 + 0.0001f;
+    const float h3 = paintHash(tile + seed + 23.0f);
+    if (h <= 0.32f) return false;
+    const auto local = uv * 2.0f - tile - (0.2f + 0.6f * glm::vec2(h, h2));
+    const float sign = paintHash(glm::floor(tile / 3.0f) + seed + 47.0f) > 0.5f ? 1.0f : -1.0f;
+    const glm::vec2 q(glm::dot(local, glm::vec2(0.8f, sign * 0.6f)),
+                      glm::dot(local, glm::vec2(-sign * 0.6f, 0.8f)));
+    const float length = 0.32f + 0.13f * h2, width = 0.10f + 0.05f * h3;
+    const std::array<glm::vec2, 4> corners{{
+        {-length, -width * 0.15f}, {-length * 0.25f, -width},
+        {length, width * 0.20f}, {length * 0.20f, width},
+    }};
+    for (std::size_t i = 0; i < corners.size(); ++i) {
+        const auto edge = corners[(i + 1) % corners.size()] - corners[i];
+        const auto point = q - corners[i];
+        if (edge.x * point.y - edge.y * point.x < -0.00001f) return false;
+    }
+    return true;
 }
 
 glm::ivec2 paintedStone(glm::vec2 uv, float seed, bool slate)
 {
-    const auto p = uv * glm::vec2(0.95f, slate ? 2.4f : 1.15f);
+    const auto p = uv * glm::vec2(1.35f, slate ? 3.2f : 1.65f);
     const glm::ivec2 tile(glm::floor(p));
     float nearest = 100;
     glm::ivec2 result{};
@@ -93,7 +105,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
               voxel::Block material, float minimumPeak, float maximumPeak)
 {
     const bool mineral = material == voxel::Block::CoalOre || material == voxel::Block::CopperOre || material == voxel::Block::IronOre;
-    check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 102 : 68),
+    check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 68 : 39),
           "one decorated face has a bounded, nonempty triangle mesh");
     const glm::vec3 normal(face);
     const auto faceCenter = glm::vec3(anchor) + glm::vec3(0.5f) + normal * 0.5f;
@@ -104,6 +116,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         + static_cast<float>(material) * 19.0f;
     bool embedded = false;
     float peak = 0;
+    std::vector<glm::ivec2> oreTiles;
     for (const auto& vertex : mesh.vertices) {
         check(vertex.material == static_cast<float>(material), "relief keeps its anchor's material ID");
         check(std::abs(glm::length(vertex.normal) - 1.0f) < 0.0001f, "relief normals are unit length");
@@ -114,7 +127,11 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         const auto projected = vertex.position - glm::vec3(vertex.relief) * vertex.relief.w;
         check(std::abs(glm::dot(projected - faceCenter, normal)) < 0.00001f,
               "projected texture positions lie on the original block face");
-        if (mineral) check(paintedOre(uv(projected), paintSeed), "raised ore vertices lie inside painted mineral flecks");
+        if (mineral) {
+            check(paintedOre(uv(projected), paintSeed), "raised ore vertices lie inside painted mineral veins");
+            const glm::ivec2 tile(glm::floor(uv(projected) * 2.0f));
+            if (std::find(oreTiles.begin(), oreTiles.end(), tile) == oreTiles.end()) oreTiles.push_back(tile);
+        }
         check(depth >= -0.0041f && depth <= maximumPeak + 0.00001f,
               "relief stays embedded and below its material's maximum height");
         peak = std::max(peak, depth);
@@ -132,7 +149,9 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         check(cell == anchor || cell == anchor + face, "every vertex stays in the anchor or its adjacent air cell");
     }
     check(embedded && peak >= minimumPeak, "each face has real raised depth and an anchored skirt");
-    float raisedCapArea = 0;
+    check(oreTiles.size() <= 2, "each ore face raises at most two painted fragments");
+    float capArea = 0;
+    bool tapered = false, flushEnd = false, buriedEdge = false;
     for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
         const auto a = mesh.indices[i], b = mesh.indices[i + 1], c = mesh.indices[i + 2];
         if (a >= mesh.vertices.size() || b >= mesh.vertices.size() || c >= mesh.vertices.size()) {
@@ -146,19 +165,111 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
               "counterclockwise triangle winding matches the flat facet normal");
         check(glm::dot(mesh.vertices[a].normal, normal) >= -0.0001f,
               "caps and bevels face outward, while skirts face sideways");
-        if (glm::dot(mesh.vertices[a].position - faceCenter, normal) > peak * 0.8f
-            && glm::dot(mesh.vertices[b].position - faceCenter, normal) > peak * 0.8f
-            && glm::dot(mesh.vertices[c].position - faceCenter, normal) > peak * 0.8f) {
-            raisedCapArea += glm::dot(cross, normal) * 0.5f;
+        const float low = std::min({mesh.vertices[a].relief.w, mesh.vertices[b].relief.w, mesh.vertices[c].relief.w});
+        const float high = std::max({mesh.vertices[a].relief.w, mesh.vertices[b].relief.w, mesh.vertices[c].relief.w});
+        const bool cap = low > -0.003f;
+        if (cap) {
+            capArea += glm::dot(cross, normal) * 0.5f;
+            tapered |= high - low > minimumPeak * 0.4f;
+            flushEnd |= low < 0.0011f;
+            const int buried = (mesh.vertices[a].relief.w < -0.002f)
+                + (mesh.vertices[b].relief.w < -0.002f) + (mesh.vertices[c].relief.w < -0.002f);
+            buriedEdge |= buried >= 2;
         }
-        if (!mineral && glm::dot(mesh.vertices[a].normal, normal) > 0.9999f) {
+        if (!mineral && cap) {
             const auto site = paintedStone(uv(mesh.vertices[a].position), paintSeed, material == voxel::Block::Slate);
             check(site == paintedStone(uv(mesh.vertices[b].position), paintSeed, material == voxel::Block::Slate)
                   && site == paintedStone(uv(mesh.vertices[c].position), paintSeed, material == voxel::Block::Slate),
                   "raised stone caps stay within a single painted Voronoi plate");
         }
     }
-    check(raisedCapArea > 0.003f, "raised geometry has planar caps instead of pointed tips");
+    check(capArea > 0.003f && capArea < (mineral ? 0.12f : 0.20f),
+          "raised geometry occupies narrow fragments rather than complete slabs");
+    check(tapered && flushEnd, "raised caps taper from a shallow ridge to the underlying face");
+    if (mineral) check(buriedEdge, "ore hides a complete cap edge below the host surface");
+}
+
+// Measure cap coverage above a real world-space height, not a triangle count.
+float raisedArea(const voxel::MeshData& mesh, glm::vec3 normal, float height)
+{
+    float result = 0;
+    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        std::vector<glm::vec4> polygon;
+        for (int j = 0; j < 3; ++j) {
+            const auto& vertex = mesh.vertices[mesh.indices[i + j]];
+            if (vertex.relief.w < -0.003f) break; // Ignore the anchored sidewalls.
+            polygon.emplace_back(vertex.position, vertex.relief.w);
+        }
+        if (polygon.size() != 3) continue;
+        std::vector<glm::vec4> clipped;
+        auto previous = polygon.back();
+        for (const auto point : polygon) {
+            if ((point.w >= height) != (previous.w >= height)) {
+                clipped.push_back(previous + (point - previous) * ((height - previous.w) / (point.w - previous.w)));
+            }
+            if (point.w >= height) clipped.push_back(point);
+            previous = point;
+        }
+        for (std::size_t j = 1; j + 1 < clipped.size(); ++j) {
+            result += glm::dot(glm::cross(glm::vec3(clipped[j] - clipped[0]),
+                                          glm::vec3(clipped[j + 1] - clipped[0])), normal) * 0.5f;
+        }
+    }
+    return result;
+}
+
+void stoneSurface(voxel::World& world, voxel::Block material, glm::ivec3 normal)
+{
+    using namespace voxel;
+    clear(world);
+    const glm::ivec3 u = normal.x != 0 ? glm::ivec3(0, 0, 1) : glm::ivec3(1, 0, 0);
+    const glm::ivec3 v = normal.y != 0 ? glm::ivec3(0, 0, 1) : glm::ivec3(0, 1, 0);
+    const auto base = glm::abs(normal) * 7;
+    for (int b = -1; b <= 16; ++b) {
+        for (int a = -1; a <= 16; ++a) {
+            const auto cell = base + u * a + v * b;
+            world.set(cell - normal, Block::Dirt);
+            world.set(cell, a >= 0 && a < 16 && b >= 0 && b < 16 ? material : Block::Dirt);
+        }
+    }
+    const auto mesh = buildBlockRelief(world, centerChunk);
+    std::array<MeshData, 256> byFace;
+    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+        const auto& first = mesh.vertices[mesh.indices[i]];
+        const int a = static_cast<int>(std::floor(glm::dot(first.position, glm::vec3(u))));
+        const int b = static_cast<int>(std::floor(glm::dot(first.position, glm::vec3(v))));
+        check(a >= 0 && a < 16 && b >= 0 && b < 16, "surface relief stays inside the owning chunk");
+        if (a < 0 || a >= 16 || b < 0 || b >= 16) continue;
+        auto& face = byFace[a + 16 * b];
+        for (int corner = 0; corner < 3; ++corner) {
+            const auto& vertex = mesh.vertices[mesh.indices[i + corner]];
+            check(std::floor(glm::dot(vertex.position, glm::vec3(u))) == a
+                  && std::floor(glm::dot(vertex.position, glm::vec3(v))) == b,
+                  "triangles do not cross face boundaries");
+            face.indices.push_back(static_cast<std::uint32_t>(face.vertices.size()));
+            face.vertices.push_back(vertex);
+        }
+    }
+    int decorated = 0;
+    std::array<bool, 4> quadrants{};
+    for (int b = 0; b < 16; ++b) {
+        for (int a = 0; a < 16; ++a) {
+            const auto& face = byFace[a + 16 * b];
+            if (face.indices.empty()) continue;
+            ++decorated;
+            quadrants[(a >= 8) + 2 * (b >= 8)] = true;
+            // Fractures ending near block boundaries can taper below their
+            // nominal 0.012 minimum peak, but must still have visible depth.
+            validate(face, base + u * a + v * b, normal, material, 0.004f, 0.030f);
+        }
+    }
+    if (normal.y > 0) {
+        check(decorated >= 10 && decorated <= 38, "upward stone faces have sparse fracture strips near eight percent");
+    } else {
+        check(decorated >= 30 && decorated <= 74, "walls and ceilings have sparse fracture strips near twenty percent");
+    }
+    check(std::all_of(quadrants.begin(), quadrants.end(), [](bool value) { return value; }),
+          "stone density reaches every chunk quadrant without truncation");
 }
 
 } // namespace
@@ -169,7 +280,7 @@ int main()
     World world(42);
     clear(world);
     check(buildBlockRelief(world, centerChunk).indices.empty(), "air has no relief");
-    const glm::ivec3 anchor{15, 6, 5};
+    const glm::ivec3 anchor{15, 6, 6};
     // These painted ore fixtures cover bottoms and all negative orientations.
     for (const auto material : {Block::CoalOre, Block::CopperOre, Block::IronOre}) {
         world.set(anchor, material);
@@ -179,7 +290,7 @@ int main()
             world.set(anchor + face, Block::Air);
             const auto before = world;
             const auto mesh = buildBlockRelief(world, centerChunk);
-            validate(mesh, anchor, face, material, 0.060f, 0.12f);
+            validate(mesh, anchor, face, material, 0.025f, 0.050f);
             check(world.sameContents(before), "building relief leaves voxel contents unchanged");
             check(same(mesh, buildBlockRelief(world, centerChunk)), "relief is deterministic");
             world.set(anchor + face, Block::Dirt);
@@ -231,50 +342,29 @@ int main()
     world.set(negative, Block::IronOre);
     cover(world, negative);
     world.set(negative + faces[0], Block::Air);
-    validate(buildBlockRelief(world, 6), negative, faces[0], Block::IronOre, 0.060f, 0.12f);
+    validate(buildBlockRelief(world, 6), negative, faces[0], Block::IronOre, 0.025f, 0.050f);
     world.set(negative + faces[0], Block::Stone);
     check(buildBlockRelief(world, 6).indices.empty(), "negative-coordinate chunk seams also suppress hidden relief");
 
-    // A top-only slab exercises sparse stone density without a first-N chunk cap.
+    clear(world);
+    const glm::ivec3 unpainted{15, 6, 5};
+    world.set(unpainted, Block::CopperOre);
+    cover(world, unpainted);
+    world.set(unpainted + faces[2], Block::Air);
+    check(buildBlockRelief(world, centerChunk).indices.empty(),
+          "an ore face without a painted vein does not invent a raised fragment");
+
+    clear(world);
+    const glm::ivec3 visibleOre{0, 6, 15};
+    world.set(visibleOre, Block::CopperOre);
+    cover(world, visibleOre);
+    world.set(visibleOre + faces[4], Block::Air);
+    check(raisedArea(buildBlockRelief(world, centerChunk), {0, 0, 1}, 0.010f) > 0.01f,
+          "the native ore fixture raises more than one percent of its face by at least one hundredth of a block");
+
+    // Whole surfaces exercise sparse density and endpoint taper on every orientation.
     for (const auto material : {Block::Stone, Block::Limestone, Block::Slate}) {
-        clear(world);
-        for (int z = -1; z <= 16; ++z) {
-            for (int x = -1; x <= 16; ++x) {
-                world.set({x, 6, z}, Block::Dirt);
-                world.set({x, 7, z}, x >= 0 && x < 16 && z >= 0 && z < 16 ? material : Block::Dirt);
-            }
-        }
-        const auto slab = buildBlockRelief(world, centerChunk);
-        std::array<MeshData, 256> byFace;
-        for (std::size_t i = 0; i + 2 < slab.indices.size(); i += 3) {
-            const auto& a = slab.vertices[slab.indices[i]];
-            const int x = static_cast<int>(std::floor(a.position.x));
-            const int z = static_cast<int>(std::floor(a.position.z));
-            check(x >= 0 && x < 16 && z >= 0 && z < 16, "slab relief stays inside the owning chunk");
-            if (x < 0 || x >= 16 || z < 0 || z >= 16) continue;
-            auto& face = byFace[x + 16 * z];
-            for (int corner = 0; corner < 3; ++corner) {
-                const auto& vertex = slab.vertices[slab.indices[i + corner]];
-                check(std::floor(vertex.position.x) == x && std::floor(vertex.position.z) == z,
-                      "triangles do not cross face boundaries");
-                face.indices.push_back(static_cast<std::uint32_t>(face.vertices.size()));
-                face.vertices.push_back(vertex);
-            }
-        }
-        int decorated = 0;
-        std::array<bool, 4> quadrants{};
-        for (int z = 0; z < 16; ++z) {
-            for (int x = 0; x < 16; ++x) {
-                const auto& face = byFace[x + 16 * z];
-                if (face.indices.empty()) continue;
-                ++decorated;
-                quadrants[(x >= 8) + 2 * (z >= 8)] = true;
-                validate(face, {x, 7, z}, {0, 1, 0}, material, 0.025f, 0.075f);
-            }
-        }
-        check(decorated > 90 && decorated < 166, "roughly half of stone faces get plates");
-        check(std::all_of(quadrants.begin(), quadrants.end(), [](bool value) { return value; }),
-              "stone density reaches every chunk quadrant without truncation");
+        for (const auto face : faces) stoneSurface(world, material, face);
     }
 
     bool threw = false;
