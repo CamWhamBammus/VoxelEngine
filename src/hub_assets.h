@@ -16,7 +16,8 @@ enum class HubAssetKind {
     PathPaving, PathEdging, PathStep,
     Boulder, RockLedge, StalactiteCluster, RootArch, RootCurtain,
     BroadleafClump, FernBed, MossGarden,
-    Dormer, BayWindow, Chimney, Balcony, PorchCanopy
+    Dormer, BayWindow, Chimney, Balcony, PorchCanopy,
+    Forge, Anvil, ToolRack, SmithWorkbench, AnvilSign
 };
 
 struct HubAsset {
@@ -35,6 +36,11 @@ struct HubAssetLight {
 constexpr bool isPathAsset(HubAssetKind kind)
 {
     return kind >= HubAssetKind::PathPaving && kind <= HubAssetKind::PathStep;
+}
+
+constexpr bool isBlacksmithAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::Forge && kind <= HubAssetKind::AnvilSign;
 }
 
 // Includes full model extents for chunk culling and light candidate bounds.

@@ -5,6 +5,7 @@
 #include <string_view>
 
 namespace voxel {
+class Game;
 
 // Requires a current OpenGL context throughout its lifetime.
 class Hud {
@@ -16,6 +17,8 @@ public:
 
     void draw(std::string_view text, int framebufferWidth, int framebufferHeight,
               float contentScale = 1.0f);
+    void drawPlay(const Game& game, int framebufferWidth, int framebufferHeight,
+                  float contentScale = 1.0f);
 
 private:
     Shader shader_;

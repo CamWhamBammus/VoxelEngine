@@ -18,6 +18,7 @@ endfunction()
 # Game logic and CPU mesh generation can be tested without an OpenGL window.
 add_library(VoxelCore
     src/game.cpp
+    src/equipment.cpp
     src/scene.cpp
     src/hub_buildings.cpp
     src/hub_assets.cpp
@@ -34,6 +35,7 @@ add_library(VoxelCore
     src/graphics/hub_nature.cpp
     src/graphics/hub_gardens.cpp
     src/graphics/hub_architecture.cpp
+    src/graphics/hub_blacksmith.cpp
     src/editing.cpp
     src/save.cpp
 )
@@ -56,6 +58,7 @@ if(VOXEL_BUILD_APP)
         src/graphics/hud.cpp
         tests/graphics_smoke.cpp
         tests/water_graphics_smoke.cpp
+        tests/hud_play_smoke.cpp
     )
     target_include_directories(VoxelEngine PRIVATE tests)
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
@@ -65,7 +68,7 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     foreach(test_name IN ITEMS
-        chunk mesh terrain camera world raycast editor options world_codec
+        chunk mesh terrain camera world raycast editor options equipment world_codec
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)

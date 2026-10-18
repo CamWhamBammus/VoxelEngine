@@ -2,6 +2,8 @@
 build/
 build-*/
 *.vxl
+*.vxp
+.voxel-progress-*
 cmake-build-*/
 
 # CMake generated files

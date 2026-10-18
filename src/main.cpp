@@ -52,7 +52,7 @@ int main(int argc, char** argv)
             const float deltaSeconds = static_cast<float>(now - previousTime);
             previousTime = now;
 
-            input.update(game.camera, deltaSeconds, game.editorMode());
+            input.update(game.camera, deltaSeconds, game.editorMode(), game.smithOpen());
             game.update(input.actions(), deltaSeconds);
 
             int width, height;
@@ -62,10 +62,11 @@ int main(int argc, char** argv)
                 continue;
             }
             renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
-                            static_cast<float>(now));
+                            static_cast<float>(now), !game.editorMode()
+                                && game.equipment.selectedTool() == voxel::Tool::Lantern);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
-            if (input.captured()) {
+            if (input.captured() && !game.smithOpen()) {
                 selection.draw(game.target, game.camera, width, height, scaleY);
             }
 
@@ -85,6 +86,7 @@ int main(int argc, char** argv)
                 }
             }
             hud.draw(statusText, width, height, scaleY);
+            if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
             window.present();
         }
         return EXIT_SUCCESS;

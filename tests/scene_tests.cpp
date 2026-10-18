@@ -1,6 +1,7 @@
 #include "scene.h"
 #include "player.h"
 #include "world.h"
+#include "editing.h"
 
 #include <algorithm>
 #include <array>
@@ -384,6 +385,20 @@ int main()
         check(player.setFeetPosition(world, voxel::VillageSpawn) && player.grounded(),
               "arrival spawn has full player clearance and ground support");
         const auto routes = walkableRoutes(world);
+        const auto smithApproach = voxel::sceneBlacksmithApproach();
+        const auto station = voxel::sceneBlacksmithStation();
+        checkRoute(world, routes, glm::ivec3(glm::floor(smithApproach)), "blacksmith anvil approach");
+        check(player.setFeetPosition(world, smithApproach) && player.grounded(),
+              "the exact blacksmith standing position has body clearance and support");
+        const auto plinth = glm::ivec3(glm::floor(station)) - glm::ivec3(0,1,0);
+        check(voxel::isSolid(world.get(plinth)) && voxel::isSolid(world.get(plinth-glm::ivec3(0,1,0))),
+              "the anvil has a solid collision plinth founded on its room floor");
+        const auto sight = station - player.eyePosition();
+        check(glm::length(sight) < 4.0f && !voxel::raycast(player.eyePosition(), sight, glm::length(sight),
+              [&](glm::ivec3 cell) { return world.get(cell); }),
+              "the station is within interaction range with an unobstructed eye ray");
+        check(&voxel::sceneBlacksmithBuilding() == &voxel::sceneBuildingPlan().front(),
+              "blacksmith helpers refer to the existing arrival workshop");
         const auto connected = routes.cells.size();
         std::cout << "Seed " << seed << ": " << connected << " connected floor cells, canopy "
                   << coordinate(canopyHigh - canopyLow) << " reaching Y" << highestCanopy << '\n';

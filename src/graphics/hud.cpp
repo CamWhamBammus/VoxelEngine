@@ -1,4 +1,7 @@
 #include "graphics/hud.h"
+#include "game.h"
+#include "equipment.h"
+#include "scene.h"
 
 #include <algorithm>
 #include <array>
@@ -6,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace voxel {
@@ -13,19 +17,19 @@ namespace {
 
 constexpr const char* vertexShader = R"glsl(#version 410 core
 layout(location = 0) in vec2 position;
-layout(location = 1) in float ink;
-out float textPixel;
+layout(location = 1) in vec4 color;
+out vec4 pixelColor;
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
-    textPixel = ink;
+    pixelColor = color;
 }
 )glsl";
 
 constexpr const char* fragmentShader = R"glsl(#version 410 core
-in float textPixel;
+in vec4 pixelColor;
 out vec4 fragmentColor;
 void main() {
-    fragmentColor = textPixel > 0.5 ? vec4(1.0) : vec4(0.0, 0.0, 0.0, 0.75);
+    fragmentColor = pixelColor;
 }
 )glsl";
 
@@ -105,8 +109,117 @@ Glyph glyph(char character)
 struct Vertex {
     float x;
     float y;
-    float ink;
+    glm::vec4 color;
 };
+
+constexpr glm::vec4 Cream{0.94f,0.93f,0.83f,1};
+constexpr glm::vec4 Muted{0.57f,0.70f,0.69f,1};
+constexpr glm::vec4 Gold{0.95f,0.70f,0.30f,1};
+constexpr glm::vec4 Panel{0.035f,0.075f,0.085f,0.97f};
+constexpr glm::vec4 Edge{0.23f,0.37f,0.37f,1};
+
+// Small colored triangles and bitmap glyphs share one buffer and draw call.
+// Coordinates start at the top-left; play UI uses logical pixels for high DPI.
+class Drawing {
+public:
+    Drawing(float width, float height) : width_(width), height_(height) {}
+    std::vector<Vertex> vertices;
+
+    void triangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, glm::vec4 color)
+    {
+        for (const auto p : {a,b,c})
+            vertices.push_back({2 * p.x / width_ - 1, 1 - 2 * p.y / height_, color});
+    }
+    void quad(float x, float y, float width, float height, glm::vec4 color)
+    {
+        triangle({x,y}, {x+width,y}, {x+width,y+height}, color);
+        triangle({x,y}, {x+width,y+height}, {x,y+height}, color);
+    }
+    void bar(glm::vec2 a, glm::vec2 b, float width, glm::vec4 color)
+    {
+        const auto d = b - a;
+        const auto side = glm::normalize(glm::vec2(-d.y,d.x)) * width * 0.5f;
+        triangle(a-side, b-side, b+side, color);
+        triangle(a-side, b+side, a+side, color);
+    }
+    void text(std::string_view value, float x, float y, float pixel, glm::vec4 color = Cream)
+    {
+        for (const char character : value) {
+            const auto bitmap = glyph(character);
+            for (int row = 0; row < 7; ++row) for (int column = 0; column < 5; ++column)
+                if ((bitmap[row] & (1u << (4-column))) != 0)
+                    quad(x + column * pixel, y + row * pixel, pixel, pixel, color);
+            x += 6 * pixel;
+        }
+    }
+    void centered(std::string_view value, float center, float y, float pixel, glm::vec4 color = Cream)
+    {
+        text(value, center - (value.size() * 6 - (value.empty() ? 0 : 1)) * pixel * 0.5f, y, pixel, color);
+    }
+    void frame(float x, float y, float width, float height, glm::vec4 border, glm::vec4 fill = Panel)
+    {
+        quad(x,y,width,height,border);
+        quad(x+2,y+2,width-4,height-4,fill);
+    }
+
+private:
+    float width_, height_;
+};
+
+void pickaxeIcon(Drawing& out, glm::vec2 center, float scale, int tier)
+{
+    const auto p = [&](float x, float y) { return center + glm::vec2(x,y) * scale; };
+    out.bar(p(-11,14),p(7,-10),5.5f*scale,{0.11f,0.10f,0.08f,1});
+    out.bar(p(-11,13),p(7,-10),3.2f*scale,{0.52f,0.32f,0.15f,1});
+    out.bar(p(-10,12),p(5,-8),1.0f*scale,{0.81f,0.59f,0.29f,1});
+    constexpr std::array<glm::vec2,8> head{{{-14,-6},{-9,-13},{5,-14},{15,-7},
+                                         {18,2},{10,-5},{3,-8},{-7,-8}}};
+    const auto color = tier <= 1 ? glm::vec4(0.47f,0.59f,0.65f,1)
+        : tier == 2 ? glm::vec4(0.84f,0.49f,0.25f,1) : glm::vec4(0.66f,0.83f,0.88f,1);
+    for (std::size_t i=1; i+1<head.size(); ++i)
+        out.triangle(center+head[0]*scale,center+head[i]*scale,center+head[i+1]*scale,color);
+    out.triangle(p(-9,-13),p(5,-14),p(3,-10),Cream);
+    out.triangle(p(5,-14),p(15,-7),p(3,-10),color*glm::vec4(0.72f,0.72f,0.72f,1));
+    out.bar(p(0,-10),p(4,-5),3.0f*scale,Gold);
+}
+
+void lanternIcon(Drawing& out, glm::vec2 center, float scale)
+{
+    const auto p = [&](float x, float y) { return center + glm::vec2(x,y)*scale; };
+    const auto box = [&](float x,float y,float w,float h,glm::vec4 color) {
+        out.quad(center.x+x*scale,center.y+y*scale,w*scale,h*scale,color);
+    };
+    out.bar(p(-5,-11),p(-5,-17),2*scale,Gold);
+    out.bar(p(-5,-17),p(5,-17),2*scale,Gold);
+    out.bar(p(5,-17),p(5,-11),2*scale,Gold);
+    box(-8,-8,16,21,{0.88f,0.41f,0.11f,1});
+    box(-5,-6,10,16,{1.0f,0.73f,0.28f,1});
+    out.triangle(p(0,-4),p(4,6),p(-3,8),{1.0f,0.94f,0.61f,1});
+    out.triangle(p(-11,-8),p(0,-14),p(11,-8),Gold);
+    box(-10,-9,20,3,{0.32f,0.25f,0.14f,1});
+    box(-10,12,20,4,Gold);
+    box(-9,-7,2,20,Edge); box(7,-7,2,20,Edge);
+    box(-8,2,16,2,{0.50f,0.35f,0.15f,1});
+}
+
+void compassIcon(Drawing& out, glm::vec2 center, float scale, glm::vec2 direction)
+{
+    for (int ring=0; ring<2; ++ring) {
+        const float radius = (ring == 0 ? 17.0f : 14.0f) * scale;
+        for (int side=0; side<8; ++side) {
+            const float a=side*0.785398163f, b=(side+1)*0.785398163f;
+            out.triangle(center,center+glm::vec2(std::cos(a),std::sin(a))*radius,
+                         center+glm::vec2(std::cos(b),std::sin(b))*radius,ring==0 ? Gold : Panel);
+        }
+    }
+    for (const auto side : {glm::vec2(0,1),glm::vec2(0,-1),glm::vec2(1,0),glm::vec2(-1,0)})
+        out.bar(center+side*10.5f*scale,center+side*13.0f*scale,1.2f*scale,Muted);
+    const glm::vec2 across(-direction.y,direction.x);
+    out.triangle(center+direction*11.0f*scale,center+across*3.5f*scale,center-across*3.5f*scale,
+                 {0.30f,0.89f,0.79f,1});
+    out.triangle(center-direction*10.0f*scale,center-across*3.5f*scale,center+across*3.5f*scale,Cream);
+    out.quad(center.x-1.5f*scale,center.y-1.5f*scale,3*scale,3*scale,Gold);
+}
 
 class SavedState {
 public:
@@ -170,6 +283,26 @@ private:
     GLint blendEquationAlpha_ = 0;
 };
 
+void render(const Drawing& drawing, const Shader& shader, GLuint vao, GLuint buffer)
+{
+    if (drawing.vertices.empty()) return;
+    const SavedState savedState;
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glBlendEquation(GL_FUNC_ADD);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    shader.use();
+    glBindVertexArray(vao);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(drawing.vertices.size() * sizeof(Vertex)),
+                 drawing.vertices.data(), GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(drawing.vertices.size()));
+}
+
 } // namespace
 
 Hud::Hud() : shader_(vertexShader, fragmentShader)
@@ -190,8 +323,8 @@ Hud::Hud() : shader_(vertexShader, fragmentShader)
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                          reinterpret_cast<const void*>(offsetof(Vertex, ink)));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          reinterpret_cast<const void*>(offsetof(Vertex, color)));
     glBindVertexArray(static_cast<GLuint>(previousVao));
     glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousBuffer));
 }
@@ -234,48 +367,126 @@ void Hud::draw(std::string_view text, int framebufferWidth, int framebufferHeigh
     }
     if (lines.empty()) return;
 
-    std::vector<Vertex> vertices;
-    vertices.reserve(6 + lines.size() * widest * 18 * 6);
-    const auto quad = [&](float x, float y, float width, float height, float ink) {
-        const float left = 2.0f * x / framebufferWidth - 1.0f;
-        const float right = 2.0f * (x + width) / framebufferWidth - 1.0f;
-        const float top = 1.0f - 2.0f * y / framebufferHeight;
-        const float bottom = 1.0f - 2.0f * (y + height) / framebufferHeight;
-        vertices.insert(vertices.end(), {{left, top, ink}, {right, top, ink},
-            {right, bottom, ink}, {left, top, ink}, {right, bottom, ink}, {left, bottom, ink}});
-    };
-    quad(margin, margin, widest * advance + 2.0f * padding,
-         lines.size() * lineHeight - 2.0f * pixel + 2.0f * padding, 0.0f);
-    for (std::size_t line = 0; line < lines.size(); ++line) {
-        for (std::size_t character = 0; character < lines[line].size(); ++character) {
-            const Glyph bitmap = glyph(lines[line][character]);
-            for (int y = 0; y < 7; ++y) {
-                for (int x = 0; x < 5; ++x) {
-                    if ((bitmap[y] & (1u << (4 - x))) != 0) {
-                        quad(margin + padding + character * advance + x * pixel,
-                             margin + padding + line * lineHeight + y * pixel,
-                             pixel, pixel, 1.0f);
-                    }
-                }
-            }
-        }
-    }
+    Drawing drawing(static_cast<float>(framebufferWidth), static_cast<float>(framebufferHeight));
+    drawing.vertices.reserve(6 + lines.size() * widest * 18 * 6);
+    drawing.quad(margin, margin, widest * advance + 2.0f * padding,
+                 lines.size() * lineHeight - 2.0f * pixel + 2.0f * padding, {0,0,0,0.75f});
+    for (std::size_t line = 0; line < lines.size(); ++line)
+        drawing.text(lines[line],margin+padding,margin+padding+line*lineHeight,pixel,glm::vec4(1));
+    render(drawing, shader_, vao_, buffer_);
+}
 
-    const SavedState savedState;
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glDisable(GL_SCISSOR_TEST);
-    glDepthMask(GL_FALSE);
-    glEnable(GL_BLEND);
-    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    glBlendEquation(GL_FUNC_ADD);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    shader_.use();
-    glBindVertexArray(vao_);
-    glBindBuffer(GL_ARRAY_BUFFER, buffer_);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)),
-                 vertices.data(), GL_DYNAMIC_DRAW);
-    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(vertices.size()));
+void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight, float contentScale)
+{
+    if (game.editorMode() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
+    if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
+    // Preserve the layout on small windows, then apply the display's DPI scale.
+    const float scale = std::min({std::clamp(contentScale,0.5f,4.0f),
+                                 framebufferWidth / 460.0f, framebufferHeight / 440.0f});
+    const float width = framebufferWidth / scale, height = framebufferHeight / scale;
+    Drawing drawing(width,height);
+    drawing.vertices.reserve(24000);
+    const auto& equipment = game.equipment;
+    const auto selected = equipment.selectedTool();
+
+    const auto offset = HeartTreeCenter - game.camera.position();
+    const glm::vec2 target(offset.x,offset.z);
+    const auto forward3 = game.camera.forward();
+    glm::vec2 forward(forward3.x,forward3.z);
+    if (glm::length(forward) > 0.0001f) forward = glm::normalize(forward);
+    else forward = {0,-1};
+    const glm::vec2 right(-forward.y,forward.x);
+    glm::vec2 needle(glm::dot(target,right),-glm::dot(target,forward));
+    if (glm::length(needle) > 0.1f) needle = glm::normalize(needle);
+    else needle = {0,-1};
+    const float center = width * 0.5f;
+    const float barTop = height - 80;
+    constexpr float slotWidth = 58, gap = 7;
+    const float barLeft = center - (3 * slotWidth + 2 * gap) * 0.5f;
+    drawing.quad(barLeft-7,barTop-7,202,72,{0.01f,0.03f,0.04f,0.68f});
+    for (int slot=0; slot<ToolCount; ++slot) {
+        const float x = barLeft + slot * (slotWidth+gap);
+        const bool active = slot == equipment.selectedSlot;
+        drawing.frame(x,barTop,slotWidth,58,active ? Gold : Edge,
+                      active ? glm::vec4(0.10f,0.15f,0.14f,0.96f) : Panel);
+        drawing.quad(x+5,barTop+5,10,11,{0.02f,0.04f,0.05f,1});
+        drawing.text(std::to_string(slot+1),x+8,barTop+7,1,active ? Gold : Muted);
+        const glm::vec2 icon(x+29,barTop+31);
+        if (slot == 0) pickaxeIcon(drawing,icon,0.95f,equipment.pickaxeTier);
+        else if (slot == 1) lanternIcon(drawing,icon,0.95f);
+        else compassIcon(drawing,icon,0.95f,needle);
+        if (slot == 0) {
+            drawing.quad(x+35,barTop+43,19,11,{0.08f,0.12f,0.12f,1});
+            drawing.text("T"+std::to_string(equipment.pickaxeTier),x+39,barTop+45,1,Gold);
+        }
+        if (active) drawing.quad(x+6,barTop+54,slotWidth-12,2,Gold);
+    }
+    std::string title(toolName(selected));
+    std::string hint;
+    if (selected == Tool::Pickaxe) {
+        title += " - TIER " + std::to_string(equipment.pickaxeTier);
+        hint = "UPGRADE AT THE BLACKSMITH";
+    } else if (selected == Tool::Lantern) {
+        hint = "WARM LIGHT WHILE EQUIPPED";
+    } else {
+        const int distance = static_cast<int>(std::round(glm::length(target)));
+        const int bearing = static_cast<int>(std::round(glm::degrees(std::atan2(needle.x,-needle.y))));
+        hint = "HEART TREE " + std::to_string(distance) + "M";
+        if (distance > 1)
+            hint += "  " + std::to_string(std::abs(bearing)) + " DEG " + (bearing < 0 ? "LEFT" : "RIGHT");
+    }
+    const float labelWidth = std::max(title.size()*9.0f,hint.size()*6.0f)+18;
+    drawing.quad(center-labelWidth*0.5f,barTop-38,labelWidth,33,{0.015f,0.035f,0.045f,0.82f});
+    drawing.centered(title,center,barTop-33,1.5f,Cream);
+    drawing.centered(hint,center,barTop-16,1,Muted);
+
+    if (game.nearBlacksmith() && !game.smithOpen()) {
+        constexpr float promptWidth = 160;
+        drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Edge);
+        drawing.centered("E - BLACKSMITH",center,height*0.5f+43,1.25f,Gold);
+    }
+    if (game.smithOpen()) {
+        drawing.quad(0,0,width,height,{0.01f,0.025f,0.035f,0.55f});
+        constexpr float panelWidth = 410, panelHeight = 300;
+        const float x = center-panelWidth*0.5f, y = height*0.5f-panelHeight*0.5f-28;
+        drawing.quad(x+5,y+6,panelWidth,panelHeight,{0,0,0,0.35f});
+        drawing.frame(x,y,panelWidth,panelHeight,Edge);
+        drawing.quad(x+2,y+2,panelWidth-4,3,Gold);
+        drawing.text("BLACKSMITH",x+22,y+19,2,Gold);
+        drawing.text("THE VILLAGE FORGE",x+23,y+42,1,Muted);
+        drawing.quad(x+20,y+61,panelWidth-40,1,Edge);
+        drawing.frame(x+22,y+77,80,74,Edge,{0.075f,0.13f,0.14f,1});
+        pickaxeIcon(drawing,{x+61,y+115},1.75f,equipment.pickaxeTier);
+        drawing.text("PICKAXE",x+122,y+81,1.75f,Cream);
+        drawing.text("CURRENT TIER "+std::to_string(equipment.pickaxeTier),x+122,y+103,1.25f,Muted);
+        const auto cost = pickaxeUpgradeCost(equipment.pickaxeTier);
+        const bool affordable = cost && equipment.copper >= cost->copper && equipment.iron >= cost->iron;
+        drawing.text(cost ? "NEXT TIER "+std::to_string(equipment.pickaxeTier+1) : "FULLY UPGRADED",
+                     x+122,y+124,1.25f,Gold);
+        std::string feedback = game.status;
+        std::replace(feedback.begin(),feedback.end(),'\n',' ');
+        std::replace(feedback.begin(),feedback.end(),'\r',' ');
+        if (feedback.size() > 60) feedback = feedback.substr(0,57) + "...";
+        const bool error = feedback.starts_with("Upgrade not saved") || feedback.starts_with("Progress unavailable")
+            || feedback.starts_with("Not enough");
+        drawing.text(feedback,x+24,y+153,1,error ? glm::vec4(0.94f,0.53f,0.39f,1)
+                     : feedback.starts_with("Pickaxe upgraded") ? Gold : Muted);
+        drawing.text("UPGRADE COST",x+24,y+166,1,Muted);
+        drawing.text("IN YOUR PACK",x+225,y+166,1,Muted);
+        drawing.text(cost ? std::to_string(cost->copper)+" COPPER" : "-",x+24,y+183,1.25f,
+                     cost && equipment.copper < cost->copper ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
+        drawing.text(cost ? std::to_string(cost->iron)+" IRON" : "-",x+24,y+202,1.25f,
+                     cost && equipment.iron < cost->iron ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
+        drawing.text(std::to_string(equipment.copper)+" COPPER",x+225,y+183,1.25f,Cream);
+        drawing.text(std::to_string(equipment.iron)+" IRON",x+225,y+202,1.25f,Cream);
+        drawing.frame(x+22,y+226,panelWidth-44,30,affordable ? Gold : Edge,
+                      affordable ? glm::vec4(0.77f,0.51f,0.18f,1) : glm::vec4(0.09f,0.14f,0.15f,1));
+        drawing.centered(!cost ? "MAXIMUM TIER" : affordable ? "ENTER - UPGRADE" : "MORE MATERIALS NEEDED",
+                         center,y+236,1.5f,affordable ? Panel : Muted);
+        drawing.centered("E / ESC - CLOSE",center,y+268,1, Cream);
+        drawing.centered("STARTER GIFT: 12 COPPER",center,y+283,1,Muted);
+    }
+    render(drawing, shader_, vao_, buffer_);
 }
 
 } // namespace voxel

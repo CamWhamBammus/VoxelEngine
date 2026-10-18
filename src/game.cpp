@@ -57,13 +57,14 @@ Options parseOptions(std::span<const std::string_view> arguments)
     if (options.worldExplicit && !options.editor && !options.help) {
         throw std::invalid_argument("Use --editor with --world; game runs start with fresh terrain");
     }
+    if (!options.editor && !options.smokeTest && !options.help) options.progressPath = "progress.vxp";
     return options;
 }
 
 // An explicit --seed starts fresh unless an explicit existing world file was requested.
 Game::Game(const Options& options)
     : world(options.seed), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach),
-      editorMode_(options.editor)
+      editorMode_(options.editor), progressPath_(options.progressPath)
 {
     if (editReach_ < 1 || editReach_ > 64) {
         throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
@@ -84,7 +85,18 @@ Game::Game(const Options& options)
     if (!editorMode_) {
         buildUndergroundScene(world);
         if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
-        status = "Explore Glowroot Haven: tree island, waterfront homes, and the north expedition gate";
+        status = "BLACKSMITH: SOUTHWEST WORKSHOP | 12 STARTER COPPER";
+        if (!progressPath_.empty()) {
+            try {
+                if (std::filesystem::exists(progressPath_)) {
+                    equipment = loadEquipment(progressPath_);
+                    status = "EQUIPMENT LOADED | BLACKSMITH: SOUTHWEST WORKSHOP";
+                }
+            } catch (const std::exception& error) {
+                progressError_ = std::string("Progress unavailable: ") + error.what();
+                status = progressError_;
+            }
+        }
     }
     if (editorMode_) findTarget();
 }
@@ -113,6 +125,7 @@ void Game::update(const InputActions& actions, float deltaSeconds)
 
 bool Game::returnToVillage()
 {
+    smithOpen_ = false;
     // Search only inside the cavern. The surface spawn helper would put us
     // above its roof. Nearby supported spaces also handle an obstructed arrival.
     Player destination = player;
@@ -146,13 +159,66 @@ bool Game::returnToVillage()
 
 void Game::updatePlay(const InputActions& actions, float deltaSeconds)
 {
+    if (actions.closeMenu) { smithOpen_ = false; return; }
     if (!actions.active) return;
     if (actions.respawn || player.feetPosition().y < -16.0f) {
         status = returnToVillage() ? "Returned to the village"
                                    : "No safe space at the village entrance";
-    } else {
-        player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
-        camera.setPosition(player.eyePosition());
+        return;
+    }
+    if (smithOpen_ && !nearBlacksmith()) {
+        smithOpen_ = false;
+        status = "Blacksmith is out of reach";
+    }
+    if (smithOpen_) {
+        if (actions.interact) smithOpen_ = false;
+        else if (actions.upgrade) upgradeEquipment();
+        return; // The station menu freezes movement and tool selection.
+    }
+    if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
+        equipment.selectedSlot = *actions.selectedTool;
+    else if (actions.toolStep != 0)
+        equipment.selectedSlot = (equipment.selectedSlot + (actions.toolStep > 0 ? 1 : ToolCount - 1)) % ToolCount;
+    if (actions.interact && nearBlacksmith()) {
+        smithOpen_ = true;
+        return;
+    }
+    player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+    camera.setPosition(player.eyePosition());
+}
+
+bool Game::nearBlacksmith() const
+{
+    if (editorMode_) return false;
+    const auto station = sceneBlacksmithStation();
+    const auto support = glm::ivec3(glm::floor(station)) - glm::ivec3(0, 1, 0);
+    if (!isSolid(world.get(support)) || !isSolid(world.get(support - glm::ivec3(0, 1, 0)))) return false;
+    const auto delta = station - player.eyePosition();
+    const float distance = glm::length(delta);
+    if (distance > 4.0f || glm::distance(player.feetPosition(), sceneBlacksmithApproach()) > 4.0f) return false;
+    if (distance < .001f) return true;
+    const auto obstruction = raycast(player.eyePosition(), delta, distance,
+        [this](glm::ivec3 position) { return world.get(position); });
+    return !obstruction || obstruction->distance >= distance - .001f;
+}
+
+void Game::upgradeEquipment()
+{
+    if (!progressError_.empty()) { status = progressError_; return; }
+    auto upgraded = equipment;
+    switch (upgradePickaxe(upgraded)) {
+    case UpgradeResult::MaxTier: status = "Pickaxe is already tier 3"; return;
+    case UpgradeResult::InsufficientResources: status = "Not enough ore for this upgrade"; return;
+    case UpgradeResult::Upgraded: break;
+    }
+    try {
+        // Commit the profile before charging the in-memory inventory. A failed
+        // write leaves both the old equipment and existing save intact.
+        if (!progressPath_.empty()) saveEquipment(upgraded, progressPath_);
+        equipment = upgraded;
+        status = "Pickaxe upgraded to tier " + std::to_string(equipment.pickaxeTier);
+    } catch (const std::exception& error) {
+        status = std::string("Upgrade not saved: ") + error.what();
     }
 }
 
@@ -257,12 +323,16 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
     text << "GLOWROOT HAVEN | VILLAGE HUB";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
     text << "\n" << status
-         << "\nH CONTROLS | R RETURN TO VILLAGE | ESC PAUSE | Q QUIT";
+         << "\nH CONTROLS";
     if (showHelp) {
         text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
-             << "\nSCROLL ZOOM | TAB RESUME"
+             << "\nSCROLL / [ ] CHANGE TOOL | TAB RESUME"
+             << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS"
+             << "\nE BLACKSMITH | ENTER UPGRADE | ESC CLOSE / PAUSE"
+             << "\nR RETURN TO VILLAGE | Q QUIT"
              << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
-             << "\nHUB RESETS ON LAUNCH | EXPEDITIONS AND BUILDING SERVICES COMING LATER";
+             << "\nTERRAIN RESETS ON LAUNCH | EQUIPMENT UPGRADES ARE SAVED"
+             << "\nMINING AND EXPEDITIONS COMING LATER";
     }
     return text.str();
 }

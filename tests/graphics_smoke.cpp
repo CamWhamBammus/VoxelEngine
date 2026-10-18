@@ -1,5 +1,6 @@
 #include "graphics_smoke.h"
 #include "water_graphics_smoke.h"
+#include "hud_play_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -503,9 +504,9 @@ void verifyUndergroundMaterials(int width, int height)
     glActiveTexture(GL_TEXTURE3);
     constexpr int patchSize = 128;
     std::array<unsigned char, patchSize * patchSize * 4> pixels{};
-    const auto sample = [&](Block material, float seconds = 0.0f) {
+    const auto sample = [&](Block material, float seconds = 0.0f, bool lantern = false) {
         world.set({0, 6, 0}, material);
-        renderer.render(world, camera, width, height, false, true, seconds);
+        renderer.render(world, camera, width, height, false, true, seconds, lantern);
         checkOpenGl();
         GLint activeTexture = 0, texture = 0, lightTexture = 0;
         glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
@@ -529,6 +530,11 @@ void verifyUndergroundMaterials(int width, int height)
     const auto stone = sample(Block::Stone);
     if (stone.x < 40 || stone.y < 40 || stone.z < 40) {
         throw std::runtime_error("Headlamp left nearby underground stone unreadable");
+    }
+    const auto carried = sample(Block::Stone, 0.0f, true);
+    if (carried.x < stone.x + 12 || (carried.x - stone.x) < (carried.z - stone.z) + 5
+        || glm::length(sample(Block::Stone) - stone) > 1.0f) {
+        throw std::runtime_error("Equipped lantern lost its warm light or stayed on after switching tools");
     }
     unsigned char minimum = 255, maximum = 0;
     for (std::size_t pixel = 0; pixel < pixels.size(); pixel += 4) {
@@ -1097,6 +1103,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyBlockRelief(width, height);
     verifyHubDressing(width, height);
     verifyWaterRendering(width, height);
+    verifyPlayHud(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
@@ -1117,6 +1124,7 @@ int runGraphicsSmokeTest(const Options& options)
         overlay.draw(game.target, game.camera, width, height, scaleY);
         hud.draw(game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                                  renderer.triangleCount(), 0.0, true, false), width, height, scaleY);
+        if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
         if (frame == 2) {
             verifyFrame(width, height, options.screenshot);
             frameVerified = true;

@@ -55,6 +55,9 @@ Input::Buttons Input::readButtons() const
         .remove = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
         .place = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
         .pick = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
+        .interact = keyDown(GLFW_KEY_E),
+        .upgrade = keyDown(GLFW_KEY_ENTER) || keyDown(GLFW_KEY_KP_ENTER),
+        .tools = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3)},
     };
 }
 
@@ -66,7 +69,7 @@ void Input::capture(bool enabled)
     glfwGetCursorPos(window_, &cursorX_, &cursorY_);
 }
 
-void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
+void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool modal)
 {
     actions_ = {};
     if (!editorMode) wireframe_ = false;
@@ -86,8 +89,16 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
         return;
     }
 
-    if (pressed(buttons.releaseMouse, previous.releaseMouse)) capture(false);
-    if (pressed(buttons.toggleMouse, previous.toggleMouse)) capture(!captured_);
+    if (!editorMode && modal) {
+        // Closing the forge returns directly to play. Focus loss still releases
+        // the mouse, and Tab can recapture it without a stale pointer jump.
+        actions_.closeMenu = pressed(buttons.releaseMouse, previous.releaseMouse)
+            || pressed(buttons.toggleMouse, previous.toggleMouse);
+        if (!captured_ && pressed(buttons.toggleMouse, previous.toggleMouse)) capture(true);
+    } else {
+        if (pressed(buttons.releaseMouse, previous.releaseMouse)) capture(false);
+        if (pressed(buttons.toggleMouse, previous.toggleMouse)) capture(!captured_);
+    }
     if (editorMode && pressed(buttons.wireframe, previous.wireframe)) wireframe_ = !wireframe_;
     const bool resetCamera = pressed(buttons.resetCamera, previous.resetCamera);
     if (resetCamera) {
@@ -123,6 +134,19 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
         for (int key = GLFW_KEY_1; key <= GLFW_KEY_9; ++key) {
             if (keyDown(key)) actions_.selectedBlock = PlaceableBlocks[static_cast<std::size_t>(key - GLFW_KEY_1)];
         }
+    } else {
+        actions_.interact = pressed(buttons.interact, previous.interact);
+        actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
+        for (int slot = 0; slot < 3; ++slot)
+            if (pressed(buttons.tools[slot], previous.tools[slot])) actions_.selectedTool = slot;
+        actions_.toolStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
+            - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
+        if (actions_.toolStep == 0) actions_.toolStep = scroll_ > 0.0 ? -1 : scroll_ < 0.0 ? 1 : 0;
+        scroll_ = 0.0;
+    }
+    if (!editorMode && modal) {
+        glfwGetCursorPos(window_, &cursorX_, &cursorY_);
+        return;
     }
     // Reset wins over queued mouse motion, zoom, and held movement keys this frame.
     if (!resetCamera) updateCamera(camera, deltaSeconds, modifier && (editKeys.z || editKeys.y), editorMode);

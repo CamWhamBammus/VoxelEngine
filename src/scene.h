@@ -20,6 +20,16 @@ inline constexpr std::array<glm::vec3, 2> ExpeditionBeacons{{
 // The fixed architectural plan is shared by construction, tours, and route tests.
 std::span<const HubBuilding> sceneBuildingPlan();
 
+// The arrival workshop's fixtures share one layout for collision, models,
+// interaction, and route checks. Grounded origins sit on the finished floor.
+struct HubBlacksmithLayout {
+    glm::vec3 anvil, forge, workbench, toolRack, sign;
+};
+const HubBuilding& sceneBlacksmithBuilding();
+HubBlacksmithLayout sceneBlacksmithLayout();
+glm::vec3 sceneBlacksmithStation();
+glm::vec3 sceneBlacksmithApproach();
+
 struct HubBridge { glm::ivec2 from, to; };
 struct HubWaterfall {
     glm::ivec2 lip; // Top of the first fall; cascades flow along world X.

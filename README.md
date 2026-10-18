@@ -2,7 +2,7 @@
 
 A small C++20 voxel game for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. The direction is an **entirely underground expedition game**: leave a starting village, find resources, return, and upgrade the settlement.
 
-This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The buildings and departure area are physical spaces only; services, village upgrades, villagers, and expedition transitions are not implemented yet.
+This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. Other building services, village upgrades, villagers, and expedition transitions are not implemented yet.
 
 ## Explore the underground hub
 
@@ -20,7 +20,7 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. These details have no collision; movement follows the underlying voxel shapes.
 
-A 33-type model library dresses the hub with lantern fittings, building details, plants, and fitted paving. Selected cottages have projecting bay windows, roof dormers, and bracketed porch canopies; inns gain timber balconies, and masonry chimney fittings break up roof silhouettes. Details vary by building style and available support. Ferns, flowers, mushrooms, and shrubs share garden pockets with broad folded leaves, layered fern beds, and low moss cushions. Reeds and lily pads follow the water, while leafy vines trail from eaves and canopies.
+A 38-type model library dresses the hub with lantern fittings, building details, plants, and fitted paving. Selected cottages have projecting bay windows, roof dormers, and bracketed porch canopies; inns gain timber balconies, and masonry chimney fittings break up roof silhouettes. Details vary by building style and available support. Ferns, flowers, mushrooms, and shrubs share garden pockets with broad folded leaves, layered fern beds, and low moss cushions. Reeds and lily pads follow the water, while leafy vines trail from eaves and canopies.
 
 Faceted mossy boulders, layered rock ledges, and ceiling stalactite clusters soften the cavern's block outlines. Thick root arches sit inside the tree's planted bed, facing the four bridge approaches while leaving the full bridges and paved loop clear. Twisting root curtains attach to tall retaining faces. Placement checks the supporting terrain and clearance; larger nature models reserve space before small plants are scattered. These are cosmetic models with seeded variations: movement still uses the underlying voxels. Lamps and beacons add light; building fittings and plants have no interaction.
 
@@ -30,9 +30,19 @@ Stone, limestone, and slate have sparse chipped fracture edges, with fewer chips
 
 **WASD** walks, **mouse** looks, **Space** jumps, and **Shift** sprints. Walking automatically climbs one-voxel stairs when there is full body clearance and support. **R** returns you to a safe space in the village. **Escape** pauses and releases the mouse; **Tab** resumes. **H** shows the walking controls, and **Q** quits.
 
-Normal play currently supports exploration only. Ore extraction is planned as a future pickaxe mechanic and is not implemented. Block editing and material selection are available exclusively in the separate `--editor` mode.
+The bottom hotbar holds a **pickaxe, lantern, and compass**. Select with **1–3**, the **mouse wheel**, or **[ / ]**. Equipping the lantern adds warm light; equipping the compass points toward the central heart tree. The pickaxe can be upgraded, but ore extraction is not implemented yet. Block editing remains exclusive to `--editor`.
 
-The hub follows a fixed architectural plan, with seeded variations in rock, ore, and foliage. It resets on launch and does not load or overwrite editor saves. Use `--seed N` to change the variation. The original surface editor remains available through `--editor`.
+Find the **blacksmith in the southwest district, west of the arrival avenue**. Its hanging anvil sign marks the entrance; inside are a glowing forge, anvil, tool rack, and workbench. Approach the anvil and press **E**, then **Enter** to upgrade. **E**, **Escape**, or **Tab** closes the forge menu. The menu pauses walking and looking. New equipment starts with **12 copper**; tier 1 → 2 costs **8 copper**, and tier 2 → 3 costs **8 iron**. Iron gathering will come with expeditions. Lantern and compass upgrades are not offered yet.
+
+Successful upgrades save the pickaxe tier and ore balances to **`progress.vxp` in the working directory**. Restarting restores that profile; starter copper is not added to an existing profile. The profile is separate from editor world files. Invalid profiles report an error and are preserved; failed saves leave the upgrade and ore balances unchanged. Smoke tests use fresh in-memory equipment.
+
+The hub follows a fixed architectural plan, with seeded variations in rock, ore, and foliage. The terrain resets on launch and does not load or overwrite editor saves. Use `--seed N` to change the variation. The original surface editor remains available through `--editor`.
+
+## Planned expedition loop
+
+Expeditions will assemble compatible sections into a route: entrance, challenges with optional ore branches, then a main treasure chest that rewards the run and returns the player to the hub. Pickaxe tier gates ore extraction. Depth selects the world's theme, from lush caves near the surface to lava caverns deeper down. The central heart tree is the planned access point for a literal skill tree. These systems are the design direction; they are not implemented yet.
+
+The initial section candidates are parkour, crystal-routing puzzles, timed environmental hazards, hidden ore rooms, and branching exploration. They can provide risk and variety with simple object movement and effects before creature animation is needed.
 
 ## Understand the code
 
@@ -43,7 +53,8 @@ Most modules have a `.h` file that declares their types and functions, and a mat
 ```text
 src/
   main.cpp          Startup and the main loop
-  game.h/.cpp       Play/editor modes, movement actions, and HUD text
+  game.h/.cpp       Play/editor modes, movement, blacksmith interaction, and HUD text
+  equipment.h/.cpp  Tool selection, pickaxe upgrade costs, and progress profiles
   player.h/.cpp     Player body, terrain collision, walking, jumping, and spawning
   scene.h/.cpp      Hub layout, landscape, tree, water, bridges, and departure hall
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
@@ -71,7 +82,8 @@ src/
     hub_nature.cpp Sculpted rocks, stalactites, and large roots
     hub_gardens.cpp Broad leaves, fern beds, and moss cushions
     hub_architecture.cpp Dormers, bay windows, chimneys, balconies, and canopies
-    hud.h/.cpp      Draw text on the screen
+    hub_blacksmith.cpp Forge, anvil, tools, workbench, and workshop sign
+    hud.h/.cpp      Draw text, tool icons, the compass, and the blacksmith panel
 tests/              Behavior tests and graphics smoke checks
 CMakeLists.txt      List the source files and build targets
 ```
@@ -84,7 +96,7 @@ Read these first:
 4. [scene.cpp](src/scene.cpp) lays out the hub and landscape; [hub_buildings.cpp](src/hub_buildings.cpp) builds its seven architectural styles. [player.cpp](src/player.cpp) handles the body and movement.
 5. [editing.cpp](src/editing.cpp) shows how aiming and editing work. `raycast` follows the camera's viewing direction through blocks to find a hit.
 
-For one frame, `Input::update` handles looking and fills an `InputActions` value. In play mode, `Game::update` moves the `Player` and follows its eyes with the camera; `Player` resolves movement against solid voxels. `scene.cpp` builds the hub once at startup. `Game::update` handles walking and returning to the village. Only editor mode processes targeting, block changes, saving, loading, and undo. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
+For one frame, `Input::update` handles looking and fills an `InputActions` value. In play mode, `Game::update` moves the `Player` and follows its eyes with the camera; `Player` resolves movement against solid voxels. `scene.cpp` builds the hub once at startup. `Game::update` handles walking, tool selection, returning to the village, and blacksmith interaction. `equipment.cpp` owns upgrade costs and the small progress profile; it has no graphics dependency. Only editor mode processes targeting, block changes, saving, loading, and undo. `WorldRenderer::render` rebuilds meshes for changed chunks and draws visible chunks. The outline and HUD are drawn last. World storage does not depend on the renderer.
 
 Each renderer remembers the chunk contents it last drew. It rebuilds changed chunks and their neighbors, so switching worlds or opening another view cannot lose mesh updates. This uses a small world snapshot and straightforward comparisons; no global cache or event system is needed. The renderer also uploads the solid cells to a small 3D texture when the world changes. Cave lighting samples it for contact shading and short shadow rays, so world changes update lighting alongside geometry. Decorative meshes reuse the block materials but do not enter that solid-cell texture or cast their own shadows.
 
@@ -98,6 +110,8 @@ Use this map when changing something:
 
 | I want to change… | Start here |
 | --- | --- |
+| Tool names, upgrade costs, or equipment progress | [equipment.cpp](src/equipment.cpp) |
+| Hotbar icons and the blacksmith panel | [graphics/hud.cpp](src/graphics/hud.cpp) |
 | Keys, mouse sensitivity, or editor flight speed | [input.cpp](src/input.cpp) |
 | Walking speed, jumping, or collision | [player.cpp](src/player.cpp) |
 | Cavern, tree, water, bridges, building positions, or ore deposits | [scene.cpp](src/scene.cpp) |
@@ -269,8 +283,8 @@ ctest --test-dir build-sanitize --output-on-failure
 
 Tests cover storage bounds, material validation, camera math, command-line parsing, ray traversal, edit history and key transitions, frustum planes, corrupted saves, atomic write failures, and complete edit/save/reload sessions through both the world helpers and `Game::update`. Greedy meshes are expanded into unit faces and compared with a simple reference across random and structured chunks to detect holes, overlaps, winding errors, and incorrect material merging.
 
-Player tests cover collision, one-block stair climbing, headroom, jumping, safe spawning, and falling through openings in the ground. Scene tests walk three-dimensional routes to all 38 building entrances and interiors, bridges, and the departure hall, including direct travel in both directions on every lane of the mine approach. They also cover the sealed shell, connected solid foundations, tree and water features, shoreline stair egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Hub asset tests cover all 33 model types, seeded variants, quarter-turn rotations, placement, chunk batching, and empty worlds. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, and that all editor actions leave play worlds unchanged. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 21 material IDs and verify version 1 and version 2 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, opaque scene snapshots, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup. Water checks cover visible lakebeds, foreground occlusion, animation, and fresh snapshots after edits and view changes.
+Player tests cover collision, one-block stair climbing, headroom, jumping, safe spawning, and falling through openings in the ground. Scene tests walk three-dimensional routes to all 38 building entrances and interiors, bridges, and the departure hall, including direct travel in both directions on every lane of the mine approach. They also cover the sealed shell, connected solid foundations, tree and water features, shoreline stair egress, and deterministic generation. Decorative mesh tests check finite geometry, face winding, bounded triangle counts, chunk seams, and removal when anchors change or become covered. Hub asset tests cover all 38 model types, seeded variants, quarter-turn rotations, placement, chunk batching, and empty worlds. Relief tests also check all six face orientations, shallow depth bounds, and alignment with the original material coordinates. Play tests verify walking, jumping, pause, safe return inside the cavern, tool selection, blacksmith reach and menu behavior, and that all editor actions leave play worlds unchanged. Equipment tests cover upgrade costs and limits, profile validation and round-trips, failed writes, and progress restoration. Editor tests cover block selection, placement, removal, history, and file actions separately. Save tests round-trip all 21 material IDs and verify version 1 and version 2 imports retain their original coordinates and edits. Graphics checks exercise cave materials, colored lights, wall occlusion, decorative mesh updates, and lighting changes after edits alongside the existing editor checks. Relief graphics checks measure real depth and cover, reveal, and remove an ore face across a chunk boundary. Lighting regressions check tiny camera movements, distant views, and sources across chunk boundaries. They also verify multisample rendering, emission-only bloom, opaque scene snapshots, depth transfer, framebuffer resizing, graphics-state restoration, and shader cleanup. Water checks cover visible lakebeds, foreground occlusion, animation, and fresh snapshots after edits and view changes.
 
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 
-This is a finite hub prototype. Building services, expedition transitions, village upgrades, NPCs, enemies, loot containers, crafting, chunk streaming, and persistent game progress are not implemented yet.
+This is a finite hub prototype with a tool hotbar and saved blacksmith pickaxe upgrades. Other building services, expedition transitions, mining, village upgrades, NPCs, enemies, loot containers, general crafting, and chunk streaming are not implemented yet.

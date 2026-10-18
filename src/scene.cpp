@@ -683,6 +683,19 @@ void neighborhoods(World& world)
 
 } // namespace
 std::span<const HubBuilding> sceneBuildingPlan() { return Buildings; }
+const HubBuilding& sceneBlacksmithBuilding() { return Buildings.front(); }
+HubBlacksmithLayout sceneBlacksmithLayout()
+{
+    const auto& building = sceneBlacksmithBuilding();
+    const auto origin = glm::vec3(building.origin);
+    return {origin + glm::vec3(5.5f,1,7.5f),
+            origin + glm::vec3(building.width-2.5f,1,2.5f),
+            origin + glm::vec3(4.5f,1,2.5f),
+            origin + glm::vec3(4.5f,3,1.02f),
+            origin + glm::vec3(0.5f,5.8f,building.depth-0.01f)};
+}
+glm::vec3 sceneBlacksmithStation() { return sceneBlacksmithLayout().anvil + glm::vec3(0,1.4f,0); }
+glm::vec3 sceneBlacksmithApproach() { return sceneBlacksmithLayout().anvil + glm::vec3(0,0,2.5f); }
 std::span<const HubBridge> sceneBridgePlan() { return Bridges; }
 std::span<const HubWaterfall> sceneWaterfallPlan() { return Waterfalls; }
 std::span<const glm::ivec3> sceneExpeditionApproach() { return ExpeditionApproach; }
@@ -691,6 +704,18 @@ void buildUndergroundScene(World& world)
 {
     landscape(world);
     neighborhoods(world);
+    // Real voxel plinths make the work stations solid. The models add the
+    // shaped iron, coals, tools and joinery without blocking the central aisle.
+    const auto smith = sceneBlacksmithLayout();
+    const auto anvil = glm::ivec3(glm::floor(smith.anvil));
+    world.set(anvil, Block::Timber);
+    const auto forge = glm::ivec3(glm::floor(smith.forge));
+    box(world, forge + glm::ivec3(-1,0,-1), forge + glm::ivec3(1,0,1), Block::Brick);
+    const auto bench = glm::ivec3(glm::floor(smith.workbench));
+    box(world, bench + glm::ivec3(-2,0,0), bench + glm::ivec3(2,0,0), Block::Timber);
+    // A solid rear panel carries the tool rack instead of hanging across a window.
+    const auto wall = sceneBlacksmithBuilding().origin;
+    box(world, wall + glm::ivec3(2,2,0), wall + glm::ivec3(7,5,0), Block::Timber);
     for (const auto& b : Bridges) bridge(world,b);
     heartTree(world);
     expeditionGateway(world);

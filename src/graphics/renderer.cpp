@@ -52,6 +52,7 @@ uniform vec3 cameraForward;
 uniform int underground;
 uniform int decorative;
 uniform float timeSeconds;
+uniform int carriedLantern;
 uniform int lightCount;
 uniform int lightOffset;
 uniform sampler2D lightSources;
@@ -146,7 +147,10 @@ void main() {
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
         vec3 ambient = mix(vec3(0.05, 0.035, 0.065), vec3(0.045, 0.09, 0.085),
                            surfaceNormal.y * 0.5 + 0.5);
-        vec3 light = (ambient + vec3(0.82, 0.91, 1.0) * headlamp) * ao;
+        float lantern = carriedLantern != 0 ? 0.65 * (0.35 + 0.65 * max(dot(normal, viewDirection), 0.0))
+            / (1.0 + 0.045 * cameraDistance * cameraDistance) : 0.0;
+        vec3 light = (ambient + vec3(0.82, 0.91, 1.0) * headlamp
+                      + vec3(1.0, 0.60, 0.24) * lantern) * ao;
         vec3 pointLight = vec3(0.0);
         vec3 highlight = vec3(0.0);
         vec3 start = worldPosition + surfaceNormal * 0.03;
@@ -257,7 +261,7 @@ void WorldRenderer::uploadLights(const World& world)
 }
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
-                           bool wireframe, bool underground, float timeSeconds)
+                           bool wireframe, bool underground, float timeSeconds, bool carriedLantern)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -407,6 +411,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setVec3("cameraPosition", camera.position());
     shader_.setVec3("cameraForward", camera.forward());
     shader_.setInt("underground", underground);
+    shader_.setInt("carriedLantern", carriedLantern);
     shader_.setInt("decorative", 0);
     shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);
     shader_.setInt("occupancy", 0);

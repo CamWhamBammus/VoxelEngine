@@ -19,7 +19,7 @@ public:
     WorldRenderer();
     ~WorldRenderer();
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
-                bool underground = false, float timeSeconds = 0.0f);
+                bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false);
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }

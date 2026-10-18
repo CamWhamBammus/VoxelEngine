@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "editing.h"
+#include "equipment.h"
 #include "player.h"
 #include "world.h"
 
@@ -23,6 +24,7 @@ struct Options {
     bool worldExplicit = false;
     std::string screenshot;
     std::string worldPath = "world.vxl";
+    std::string progressPath; // Empty disables profile I/O for tests and smoke runs.
 };
 
 inline constexpr const char* Usage =
@@ -35,7 +37,7 @@ inline constexpr const char* Usage =
     "  --screenshot path.ppm\n"
     "                     Run the smoke test and write a rendered image.\n"
     "  -h, --help         Show this help without opening a window.\n\n"
-    "The underground village sample starts fresh on each launch.\n"
+    "The village terrain starts fresh; equipment upgrades use progress.vxp.\n"
     "Editor startup loads world.vxl unless --seed is given.\n"
     "In the editor, an explicit existing --world file takes precedence over --seed.\n"
     "Use --editor with --world; game progress is not saved to world files.\n"
@@ -57,6 +59,8 @@ public:
     void update(const InputActions& actions, float deltaSeconds = 0.0f);
     bool editorMode() const { return editorMode_; }
     bool hasUnsavedChanges() const;
+    bool smithOpen() const { return smithOpen_; }
+    bool nearBlacksmith() const;
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
                            bool captured, bool showHelp) const;
@@ -65,6 +69,7 @@ public:
     Camera camera;
     Player player;
     EditHistory history;
+    Equipment equipment;
     Block selectedBlock = Block::Grass;
     std::optional<RayHit> target;
     std::string status;
@@ -72,6 +77,7 @@ public:
 private:
     bool returnToVillage();
     void updatePlay(const InputActions& actions, float deltaSeconds);
+    void upgradeEquipment();
     std::string playStatusText(bool captured, bool showHelp) const;
     void handleFiles(const InputActions& actions);
     void handleUndoRedo(const InputActions& actions);
@@ -82,6 +88,9 @@ private:
     std::string savePath_;
     int editReach_;
     bool editorMode_;
+    bool smithOpen_ = false;
+    std::string progressPath_;
+    std::string progressError_;
 };
 
 } // namespace voxel

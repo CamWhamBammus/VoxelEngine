@@ -299,6 +299,31 @@ std::vector<HubAsset> planHubAssets(const World& world)
         }
     }
 
+    // The blacksmith is a real room in the arrival district. Each fixture
+    // depends on its own voxel support, so editor removal cannot leave floating
+    // tools or an orphaned forge light behind.
+    const auto smith = sceneBlacksmithLayout();
+    const auto smithSeed = variation(int(smith.anvil.x), int(smith.anvil.z), world.seed());
+    const auto supported = [&](glm::vec3 center, int halfWidth, int halfDepth) {
+        const auto cell = glm::ivec3(glm::floor(center));
+        for (int z=-halfDepth;z<=halfDepth;++z) for (int x=-halfWidth;x<=halfWidth;++x) {
+            if (!isSolid(world.get(cell+glm::ivec3(x,0,z)))
+                || !isSolid(world.get(cell+glm::ivec3(x,-1,z)))) return false;
+        }
+        return true;
+    };
+    if (supported(smith.anvil,0,0) && air(world,smith.anvil+glm::vec3(0,1.2f,0)))
+        add(HubAssetKind::Anvil,smith.anvil,0,smithSeed);
+    if (supported(smith.forge,1,1) && air(world,smith.forge+glm::vec3(0,1.5f,0.6f)))
+        add(HubAssetKind::Forge,smith.forge,0,smithSeed);
+    if (supported(smith.workbench,2,0) && air(world,smith.workbench+glm::vec3(0,1.3f,0)))
+        add(HubAssetKind::SmithWorkbench,smith.workbench,0,smithSeed);
+    for (const auto& fixture : {HubAsset{HubAssetKind::ToolRack,smith.toolRack,0,smithSeed},
+                               HubAsset{HubAssetKind::AnvilSign,smith.sign,0,smithSeed}}) {
+        const auto support=glm::ivec3(glm::floor(fixture.position-glm::vec3(0,0,0.15f)));
+        if (isSolid(world.get(support)) && facadeFits(world,fixture)) assets.push_back(fixture);
+    }
+
     // A few complementary plants share each irregular garden pocket. Empty
     // space between pockets keeps the paths and larger terrain shapes legible.
     using Kind = HubAssetKind;
@@ -443,7 +468,8 @@ std::vector<HubAsset> planHubAssets(const World& world)
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);
+    if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
+    else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);
     else if (asset.kind >= HubAssetKind::BroadleafClump) appendHubGarden(mesh, asset);
     else if (asset.kind >= HubAssetKind::Boulder) appendHubNature(mesh, asset);
     else if (isPathAsset(asset.kind)) appendHubPath(mesh, asset);
@@ -468,6 +494,8 @@ HubDressing buildHubDressing(const World& world)
             dressing.lights.push_back({asset.position, {1.05f,0.57f,0.23f},8.0f});
         if (asset.kind == HubAssetKind::CrystalBeacon)
             dressing.lights.push_back({asset.position + glm::vec3(0,1.4f,0), {0.12f,0.66f,0.88f},7.0f});
+        if (asset.kind == HubAssetKind::Forge)
+            dressing.lights.push_back({asset.position + glm::vec3(0,1.55f,0.45f), {1.35f,0.43f,0.10f},8.0f});
     }
     return dressing;
 }

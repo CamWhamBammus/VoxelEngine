@@ -3,6 +3,7 @@
 #include "world.h"
 
 #include <glm/vec2.hpp>
+#include <array>
 #include <optional>
 
 struct GLFWwindow;
@@ -17,6 +18,11 @@ struct InputActions {
     bool jump = false;
     bool sprint = false;
     bool respawn = false;
+    std::optional<int> selectedTool; // Play hotbar, numbered 1–3 on the keyboard.
+    int toolStep = 0;
+    bool interact = false;
+    bool upgrade = false;
+    bool closeMenu = false;
     // Editing requests are emitted only in --editor mode.
     bool save = false;
     bool load = false;
@@ -65,7 +71,7 @@ public:
     Input(const Input&) = delete;
     Input& operator=(const Input&) = delete;
 
-    void update(Camera& camera, float deltaSeconds, bool editorMode = true);
+    void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false);
     const InputActions& actions() const { return actions_; }
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
@@ -86,6 +92,9 @@ private:
         bool remove = false;
         bool place = false;
         bool pick = false;
+        bool interact = false;
+        bool upgrade = false;
+        std::array<bool, 3> tools{};
     };
 
     bool keyDown(int key) const;

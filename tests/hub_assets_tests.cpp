@@ -23,6 +23,8 @@ constexpr std::array kinds{
     HubAssetKind::RootArch, HubAssetKind::RootCurtain, HubAssetKind::BroadleafClump,
     HubAssetKind::FernBed, HubAssetKind::MossGarden, HubAssetKind::Dormer,
     HubAssetKind::BayWindow, HubAssetKind::Chimney, HubAssetKind::Balcony, HubAssetKind::PorchCanopy,
+    HubAssetKind::Forge, HubAssetKind::Anvil, HubAssetKind::ToolRack,
+    HubAssetKind::SmithWorkbench, HubAssetKind::AnvilSign,
 };
 
 void check(bool condition, const char* message)
@@ -375,7 +377,7 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
                       "natural rock and root meshes stay outside buildings and their projecting trim");
             }
         }
-        if (asset.kind < HubAssetKind::Dormer) continue;
+        if (asset.kind < HubAssetKind::Dormer || asset.kind > HubAssetKind::PorchCanopy) continue;
 
         // Attachment points are expressed in each model's local frame, so the
         // same support checks cover all four building orientations.
@@ -450,6 +452,53 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
     const auto changed = planHubAssets(edited);
     for (const auto& asset : removed)
         check(!containsAsset(changed, asset), "mining a support or closing clearance removes its attached model");
+}
+
+void checkBlacksmith(const World& world, const std::vector<HubAsset>& plan)
+{
+    const auto layout=sceneBlacksmithLayout();
+    const auto approach=sceneBlacksmithApproach();
+    World edited=world;
+    std::vector<HubAsset> removed;
+    int fixtures=0;
+    for (const auto& asset : plan) {
+        if (!isBlacksmithAsset(asset.kind)) continue;
+        ++fixtures;
+        const auto mesh=buildHubAsset(asset);
+        check(mesh.indices.size()/3 < 700,"blacksmith fixtures have bounded geometry budgets");
+        for (std::size_t triangle=0;triangle<mesh.indices.size();triangle+=3) {
+            check(!triangleIntersectsBox(mesh,triangle,approach+glm::vec3(-0.31f,0.01f,-0.31f),
+                                         approach+glm::vec3(0.31f,1.81f,0.31f)),
+                  "blacksmith models leave the interaction standing position clear");
+            const auto door=glm::vec3(hubBuildingDoor(sceneBlacksmithBuilding()))+glm::vec3(0.5f,0,0.5f);
+            check(!triangleIntersectsBox(mesh,triangle,door+glm::vec3(-1.25f,0.01f,-4),
+                                         door+glm::vec3(1.25f,2.0f,1.5f)),
+                  "blacksmith fixtures preserve a broad entrance and central aisle");
+        }
+        glm::vec3 support=asset.position;
+        if (asset.kind==HubAssetKind::ToolRack || asset.kind==HubAssetKind::AnvilSign)
+            support.z-=0.15f;
+        check(isSolid(world.get(glm::ivec3(glm::floor(support)))),
+              "each blacksmith fixture is anchored to a real solid voxel");
+        edited.set(glm::ivec3(glm::floor(support)),Block::Air);
+        removed.push_back(asset);
+        bool luminous=false;
+        for (const auto& vertex : mesh.vertices)
+            luminous |= vertex.material==static_cast<float>(Block::Lantern);
+        check(luminous==(asset.kind==HubAssetKind::Forge),"only forge coals emit light among smith fixtures");
+    }
+    check(fixtures==5,"the arrival workshop has forge, anvil, tools, workbench and hanging anvil sign");
+    const auto changed=planHubAssets(edited);
+    for (const auto& asset : removed)
+        check(!containsAsset(changed,asset),"removing a smith fixture's anchor removes its model");
+    const auto lightPosition=layout.forge+glm::vec3(0,1.55f,0.45f);
+    const auto lit=buildHubDressing(world), unlit=buildHubDressing(edited);
+    const auto hasForgeLight=[&](const HubDressing& dressing) {
+        return std::any_of(dressing.lights.begin(),dressing.lights.end(),[&](const auto& light) {
+            return glm::distance(light.position,lightPosition)<0.001f;
+        });
+    };
+    check(hasForgeLight(lit) && !hasForgeLight(unlit),"the warm coal light follows forge placement and support edits");
 }
 } // namespace
 
@@ -526,8 +575,9 @@ int main()
         expectedIndices += buildHubAsset(asset).indices.size();
     }
     check(std::all_of(present.begin(), present.end(), [](bool found) { return found; }),
-          "the actual hub uses all thirty-three asset kinds");
+          "the actual hub uses every registered asset kind");
     checkHubPlacement(world, plan);
+    checkBlacksmith(world, plan);
     const auto dressing = buildHubDressing(world);
     const auto repeated = buildHubDressing(world);
     std::size_t actualIndices = 0;

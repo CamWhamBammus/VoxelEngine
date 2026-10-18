@@ -35,6 +35,12 @@ int main()
         voxel::Options options;
         options.seed = 42;
         options.worldPath = (directory / "world.vxl").string();
+        check(options.progressPath.empty() && voxel::parseOptions({}).progressPath == "progress.vxp",
+              "direct test options disable profile I/O while ordinary CLI play enables progress");
+        for (const auto argument : {"--editor", "--smoke-test", "--help"}) {
+            const std::array<std::string_view,1> args{argument};
+            check(voxel::parseOptions(args).progressPath.empty(), "editor, smoke and help leave progress files untouched");
+        }
         { std::ofstream file(options.worldPath); file << "existing editor save"; }
         voxel::Game game(options);
         check(!game.editorMode() && game.world.seed() == 42, "default mode starts the underground hub");
@@ -70,6 +76,124 @@ int main()
                                       "MIDDLE PICK", "1-9 MATERIAL", "F5", "F9", "UNDO", "REDO", "TARGET", "COAL:", "COPPER:"})
                 check(hud.find(prompt) == std::string::npos, std::string("play HUD excludes editor/inventory prompt ") + prompt);
         }
+
+        actions = {};
+        actions.active = true;
+        actions.toolStep = -1;
+        game.update(actions);
+        check(game.equipment.selectedTool() == voxel::Tool::Compass, "previous tool wraps to the compass");
+        actions.toolStep = 1;
+        game.update(actions);
+        check(game.equipment.selectedTool() == voxel::Tool::Pickaxe, "next tool wraps to the pickaxe");
+        actions.selectedTool = 1;
+        game.update(actions);
+        check(game.equipment.selectedTool() == voxel::Tool::Lantern, "numbered tool selection wins over scrolling");
+        actions.active = false;
+        actions.selectedTool = 2;
+        game.update(actions);
+        check(game.equipment.selectedTool() == voxel::Tool::Lantern, "paused play ignores tool selection");
+        actions = {};
+        actions.active = actions.interact = actions.upgrade = true;
+        game.update(actions);
+        check(!game.smithOpen() && game.equipment.pickaxeTier == 1 && game.equipment.copper == 12,
+              "interaction and upgrade requests cannot reach the blacksmith from spawn");
+        check(game.player.setFeetPosition(game.world, voxel::sceneBlacksmithApproach()), "blacksmith approach has player clearance");
+        game.camera.setPosition(game.player.eyePosition());
+        check(game.nearBlacksmith(), "the authored workshop approach reaches its supported workbench");
+        const auto station = voxel::sceneBlacksmithStation();
+        const auto support = glm::ivec3(glm::floor(station)) - glm::ivec3(0, 1, 0);
+        const auto supportMaterial = game.world.get(support);
+        game.world.set(support, voxel::Block::Air);
+        check(!game.nearBlacksmith(), "a removed workbench support disables the service");
+        game.world.set(support, supportMaterial);
+        const auto obstruction = glm::ivec3(glm::floor(glm::mix(game.player.eyePosition(), station, .5f)));
+        const auto originalObstruction = game.world.get(obstruction);
+        game.world.set(obstruction, voxel::Block::Stone);
+        check(!game.nearBlacksmith(), "a wall between player and workbench blocks interaction");
+        game.world.set(obstruction, originalObstruction);
+        const auto serviceWorld = game.world;
+        actions = {};
+        actions.active = actions.interact = true;
+        game.update(actions);
+        check(game.smithOpen(), "E opens the nearby blacksmith service");
+        const auto standing = game.player.feetPosition();
+        actions.interact = false;
+        actions.movement = {1, 1};
+        actions.jump = true;
+        actions.selectedTool = 2;
+        game.update(actions, .1f);
+        check(game.player.feetPosition() == standing && game.equipment.selectedTool() == voxel::Tool::Lantern,
+              "blacksmith menu freezes walking, jumping and tool selection");
+        actions.upgrade = true;
+        game.update(actions);
+        check(game.equipment.pickaxeTier == 2 && game.equipment.copper == 4,
+              "Enter upgrades the pickaxe and charges starter copper");
+        const auto upgraded = game.equipment;
+        game.update(actions);
+        check(game.equipment == upgraded && game.status.find("Not enough") != std::string::npos,
+              "another upgrade cannot spend missing iron or regrant copper");
+        game.equipment.iron = 8;
+        game.update(actions);
+        check(game.equipment.pickaxeTier == 3 && game.equipment.iron == 0, "blacksmith supports the final iron tier");
+        const auto maximum = game.equipment;
+        game.update(actions);
+        check(game.equipment == maximum, "max-tier requests never charge ore");
+        actions = {};
+        actions.closeMenu = true;
+        game.update(actions);
+        check(!game.smithOpen(), "close-menu works even when gameplay input is paused");
+        actions.active = actions.interact = true;
+        actions.closeMenu = false;
+        game.update(actions);
+        check(game.smithOpen(), "blacksmith can be reopened");
+        actions.interact = false;
+        actions.respawn = true;
+        game.update(actions);
+        check(!game.smithOpen() && !game.nearBlacksmith() && game.equipment == maximum,
+              "return to village closes the station without resetting equipment");
+        check(game.world.sameContents(serviceWorld) && game.history.undoCount() == 0,
+              "blacksmith service never edits terrain or editor history");
+
+        auto persistentOptions = options;
+        persistentOptions.progressPath = (directory / "progress.vxp").string();
+        const auto openSmith = [&](voxel::Game& session) {
+            check(session.player.setFeetPosition(session.world, voxel::sceneBlacksmithApproach()), "profile fixture reaches workshop");
+            session.camera.setPosition(session.player.eyePosition());
+            voxel::InputActions open;
+            open.active = open.interact = true;
+            session.update(open);
+            check(session.smithOpen(), "profile fixture opens the smith");
+        };
+        voxel::InputActions upgradeAction;
+        upgradeAction.active = upgradeAction.upgrade = true;
+        voxel::Game persistent(persistentOptions);
+        check(!std::filesystem::exists(persistentOptions.progressPath), "new profile is written on the first successful upgrade");
+        openSmith(persistent);
+        persistent.update(upgradeAction);
+        check(persistent.equipment.pickaxeTier == 2 && voxel::loadEquipment(persistentOptions.progressPath).copper == 4,
+              "successful upgrade persists its exact remaining balance");
+        voxel::Game resumed(persistentOptions);
+        check(resumed.equipment.pickaxeTier == 2 && resumed.equipment.copper == 4
+              && resumed.status.find("STARTER") == std::string::npos,
+              "restart restores the tier and never grants starter copper twice");
+        { std::ofstream file(persistentOptions.progressPath); file << "damaged profile"; }
+        voxel::Game damaged(persistentOptions);
+        openSmith(damaged);
+        const auto beforeDamage = damaged.equipment;
+        damaged.update(upgradeAction);
+        std::ifstream damagedFile(persistentOptions.progressPath);
+        std::string damagedText;
+        std::getline(damagedFile, damagedText);
+        check(damaged.equipment == beforeDamage && damagedText == "damaged profile"
+              && damaged.status.find("Progress unavailable") != std::string::npos,
+              "malformed profiles remain intact and cannot be overwritten by an upgrade");
+        persistentOptions.progressPath = (directory / "missing" / "progress.vxp").string();
+        voxel::Game failedSave(persistentOptions);
+        openSmith(failedSave);
+        const auto beforeSave = failedSave.equipment;
+        failedSave.update(upgradeAction);
+        check(failedSave.equipment == beforeSave && failedSave.status.find("Upgrade not saved") != std::string::npos,
+              "failed progress writes leave in-memory tier and all balances unchanged");
 
         // Real ore, an unobstructed ray, and an empty neighboring cell make
         // these actions effective if normal play accidentally reaches the editor.
@@ -150,7 +274,7 @@ int main()
             expedition.update(actions, 1000.0f);
             check(expedition.player.feetPosition() == feet, "exploration has no challenge countdown or time limit");
             check(!expedition.target, "returning to the village does not enable editor targeting");
-            check(expedition.statusText(0, 0, 0, 0, true, true).find("EXPEDITIONS AND BUILDING SERVICES COMING LATER") != std::string::npos,
+            check(expedition.statusText(0, 0, 0, 0, true, true).find("MINING AND EXPEDITIONS COMING LATER") != std::string::npos,
                   "hub controls accurately identify the current development scope");
         }
     } catch (const std::exception& error) {
