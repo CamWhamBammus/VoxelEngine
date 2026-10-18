@@ -129,5 +129,82 @@ int main()
                   "nearest representable mesh extents must sample exact boundary coordinates");
         }
     }
+
+    const auto sameVertex = [](const voxel::MeshVertex& a, const voxel::MeshVertex& b) {
+        return a.position == b.position && a.normal == b.normal && a.color == b.color
+            && a.material == b.material && a.relief == b.relief;
+    };
+    const auto verifySplit = [&](const voxel::MeshData& original,
+                                 std::size_t opaqueIndices, std::size_t waterIndices) {
+        auto opaque = original;
+        const auto water = voxel::splitWaterMesh(opaque);
+        check(opaque.indices.size() == opaqueIndices && water.indices.size() == waterIndices,
+              "water split must keep the expected triangles in each output");
+        check(opaque.indices.size() + water.indices.size() == original.indices.size(),
+              "water split must neither lose nor duplicate triangles");
+        for (const bool isWater : {false, true}) {
+            const auto& result = isWater ? water : opaque;
+            std::vector<bool> referenced(result.vertices.size(), false);
+            for (const auto index : result.indices) {
+                check(index < result.vertices.size(), "split mesh indices must stay in bounds");
+                if (index < referenced.size()) referenced[index] = true;
+            }
+            check(std::all_of(referenced.begin(), referenced.end(), [](bool used) { return used; }),
+                  "split meshes must contain no unreferenced vertices");
+            std::vector<bool> originalUsed(original.vertices.size(), false);
+            std::size_t outputIndex = 0;
+            for (std::size_t triangle = 0; triangle < original.indices.size(); triangle += 3) {
+                const bool wasWater = original.vertices[original.indices[triangle]].material
+                    == static_cast<float>(voxel::Block::Water);
+                if (wasWater != isWater) continue;
+                for (std::size_t corner = 0; corner < 3; ++corner) {
+                    const auto index = original.indices[triangle + corner];
+                    originalUsed[index] = true;
+                    const bool valid = outputIndex < result.indices.size()
+                        && result.indices[outputIndex] < result.vertices.size();
+                    check(valid && sameVertex(original.vertices[index],
+                          result.vertices[result.indices[outputIndex]]),
+                          "split must preserve triangle order, winding and every vertex attribute");
+                    ++outputIndex;
+                }
+            }
+            check(result.vertices.size() == static_cast<std::size_t>(
+                      std::count(originalUsed.begin(), originalUsed.end(), true)),
+                  "split meshes must reuse shared vertices without retaining unused vertices");
+        }
+    };
+    verifySplit(empty, 0, 0);
+    verifySplit(single, 36, 0);
+
+    voxel::Chunk waterChunk;
+    waterChunk.set(3, 4, 5, voxel::Block::Water);
+    verifySplit(voxel::buildMesh(waterChunk), 0, 36);
+    waterChunk.set(4, 4, 5, voxel::Block::Stone);
+    auto mixed = voxel::buildMesh(waterChunk, origin);
+    // Non-default attributes catch accidental vertex reconstruction during the split.
+    for (std::size_t i = 0; i < mixed.vertices.size(); ++i) {
+        mixed.vertices[i].color = glm::vec3(float(i) / 100.0f, .23f, .61f);
+        mixed.vertices[i].relief = glm::vec4(mixed.vertices[i].normal, float(i) / 1000.0f);
+    }
+    mixed.vertices.push_back({glm::vec3(100), glm::vec3(0, 1, 0), glm::vec3(1)});
+    verifySplit(mixed, 36, 30);
+    auto splitAgain = mixed;
+    auto firstWater = voxel::splitWaterMesh(splitAgain);
+    verifySplit(splitAgain, 36, 0);
+    verifySplit(firstWater, 0, 30);
+
+    voxel::Chunk waterBoundary;
+    waterBoundary.set(15, 3, 4, voxel::Block::Water);
+    for (const auto neighbor : {voxel::Block::Water, voxel::Block::Stone}) {
+        const auto mesh = voxel::buildMesh(waterBoundary, origin,
+            [neighbor](glm::ivec3) { return neighbor; });
+        verifySplit(mesh, 0, 30);
+        check(std::none_of(mesh.vertices.begin(), mesh.vertices.end(), [](const auto& vertex) {
+            return vertex.normal == glm::vec3(1, 0, 0);
+        }), "water split input must omit hidden faces across the chunk boundary");
+    }
+    const auto wetBank = voxel::buildMesh(boundary, origin,
+        [](glm::ivec3) { return voxel::Block::Water; });
+    verifySplit(wetBank, 36, 0);
     return failures == 0 ? 0 : 1;
 }

@@ -4,6 +4,7 @@
 #include <array>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace voxel {
 
@@ -119,6 +120,32 @@ MeshData buildMesh(const World& world, std::size_t chunkIndex)
     return buildMesh(world.chunk(chunkIndex), world.origin(chunkIndex), [&world](glm::ivec3 position) {
         return world.get(position);
     });
+}
+
+MeshData splitWaterMesh(MeshData& opaque)
+{
+    std::array<MeshData, 2> parts;
+    constexpr auto unused = std::numeric_limits<std::uint32_t>::max();
+    std::array<std::vector<std::uint32_t>, 2> remapped;
+    for (auto& indices : remapped) indices.assign(opaque.vertices.size(), unused);
+
+    for (std::size_t triangle = 0; triangle < opaque.indices.size(); triangle += 3) {
+        // buildMesh gives every vertex of a triangle the same material.
+        const bool water = opaque.vertices[opaque.indices[triangle]].material
+            == static_cast<float>(Block::Water);
+        auto& part = parts[water];
+        auto& indices = remapped[water];
+        for (std::size_t corner = 0; corner < 3; ++corner) {
+            const auto original = opaque.indices[triangle + corner];
+            if (indices[original] == unused) {
+                indices[original] = static_cast<std::uint32_t>(part.vertices.size());
+                part.vertices.push_back(opaque.vertices[original]);
+            }
+            part.indices.push_back(indices[original]);
+        }
+    }
+    opaque = std::move(parts[0]);
+    return std::move(parts[1]);
 }
 
 } // namespace voxel

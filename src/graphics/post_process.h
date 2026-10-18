@@ -17,6 +17,11 @@ public:
     PostProcess& operator=(const PostProcess&) = delete;
 
     void begin(int width, int height);
+    // Snapshot opaque color and depth before drawing water into the same scene.
+    // Textures remain unchanged until the next capture, finish, or resize.
+    void captureScene();
+    GLuint sceneColor() const noexcept { return color_; }
+    GLuint sceneDepth() const noexcept { return depth_; }
     void finish();
 
 private:

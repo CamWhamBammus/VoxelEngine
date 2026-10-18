@@ -3,6 +3,7 @@
 #include "graphics/cave_details.h"
 #include "graphics/block_relief.h"
 #include "graphics/materials.h"
+#include "graphics/water.h"
 #include "hub_assets.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -125,6 +126,8 @@ float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) 
          + softness * visibleLight(start, center - offset);
 }
 
+)glsl" + waterShader + R"glsl(
+
 void main() {
     MaterialSurface surface = evaluateMaterial();
     vec3 normal = normalize(surface.normal);
@@ -133,10 +136,11 @@ void main() {
     float cameraDistance = length(toCamera);
     vec3 viewDirection = toCamera / max(cameraDistance, 0.001);
     vec3 lit;
+    vec3 surfaceHighlight = vec3(0.0);
     vec3 fogColor;
     float fog;
     if (underground != 0) {
-        float ao = decorative == 1 ? 1.0 : contactShade();
+        float ao = decorative == 1 || materialId == 16 ? 1.0 : contactShade();
         float cone = smoothstep(0.35, 0.94, dot(-viewDirection, cameraForward));
         float headlamp = 0.24 * (0.2 + 0.8 * max(dot(normal, viewDirection), 0.0))
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
@@ -167,11 +171,12 @@ void main() {
             vec3 halfDirection = direction + viewDirection;
             halfDirection /= max(length(halfDirection), 0.001);
             float shine = pow(max(dot(normal, halfDirection), 0.0), mix(64.0, 8.0, surface.roughness));
-            highlight += lightColor * strength * shine * (1.0 - surface.roughness) * 0.14;
+            highlight += lightColor * strength * shine * (1.0 - surface.roughness) * (materialId == 16 ? 0.65 : 0.14);
         }
         float strongest = max(pointLight.r, max(pointLight.g, pointLight.b));
         light += pointLight / max(1.0, strongest) * mix(0.65, 1.0, ao);
         lit = color * light + highlight;
+        surfaceHighlight = highlight;
         fogColor = mix(vec3(0.012, 0.035, 0.043), vec3(0.025, 0.027, 0.044),
                        smoothstep(8.0, 46.0, worldPosition.y));
         fog = smoothstep(35.0, 135.0, cameraDistance) * 0.55;
@@ -181,14 +186,8 @@ void main() {
         fogColor = vec3(0.48, 0.70, 0.90);
         fog = smoothstep(55.0, 150.0, cameraDistance);
     }
-    if (materialId == 16) {
-        // A painted cave reflection keeps opaque water legible without needing
-        // a second scene render. Grazing angles catch the cool ceiling color.
-        float fresnel = pow(1.0 - max(dot(normal, viewDirection), 0.0), 3.0);
-        vec3 reflection = mix(vec3(0.018, 0.16, 0.19), vec3(0.10, 0.25, 0.31),
-                              clamp(normal.y * 0.5 + 0.5, 0.0, 1.0));
-        lit = mix(lit, reflection, 0.24 + 0.44 * fresnel);
-    }
+    if (materialId == 16)
+        lit = shadeWater(lit, normal, viewDirection) + surfaceHighlight * 0.75;
     if (underground != 0) {
         // HDR composition owns exposure and gamma. Alpha marks luminous
         // surfaces so bloom cannot turn every bright stone surface into haze.
@@ -281,7 +280,10 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     bool changed = false;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (rebuild[index]) {
-            meshes_[index].upload(buildMesh(world, index));
+            auto opaque = buildMesh(world, index);
+            const auto water = splitWaterMesh(opaque);
+            meshes_[index].upload(opaque);
+            water_[index].upload(water);
             details_[index].upload(buildCaveDetails(world, index));
             relief_[index].upload(buildBlockRelief(world, index));
             changed = true;
@@ -298,7 +300,12 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         assetLights = std::move(dressing.lights);
     }
     GLint activeTexture = 0, previousTexture = 0, previousLights = 0;
+    std::array<GLint, 2> previousSceneTextures{};
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+    for (int unit = 2; unit <= 3; ++unit) {
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousSceneTextures[unit - 2]);
+    }
     glActiveTexture(GL_TEXTURE1);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousLights);
     glBindTexture(GL_TEXTURE_2D, lightTexture_);
@@ -321,7 +328,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         const auto position = origin + glm::ivec3(x, y, z);
                         const auto local = position - World::Min;
                         // OpenGL 3D images run x, then y, then z (unlike Chunk).
-                        voxels[local.x + size.x * (local.y + size.y * local.z)] = isSolid(block) ? 255 : 0;
+                        voxels[local.x + size.x * (local.y + size.y * local.z)] = isSolid(block) ? 255 : block == Block::Water ? 127 : 0;
                         if (block != Block::Lantern && block != Block::Crystal && block != Block::GlowLeaves) continue;
                         bool exposed = false;
                         for (const auto offset : {glm::ivec3(1,0,0), glm::ivec3(-1,0,0),
@@ -391,6 +398,12 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                                     * camera.viewMatrix();
     const Frustum frustum(viewProjection);
     shader_.setMat4("viewProjection", viewProjection);
+    shader_.setMat4("inverseViewProjection", glm::inverse(viewProjection));
+    // Keep unused 2D samplers bound to a complete texture during the opaque
+    // pass, including the first frame before a scene snapshot exists.
+    shader_.setInt("opaqueColor", 1);
+    shader_.setInt("opaqueDepth", 1);
+    shader_.setInt("refractiveWater", 0);
     shader_.setVec3("cameraPosition", camera.position());
     shader_.setVec3("cameraForward", camera.forward());
     shader_.setInt("underground", underground);
@@ -400,13 +413,16 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
     visibleChunks_ = drawnTriangles_ = 0;
+    std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
         const bool hasDetails = details_[index].indexCount() != 0 || relief_[index].indexCount() != 0;
         const bool hasAssets = assets_[index].indexCount() != 0;
         const float margin = underground ? (hasAssets ? HubAssetMargin : hasDetails ? 1.0f : 0.0f) : 0.0f;
-        if ((meshes_[index].indexCount() == 0 && !(underground && (hasDetails || hasAssets)))
+        if ((meshes_[index].indexCount() == 0 && water_[index].indexCount() == 0
+             && !(underground && (hasDetails || hasAssets)))
             || !frustum.intersects(minimum - margin, minimum + glm::vec3(Chunk::Size + margin))) continue;
+        if (water_[index].indexCount() != 0) visibleWater.push_back(index);
         shader_.setInt("lightOffset", lightOffsets_[index]);
         shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
         // Draw raised faces first so their depth can hide the block paint below.
@@ -428,8 +444,35 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             shader_.setInt("decorative", 0);
         }
     }
+    if (!visibleWater.empty()) {
+        if (underground && !wireframe) {
+            postProcess_.captureScene();
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, postProcess_.sceneColor());
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, postProcess_.sceneDepth());
+            shader_.setInt("opaqueColor", 2);
+            shader_.setInt("opaqueDepth", 3);
+            shader_.setInt("refractiveWater", 1);
+        }
+        // Water writes depth just like terrain; the opaque snapshot supplies
+        // transmission without alpha-sorting adjacent chunks or waterfalls.
+        glDisable(GL_CULL_FACE);
+        for (const auto index : visibleWater) {
+            shader_.setInt("lightOffset", lightOffsets_[index]);
+            shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
+            water_[index].draw();
+            drawnTriangles_ += water_[index].indexCount() / 3;
+        }
+        glEnable(GL_CULL_FACE);
+    }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     if (underground) postProcess_.finish();
+    for (int unit = 2; unit <= 3; ++unit) {
+        glActiveTexture(GL_TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousSceneTextures[unit - 2]));
+    }
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_3D, static_cast<GLuint>(previousTexture));
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousLights));
@@ -440,6 +483,7 @@ std::size_t WorldRenderer::triangleCount() const
 {
     std::size_t total = 0;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
+    for (const auto& mesh : water_) total += mesh.indexCount() / 3;
     if (underground_) {
         for (const auto& mesh : details_) total += mesh.indexCount() / 3;
         for (const auto& mesh : relief_) total += mesh.indexCount() / 3;

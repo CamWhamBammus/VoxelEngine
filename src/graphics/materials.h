@@ -164,26 +164,29 @@ MaterialSurface evaluateMaterial() {
             }
         }
     } else if (materialId == 16) {
-        // Water remains an opaque voxel surface. Broad flowing paint and
-        // shifting highlights suggest depth without hiding paths or the banks.
-        vec2 flow = top ? p + vec2(timeSeconds * 0.035, -timeSeconds * 0.025)
-                        : p + vec2(0.0, timeSeconds * 0.65);
-        float body = materialNoise(flow * (top ? vec2(0.45, 0.65) : vec2(3.0, 0.6)));
-        float wave = sin(flow.x * 2.8 + flow.y * 1.7 + body * 1.5);
-        float ripple = sin(flow.x * 3.0 - flow.y * 5.0 + body * 2.0);
-        color = mix(vec3(0.015, 0.20, 0.25), vec3(0.035, 0.52, 0.51), body);
+        // Continuous world-space waves cross voxel and chunk edges without seams.
+        vec2 flow = top ? worldPosition.xz : vec2(dot(worldPosition, u), worldPosition.y);
+        float t = timeSeconds;
         if (top) {
-            float glint = smoothstep(0.84, 0.99, wave) * smoothstep(-0.2, 0.8, ripple);
-            color += vec3(0.12, 0.23, 0.21) * glint;
-            slope = vec2(wave * 0.10, ripple * 0.075);
+            float broadWave = dot(flow, vec2(0.72, 0.46)) + t * 0.65;
+            float crossWave = dot(flow, vec2(-1.65, 2.15)) - t * 1.1;
+            float smallWave = dot(flow, vec2(4.2, 3.4)) + t * 1.45;
+            float detail = 1.0 - smoothstep(0.08, 0.45, length(fwidth(flow)));
+            slope = vec2(0.72, 0.46) * cos(broadWave) * 0.055
+                  + vec2(-1.65, 2.15) * cos(crossWave) * 0.028
+                  + vec2(4.2, 3.4) * cos(smallWave) * 0.009 * detail;
+            float body = materialNoise(flow * 0.28 + vec2(t * 0.015, -t * 0.012));
+            color = mix(vec3(0.025, 0.28, 0.32), vec3(0.045, 0.43, 0.40), body);
         } else {
-            // Vertical surfaces read as falling ribbons, not a rotated pond.
-            float ribbon = materialNoise(vec2(flow.x * 9.0, flow.y * 1.3));
-            float foam = smoothstep(0.66, 0.88, ribbon) * (0.55 + 0.45 * body);
-            color = mix(color * 1.25, vec3(0.38, 0.78, 0.76), foam);
-            slope = vec2((ribbon - 0.5) * 0.18, ripple * 0.035);
+            // Long, narrow streaks travel downward along every vertical curtain.
+            vec2 falling = flow + vec2(0.0, t * 2.4);
+            float ribbon = materialNoise(falling * vec2(5.5, 0.42));
+            float threads = materialNoise(falling * vec2(16.0, 1.2));
+            float foam = smoothstep(0.49, 0.84, ribbon) * (0.5 + 0.5 * threads);
+            color = mix(vec3(0.025, 0.31, 0.35), vec3(0.48, 0.78, 0.74), foam);
+            slope = vec2((ribbon - 0.5) * 0.18, sin(falling.y * 4.0 + ribbon) * 0.025);
         }
-        roughness = 0.16;
+        roughness = top ? 0.13 : 0.24;
     } else if (materialId == 17 || materialId == 18) {
         // Paint overlapping leaf shapes into the cubes: a dense tree keeps a
         // simple silhouette instead of multiplying thousands of small meshes.

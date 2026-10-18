@@ -55,6 +55,7 @@ if(VOXEL_BUILD_APP)
         src/graphics/renderer.cpp
         src/graphics/hud.cpp
         tests/graphics_smoke.cpp
+        tests/water_graphics_smoke.cpp
     )
     target_include_directories(VoxelEngine PRIVATE tests)
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)

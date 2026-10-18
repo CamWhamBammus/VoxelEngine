@@ -269,6 +269,36 @@ bool waterExit(const voxel::World& world, const Routes& routes)
     }
     return false;
 }
+
+void checkLakebeds(const voxel::World& world, const Routes& routes)
+{
+    using voxel::Block;
+    std::array<int,5> depths{};
+    int sand=0, paleRock=0, reachableDeep=0;
+    bool grounded=true;
+    for (int z=voxel::World::Min.z+1;z<voxel::World::MaxExclusive.z-1;++z) {
+        for (int x=voxel::World::Min.x+1;x<voxel::World::MaxExclusive.x-1;++x) {
+            if (world.get({x,6,z})!=Block::Water || world.get({x,7,z})!=Block::Air) continue;
+            int bed=5;
+            while (bed>0 && world.get({x,bed,z})==Block::Water) --bed;
+            const auto material=world.get({x,bed,z});
+            grounded &= bed>=2 && bed<=5 && voxel::isSolid(material);
+            if (bed<2 || bed>5) continue;
+            ++depths[6-bed];
+            sand+=material==Block::Sand;
+            paleRock+=material==Block::Limestone;
+            if (bed<=3 && routes.reached[index({x,bed+1,z})]) ++reachableDeep;
+        }
+    }
+    check(grounded,"lake water forms continuous one-to-four-block columns above a solid bed");
+    for (int depth=1;depth<=4;++depth)
+        check(depths[depth]>=50,"lake basins include substantial depth " + std::to_string(depth)
+              + " water (" + std::to_string(depths[depth]) + " columns)");
+    check(sand>=300 && paleRock>=40,"underwater beds include broad sand and pale mineral patches");
+    check(reachableDeep>=100,"deep lake floors stay connected to walking exits without jumps");
+    std::cout<<"Seed "<<world.seed()<<": "<<depths[1]<<" shallow and "<<depths[3]+depths[4]
+             <<" deep lake columns, "<<reachableDeep<<" reachable deep floors\n";
+}
 } // namespace
 
 int main()
@@ -400,6 +430,7 @@ int main()
         }
         checkWaterfalls(world);
         check(waterExit(world, routes), "players can walk from the basin up shallow shelves to connected village ground");
+        checkLakebeds(world, routes);
         if (seed == 1337) checkConnectedSolids(world);
     }
     check(seedChangesGeometry, "different seeds change actual geology and foliage rather than only metadata");

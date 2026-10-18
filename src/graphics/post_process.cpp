@@ -236,14 +236,29 @@ void PostProcess::begin(int width, int height)
     }
 }
 
-void PostProcess::finish()
+void PostProcess::captureScene()
 {
     if (!active_) throw std::logic_error("Post-processing frame has not begun");
+    GLint drawFrame = 0, readFrame = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFrame);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFrame);
+    const GLboolean scissor = glIsEnabled(GL_SCISSOR_TEST);
     glDisable(GL_SCISSOR_TEST);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, scene_);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolved_);
     glBlitFramebuffer(0, 0, width_, height_, 0, 0, width_, height_,
                       GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(drawFrame));
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(readFrame));
+    enabled(GL_SCISSOR_TEST, scissor);
+}
+
+void PostProcess::finish()
+{
+    // Resolve again after water: the earlier opaque snapshot was deliberately
+    // left untouched while the scene framebuffer received subsequent drawing.
+    captureScene();
+    glDisable(GL_SCISSOR_TEST);
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);

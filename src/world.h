@@ -68,7 +68,7 @@ constexpr bool isRenderable(Block block) noexcept
     return isValidBlock(block) && block != Block::Air;
 }
 
-// Water has an opaque stylized surface but no collision. Solid banks remain
+// Water has a refractive surface but no collision. Solid banks remain
 // visible beside it; water hides only other water faces, avoiding internal seams.
 constexpr bool occludes(Block adjacent, Block faceMaterial) noexcept
 {

@@ -36,4 +36,8 @@ MeshData buildMesh(const Chunk& chunk, glm::ivec3 origin = glm::ivec3(0),
 // Mesh one world chunk while sampling its neighbors to hide shared faces.
 MeshData buildMesh(const World& world, std::size_t chunkIndex);
 
+// Separate a buildMesh result into opaque and water triangles. Both outputs
+// retain triangle order and all vertex attributes, with no unused vertices.
+MeshData splitWaterMesh(MeshData& opaque);
+
 } // namespace voxel

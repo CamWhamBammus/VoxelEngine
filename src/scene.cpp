@@ -107,6 +107,28 @@ bool lake(int x, int z)
         || ellipse(x,z,{51,0},{22,9}) < 1;
 }
 
+int lakebed(int x, int z)
+{
+    // Keep the cascade landings shallow, including their join to the lake.
+    for (const auto& fall : Waterfalls) {
+        const int along=(x-fall.lip.x)*fall.direction;
+        if (along>=7 && along<=18 && std::abs(z-fall.lip.y)<=3) return 5;
+    }
+    // Four shallow shore cells preserve the existing exits. Farther in, each
+    // additional cell lowers the bed by one block, down to Y2. Sample once per
+    // column in all eight directions so opposite shores receive the same slope.
+    int distance=7;
+    for (const auto side : std::array<glm::ivec2,8>{{
+        {1,0},{-1,0},{0,1},{0,-1},{1,1},{-1,1},{1,-1},{-1,-1}
+    }}) for (int step=1;step<=6;++step) {
+        if (!lake(x+side.x*step,z+side.y*step)) {
+            distance=std::min(distance,step);
+            break;
+        }
+    }
+    return 5-std::max(0,distance-4);
+}
+
 // Rounded highlands meet the low water garden. The shoulders form natural
 // ledges; streets later cut comfortable one-block stair flights through them.
 int terrainHeight(int x, int z)
@@ -153,6 +175,9 @@ void landscape(World& world)
             const int ceiling = std::clamp(72+int(14*std::max(0.0f,1-distance))
                 +int(5*std::sin(x*.055f)*std::cos(z*.067f)),65,91);
             const int ground = terrainHeight(x,z);
+            const bool basin = lake(x,z);
+            const int bed = basin ? lakebed(x,z) : 5;
+            const Block bedMaterial = hash(x/4,z/4,world.seed())%7==0 ? Block::Limestone : Block::Sand;
             for (int y = 0; y < World::MaxExclusive.y; ++y) {
                 const bool shell = y == 0 || y == World::MaxExclusive.y-1
                     || x == World::Min.x || x == World::MaxExclusive.x-1
@@ -166,8 +191,8 @@ void landscape(World& world)
                     if (y>ground && y<ceiling) block=Block::Air;
                     if (y==ground) block=hash(x/3,z/3,world.seed())%9 ? Block::Grass : Block::Dirt;
                     if (y==ground-1) block=Block::Dirt;
-                    if (lake(x,z) && y>=5 && y<=ground)
-                        block=y==5?Block::Sand:y==6?Block::Water:Block::Air;
+                    if (basin && y>=bed && y<=ground)
+                        block=y==bed?bedMaterial:y<=6?Block::Water:Block::Air;
                 }
                 world.set({x,y,z},shell?Block::Bedrock:block);
             }

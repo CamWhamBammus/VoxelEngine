@@ -1,4 +1,5 @@
 #include "graphics_smoke.h"
+#include "water_graphics_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -44,9 +45,10 @@ void verifyPostProcessing()
     Shader callerProgram("#version 410 core\nvoid main() { gl_Position = vec4(0); }",
                          "#version 410 core\nout vec4 color; void main() { color = vec4(1); }");
     PostProcess post;
-    GLuint frame = 0, color = 0, depth = 0, vao = 0;
+    GLuint frame = 0, color = 0, depth = 0, vao = 0, snapshotFrame = 0;
     std::array<GLuint, 3> callerTextures{};
     glGenFramebuffers(1, &frame);
+    glGenFramebuffers(1, &snapshotFrame);
     glGenTextures(1, &color);
     glGenRenderbuffers(1, &depth);
     glGenVertexArrays(1, &vao);
@@ -71,6 +73,7 @@ void verifyPostProcessing()
         glEnable(GL_MULTISAMPLE);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glDeleteFramebuffers(1, &frame);
+        glDeleteFramebuffers(1, &snapshotFrame);
         glDeleteTextures(1, &color);
         glDeleteRenderbuffers(1, &depth);
         glDeleteVertexArrays(1, &vao);
@@ -173,6 +176,88 @@ void verifyPostProcessing()
             glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
             return pixel;
         };
+        const auto verifySnapshot = [&](int renderWidth, int renderHeight) {
+            post.begin(renderWidth, renderHeight);
+            const std::array<float, 4> opaque{0.1f,0.2f,0.8f,0};
+            const std::array<float, 4> later{0.8f,0.1f,0.05f,0};
+            const float opaqueDepth = 0.75f, laterDepth = 0.25f;
+            glClearBufferfv(GL_COLOR, 0, opaque.data());
+            glClearBufferfv(GL_DEPTH, 0, &opaqueDepth);
+            GLint sceneFrame = 0;
+            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &sceneFrame);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            for (int unit = 0; unit < 3; ++unit) {
+                glActiveTexture(GL_TEXTURE0 + unit);
+                glBindTexture(GL_TEXTURE_2D, callerTextures[unit]);
+            }
+            glActiveTexture(GL_TEXTURE3);
+            GLint texture3 = 0;
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture3);
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(1,2,1,1);
+            post.captureScene();
+            GLint actualDraw = 0, actualRead = 0, actualActive = 0;
+            std::array<GLint, 4> scissor{};
+            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &actualDraw);
+            glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &actualRead);
+            glGetIntegerv(GL_ACTIVE_TEXTURE, &actualActive);
+            glGetIntegerv(GL_SCISSOR_BOX, scissor.data());
+            if (actualDraw != sceneFrame || actualRead != 0 || actualActive != GL_TEXTURE3
+                || !glIsEnabled(GL_SCISSOR_TEST) || scissor != std::array<GLint,4>{1,2,1,1}) {
+                throw std::runtime_error("Opaque scene capture changed framebuffer or scissor state");
+            }
+            for (int unit = 0; unit < 4; ++unit) {
+                glActiveTexture(GL_TEXTURE0 + unit);
+                GLint binding = 0;
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &binding);
+                const auto expected = unit < 3 ? static_cast<GLint>(callerTextures[unit]) : texture3;
+                if (binding != expected) throw std::runtime_error("Opaque scene capture changed a texture binding");
+            }
+            glActiveTexture(GL_TEXTURE3);
+            if (!post.sceneColor() || !post.sceneDepth() || post.sceneColor() == post.sceneDepth())
+                throw std::runtime_error("Opaque scene capture did not expose distinct color and depth textures");
+            const auto checkSnapshot = [&](const std::array<float,4>& expectedColor, float expectedDepth) {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, snapshotFrame);
+                glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, post.sceneColor(), 0);
+                glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, post.sceneDepth(), 0);
+                if (glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+                    throw std::runtime_error("Opaque scene snapshot attachments are incomplete");
+                // Read both corners and the center: capture must resolve the
+                // full target despite a tiny active scissor or a recent resize.
+                for (const auto pixel : {glm::ivec2(0,0), glm::ivec2(renderWidth / 2,renderHeight / 2),
+                                         glm::ivec2(renderWidth - 1,renderHeight - 1)}) {
+                    std::array<float, 4> actualColor{};
+                    float actualDepth = 0;
+                    glReadPixels(pixel.x, pixel.y, 1, 1, GL_RGBA, GL_FLOAT, actualColor.data());
+                    glReadPixels(pixel.x, pixel.y, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &actualDepth);
+                    for (int channel = 0; channel < 4; ++channel)
+                        if (std::abs(actualColor[channel] - expectedColor[channel]) > 0.001f)
+                            throw std::runtime_error("Opaque scene snapshot contains the wrong color");
+                    if (std::abs(actualDepth - expectedDepth) > 0.001f)
+                        throw std::runtime_error("Opaque scene snapshot contains the wrong depth");
+                }
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            };
+            checkSnapshot(opaque, opaqueDepth);
+            glDisable(GL_SCISSOR_TEST);
+            post.captureScene();
+            if (glIsEnabled(GL_SCISSOR_TEST))
+                throw std::runtime_error("Repeated scene capture enabled scissoring");
+            glClearBufferfv(GL_COLOR, 0, later.data());
+            glClearBufferfv(GL_DEPTH, 0, &laterDepth);
+            checkSnapshot(opaque, opaqueDepth);
+            post.finish();
+            checkState();
+            checkSnapshot(later, laterDepth);
+            const auto finalColor = read(renderWidth / 2, renderHeight / 2);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, frame);
+            float finalDepth = 0;
+            glReadPixels(renderWidth / 2, renderHeight / 2, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &finalDepth);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            if (finalColor[0] < finalColor[2] + 50 || std::abs(finalDepth - laterDepth) > 0.001f)
+                throw std::runtime_error("HDR finish did not include drawing after the opaque snapshot");
+            checkOpenGl();
+        };
         draw(0);
         const auto unlitOutside = read(width / 2 + 40, height / 2);
         const auto unlitCenter = read(width / 2, height / 2);
@@ -198,6 +283,7 @@ void verifyPostProcessing()
             if (!rejected) throw std::runtime_error("Post-processing accepted an invalid frame transition");
         };
         rejects([&] { post.finish(); });
+        rejects([&] { post.captureScene(); });
         rejects([&] { post.begin(0, height); });
         rejects([&] { post.begin(width, -1); });
         GLint maximumSize = 0;
@@ -209,6 +295,10 @@ void verifyPostProcessing()
         post.finish();
         checkState();
         draw(1, width / 2, height / 2);
+        verifySnapshot(width / 2, height / 2);
+        verifySnapshot(width, height);
+        rejects([&] { post.captureScene(); });
+        checkState();
         draw(1);
         checkOpenGl();
     } catch (...) {
@@ -216,7 +306,7 @@ void verifyPostProcessing()
         throw;
     }
     cleanup();
-    std::cout << "HDR processing passed: emission bloom, scene depth, resize, guards and GL state\n";
+    std::cout << "HDR processing passed: opaque snapshots, emission bloom, scene depth, resize, guards and GL state\n";
 }
 
 void verifyOverlayState()
@@ -1006,6 +1096,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyStableWorldLighting(width, height);
     verifyBlockRelief(width, height);
     verifyHubDressing(width, height);
+    verifyWaterRendering(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
