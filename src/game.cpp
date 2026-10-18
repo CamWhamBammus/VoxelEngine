@@ -83,19 +83,18 @@ Game::Game(const Options& options)
     }
     if (!editorMode_) {
         buildUndergroundScene(world);
-        inventory_[static_cast<std::size_t>(Block::Stone)] = 24;
-        inventory_[static_cast<std::size_t>(Block::Planks)] = 24;
-        inventory_[static_cast<std::size_t>(Block::Lantern)] = 8;
-        selectedBlock = Block::Planks;
         if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
         status = "Explore Glowroot Haven: tree island, waterfront homes, and the north expedition gate";
     }
-    findTarget();
+    if (editorMode_) findTarget();
 }
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
-    if (!editorMode_ && !updatePlay(actions, deltaSeconds)) return;
+    if (!editorMode_) {
+        updatePlay(actions, deltaSeconds);
+        return;
+    }
     if (actions.selectedBlock && isRenderable(*actions.selectedBlock) && *actions.selectedBlock != Block::Bedrock) {
         selectedBlock = *actions.selectedBlock;
     } else if (actions.materialStep != 0) {
@@ -106,12 +105,8 @@ void Game::update(const InputActions& actions, float deltaSeconds)
         const int step = actions.materialStep > 0 ? 1 : -1;
         selectedBlock = PlaceableBlocks[(index + step + count) % count];
     }
-    if (editorMode_) {
-        handleFiles(actions);
-        handleUndoRedo(actions);
-    } else if (actions.save || actions.load || actions.undo || actions.redo) {
-        status = "Save and undo are editor tools. Launch with --editor to use them";
-    }
+    handleFiles(actions);
+    handleUndoRedo(actions);
     findTarget();
     editTarget(actions);
 }
@@ -119,7 +114,7 @@ void Game::update(const InputActions& actions, float deltaSeconds)
 bool Game::returnToVillage()
 {
     // Search only inside the cavern. The surface spawn helper would put us
-    // above its roof. Nearby supported spaces also handle player-built walls.
+    // above its roof. Nearby supported spaces also handle an obstructed arrival.
     Player destination = player;
     float nearest = std::numeric_limits<float>::max();
     for (int z = static_cast<int>(std::floor(VillageSpawn.z)) - 6;
@@ -149,17 +144,16 @@ bool Game::returnToVillage()
     return true;
 }
 
-bool Game::updatePlay(const InputActions& actions, float deltaSeconds)
+void Game::updatePlay(const InputActions& actions, float deltaSeconds)
 {
-    if (!actions.active) return false;
+    if (!actions.active) return;
     if (actions.respawn || player.feetPosition().y < -16.0f) {
-        status = returnToVillage() ? "Returned to the village - backpack kept"
-                                   : "Village entrance is blocked. Clear a space to return";
+        status = returnToVillage() ? "Returned to the village"
+                                   : "No safe space at the village entrance";
     } else {
         player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
         camera.setPosition(player.eyePosition());
     }
-    return true;
 }
 
 void Game::handleFiles(const InputActions& actions)
@@ -217,20 +211,9 @@ void Game::editTarget(const InputActions& actions)
 
     bool changed = false;
     if (actions.remove) {
-        if (!editorMode_ && targetMaterial == Block::Bedrock) {
-            status = "Bedrock seals the edge of this sample. Follow the tunnels to explore";
-            return;
-        }
-        changed = removeBlock(world, *target, editorMode_ ? &history : nullptr);
-        if (changed) {
-            if (!editorMode_) ++inventory_[static_cast<std::size_t>(targetMaterial)];
-            status = std::string(editorMode_ ? "Removed " : "Mined ") + std::string(blockName(targetMaterial));
-        }
+        changed = removeBlock(world, *target, &history);
+        if (changed) status = "Removed " + std::string(blockName(targetMaterial));
     } else if (actions.place) {
-        if (!editorMode_ && blockCount(selectedBlock) == 0) {
-            status = "No " + std::string(blockName(selectedBlock)) + " blocks - mine some first";
-            return;
-        }
         const auto placement = checkPlacement(world, *target, selectedBlock, camera.position());
         switch (placement.failure) {
         case PlacementFailure::None: break;
@@ -256,15 +239,8 @@ void Game::editTarget(const InputActions& actions)
             status = "Cannot place: reset the camera with R";
             return;
         }
-        if (!editorMode_ && isSolid(selectedBlock) && player.overlapsBlock(placement.position)) {
-            status = "Cannot place: your body is in the destination cell";
-            return;
-        }
-        changed = placeBlock(world, *target, selectedBlock, camera.position(), editorMode_ ? &history : nullptr);
-        if (changed) {
-            if (!editorMode_) --inventory_[static_cast<std::size_t>(selectedBlock)];
-            status = "Placed " + std::string(blockName(selectedBlock));
-        }
+        changed = placeBlock(world, *target, selectedBlock, camera.position(), &history);
+        if (changed) status = "Placed " + std::string(blockName(selectedBlock));
     }
     if (changed) findTarget();
 }
@@ -275,30 +251,16 @@ bool Game::hasUnsavedChanges() const
     return editorMode_ && !world.sameContents(savedWorld_);
 }
 
-int Game::blockCount(Block block) const
-{
-    return isRenderable(block) ? inventory_[static_cast<std::size_t>(block)] : 0;
-}
-
 std::string Game::playStatusText(bool captured, bool showHelp) const
 {
     std::ostringstream text;
     text << "GLOWROOT HAVEN | VILLAGE HUB";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
-    text << "\nSELECTED " << blockName(selectedBlock) << " x" << blockCount(selectedBlock);
-    if (captured && target) text << " | LOOKING AT " << blockName(world.get(target->position));
-    text << "\nLEFT MINE | RIGHT BUILD | 1-9 MATERIAL | [ ] MORE"
-         << "\n" << status
+    text << "\n" << status
          << "\nH CONTROLS | R RETURN TO VILLAGE | ESC PAUSE | Q QUIT";
     if (showHelp) {
         text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
-             << "\nMIDDLE PICK MATERIAL | SCROLL ZOOM | TAB CAPTURE"
-             << "\n1 STONE | 2 LIMESTONE | 3 SLATE | 4 COAL | 5 COPPER"
-             << "\n6 IRON | 7 CRYSTAL | 8 PLANKS | 9 LANTERN"
-             << "\nBACKPACK: COAL " << blockCount(Block::CoalOre)
-             << " | COPPER " << blockCount(Block::CopperOre)
-             << " | IRON " << blockCount(Block::IronOre)
-             << " | CRYSTAL " << blockCount(Block::Crystal)
+             << "\nSCROLL ZOOM | TAB RESUME"
              << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
              << "\nHUB RESETS ON LAUNCH | EXPEDITIONS AND BUILDING SERVICES COMING LATER";
     }

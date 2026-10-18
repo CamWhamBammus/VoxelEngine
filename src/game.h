@@ -6,7 +6,6 @@
 #include "world.h"
 
 #include <cstdint>
-#include <array>
 #include <span>
 #include <string>
 #include <string_view>
@@ -31,7 +30,7 @@ inline constexpr const char* Usage =
     "  --editor           Open the flying terrain editor instead of the cave sample.\n"
     "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
     "  --world path.vxl   Choose the save file (default: world.vxl).\n"
-    "  --reach N          Editing distance in blocks, 1 to 64 (default: 8).\n"
+    "  --reach N          Editor reach in blocks, 1 to 64 (default: 8).\n"
     "  --smoke-test       Check rendering in a hidden window, then exit.\n"
     "  --screenshot path.ppm\n"
     "                     Run the smoke test and write a rendered image.\n"
@@ -57,7 +56,6 @@ public:
     explicit Game(const Options& options);
     void update(const InputActions& actions, float deltaSeconds = 0.0f);
     bool editorMode() const { return editorMode_; }
-    int blockCount(Block block) const;
     bool hasUnsavedChanges() const;
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
@@ -73,7 +71,7 @@ public:
 
 private:
     bool returnToVillage();
-    bool updatePlay(const InputActions& actions, float deltaSeconds);
+    void updatePlay(const InputActions& actions, float deltaSeconds);
     std::string playStatusText(bool captured, bool showHelp) const;
     void handleFiles(const InputActions& actions);
     void handleUndoRedo(const InputActions& actions);
@@ -84,7 +82,6 @@ private:
     std::string savePath_;
     int editReach_;
     bool editorMode_;
-    std::array<int, BlockCount> inventory_{};
 };
 
 } // namespace voxel

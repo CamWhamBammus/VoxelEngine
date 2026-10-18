@@ -2,11 +2,14 @@
 #include "input.h"
 #include "scene.h"
 
+#include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <utility>
 #include <unistd.h>
 
 namespace {
@@ -22,7 +25,7 @@ void look(voxel::Game& game, glm::vec3 direction)
 int main()
 {
     int failures = 0;
-    const auto check = [&](bool passed, const char* message) {
+    const auto check = [&](bool passed, const std::string& message) {
         if (!passed) { std::cerr << message << '\n'; ++failures; }
     };
     char name[] = "/tmp/voxel-play-XXXXXX";
@@ -34,12 +37,11 @@ int main()
         options.worldPath = (directory / "world.vxl").string();
         { std::ofstream file(options.worldPath); file << "existing editor save"; }
         voxel::Game game(options);
-        check(!game.editorMode() && game.world.seed() == 42, "default mode starts the underground sample");
+        check(!game.editorMode() && game.world.seed() == 42, "default mode starts the underground hub");
         check(game.player.grounded() && game.player.feetPosition() == voxel::VillageSpawn,
               "player starts on the village floor, not on the cavern roof");
         check(game.camera.position() == game.player.eyePosition(), "camera follows the player's eyes");
-        check(game.blockCount(voxel::Block::Stone) == 24 && game.blockCount(voxel::Block::Planks) == 24
-              && game.blockCount(voxel::Block::Lantern) == 8, "sample supplies building and lighting materials");
+        check(!game.target, "normal play starts without an editor ray target");
         const auto spawn = game.player.feetPosition();
         game.update({}, 1000.0f);
         check(game.player.feetPosition() == spawn, "released mouse pauses the player");
@@ -58,87 +60,96 @@ int main()
         actions.movement = {1, 0};
         game.update(actions, 0.1f);
         check(game.player.feetPosition() != spawn, "WASD drives the physical player");
-        actions = {};
-        actions.active = true;
-        actions.save = actions.load = actions.undo = actions.redo = true;
-        game.update(actions);
-        std::ifstream file(options.worldPath);
-        std::string contents;
-        std::getline(file, contents);
-        check(contents == "existing editor save", "sample controls never overwrite or load editor saves");
-        check(!game.hasUnsavedChanges(), "temporary sample edits do not claim to be an editor save");
+        check(!game.target, "moving and looking do not enable editor targeting");
 
-        // Flat workshop fixtures isolate the ore inventory and placement rules.
+        for (const bool captured : {false, true}) {
+            const auto hud = game.statusText(0, 0, 0, 0, captured, true);
+            for (const auto prompt : {"WASD WALK", "SPACE JUMP", "SHIFT SPRINT", "MOUSE LOOK", "R RETURN"})
+                check(hud.find(prompt) != std::string::npos, std::string("play help includes ") + prompt);
+            for (const auto prompt : {"SELECTED", "BACKPACK", "INVENTORY", "LEFT REMOVE", "LEFT MINE", "RIGHT PLACE", "RIGHT BUILD",
+                                      "MIDDLE PICK", "1-9 MATERIAL", "F5", "F9", "UNDO", "REDO", "TARGET", "COAL:", "COPPER:"})
+                check(hud.find(prompt) == std::string::npos, std::string("play HUD excludes editor/inventory prompt ") + prompt);
+        }
+
+        // Real ore, an unobstructed ray, and an empty neighboring cell make
+        // these actions effective if normal play accidentally reaches the editor.
         voxel::Game workshop(options);
         for (int z = voxel::World::Min.z; z < voxel::World::MaxExclusive.z; ++z) {
             for (int x = voxel::World::Min.x; x < voxel::World::MaxExclusive.x; ++x) {
-                for (int y = 0; y < voxel::World::MaxExclusive.y; ++y) {
+                for (int y = 0; y < voxel::World::MaxExclusive.y; ++y)
                     workshop.world.set({x, y, z}, y == 0 ? voxel::Block::Stone : voxel::Block::Air);
-                }
             }
         }
-        check(workshop.player.setFeetPosition(workshop.world, {0.5f, 1.0f, 0.5f}), "workshop player fits");
+        check(workshop.player.setFeetPosition(workshop.world, {0.5f, 1.0f, 0.5f}), "action fixture fits the player");
+        workshop.camera.setPosition(workshop.player.eyePosition());
         look(workshop, {1, 0, 0});
         workshop.world.set({3, 2, 0}, voxel::Block::CopperOre);
-        actions = {};
-        actions.active = true;
-        actions.remove = true;
-        workshop.update(actions);
-        check(workshop.world.get({3, 2, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::CopperOre) == 1,
-              "mining copper adds exactly one copper ore block to the backpack");
-        check(workshop.history.undoCount() == 0, "mining cannot duplicate resources through editor undo");
-        workshop.world.set({4, 2, 0}, voxel::Block::Stone);
-        actions.remove = false;
-        actions.place = true;
-        actions.selectedBlock = voxel::Block::CopperOre;
-        workshop.update(actions);
-        check(workshop.world.get({3, 2, 0}) == voxel::Block::CopperOre && workshop.blockCount(voxel::Block::CopperOre) == 0,
-              "placing copper consumes exactly one available ore block");
-        workshop.update(actions);
-        check(workshop.world.get({2, 2, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::CopperOre) == 0,
-              "empty inventory cannot create blocks or go negative");
-        workshop.world.set({1, 1, 0}, voxel::Block::Stone);
-        look(workshop, {0.5f, -0.8660254f, 0});
-        actions.selectedBlock = voxel::Block::Planks;
-        workshop.update(actions);
-        check(workshop.world.get({0, 1, 0}) == voxel::Block::Air && workshop.blockCount(voxel::Block::Planks) == 24
-              && workshop.status == "Cannot place: your body is in the destination cell",
-              "placing into the player's body is rejected without consuming stock");
+        const auto aimedOre = voxel::raycast(workshop.camera.position(), workshop.camera.forward(), 8,
+            [&workshop](glm::ivec3 position) { return workshop.world.get(position); });
+        check(aimedOre && aimedOre->position == glm::ivec3(3, 2, 0), "regression fixture really aims at exposed ore");
+        check(aimedOre && voxel::checkPlacement(workshop.world, *aimedOre, workshop.selectedBlock,
+                                               workshop.camera.position()).failure == voxel::PlacementFailure::None,
+              "regression fixture has an empty usable placement destination");
 
-        look(workshop, {1, 0, 0});
-        workshop.world.set({3, 2, 0}, voxel::Block::Bedrock);
-        actions = {};
-        actions.active = actions.remove = true;
-        workshop.update(actions);
-        check(workshop.world.get({3, 2, 0}) == voxel::Block::Bedrock
-              && workshop.blockCount(voxel::Block::Bedrock) == 0, "bedrock cannot be mined out of the sample boundary");
-        actions.remove = false;
-        actions.selectedBlock = voxel::Block::Bedrock;
-        workshop.update(actions);
-        check(workshop.selectedBlock == voxel::Block::Planks, "bedrock cannot be selected for construction");
-        check(workshop.blockCount(static_cast<voxel::Block>(255)) == 0, "invalid materials never index the backpack");
+        // Seed both stacks so incorrectly processing undo or redo would alter content.
+        workshop.history.apply(workshop.world, {6, 1, 0}, voxel::Block::Dirt);
+        workshop.history.apply(workshop.world, {7, 1, 0}, voxel::Block::Planks);
+        workshop.history.undo(workshop.world);
+        check(workshop.history.undoCount() == 1 && workshop.history.redoCount() == 1, "both edit-history regression stacks are populated");
+        workshop.world.takeDirtyChunks();
+        const auto untouched = workshop.world;
+        const auto selected = workshop.selectedBlock;
+        const auto status = workshop.status;
+        const std::array<std::pair<const char*, voxel::InputActions>, 10> editorActions{{
+            {"remove", {.remove = true}}, {"place", {.place = true}}, {"pick", {.pick = true}},
+            {"select material", {.selectedBlock = voxel::Block::RoofTiles}},
+            {"next material", {.materialStep = 1}}, {"previous material", {.materialStep = -1}},
+            {"save", {.save = true}}, {"load", {.load = true}},
+            {"undo", {.undo = true}}, {"redo", {.redo = true}},
+        }};
+        for (const bool active : {false, true}) {
+            for (const auto& [name, request] : editorActions) {
+                auto ignored = request;
+                ignored.active = active;
+                workshop.update(ignored, 1.0f / 60.0f);
+                const auto label = std::string(active ? "active " : "paused ") + name;
+                check(workshop.world.sameContents(untouched) && workshop.world.takeDirtyChunks().empty(),
+                      label + " cannot modify or dirty the play world");
+                check(workshop.history.undoCount() == 1 && workshop.history.redoCount() == 1,
+                      label + " cannot consume or clear editor history");
+                check(workshop.selectedBlock == selected && workshop.status == status,
+                      label + " cannot change selected material or play status");
+                check(!workshop.target, label + " cannot create an editor ray target");
+            }
+        }
+        std::ifstream file(options.worldPath);
+        std::string contents;
+        std::getline(file, contents);
+        check(contents == "existing editor save", "play actions never load or overwrite the editor save");
+        check(!workshop.hasUnsavedChanges(), "play mode never reports editor save changes");
 
         for (const std::uint32_t seed : {42u, 1337u, 4294967295u}) {
             options.seed = seed;
             voxel::Game expedition(options);
             const auto original = expedition.world;
-            // Returning is a relocation, preserving all collected blocks and edits.
+            // A blocked spawn exercises safe relocation without rebuilding the scene.
             check(expedition.player.setFeetPosition(expedition.world, voxel::VillageSpawn + glm::vec3(0, 1, 0)),
                   "village has vertical space for the return fixture");
             const glm::ivec3 occupiedSpawn(glm::floor(voxel::VillageSpawn));
             expedition.world.set(occupiedSpawn, voxel::Block::Planks);
-            const auto edited = expedition.world;
+            const auto obstructed = expedition.world;
             actions = {};
             actions.active = actions.respawn = true;
             expedition.update(actions, 0.1f);
             check(expedition.player.grounded() && expedition.player.feetPosition().y < voxel::World::MaxExclusive.y
-                  && !expedition.player.overlapsBlock(occupiedSpawn), "return finds safe space below the ceiling when spawn is built over");
-            check(expedition.world.sameContents(edited) && !expedition.world.sameContents(original)
-                  && expedition.blockCount(voxel::Block::Planks) == 24, "return keeps the sample edits and backpack intact");
+                  && !expedition.player.overlapsBlock(occupiedSpawn), "return finds safe space below the ceiling when spawn is obstructed");
+            check(expedition.world.sameContents(obstructed) && !expedition.world.sameContents(original),
+                  "return relocates the player without mutating or resetting the scene");
             actions.respawn = false;
             const auto feet = expedition.player.feetPosition();
             expedition.update(actions, 1000.0f);
             check(expedition.player.feetPosition() == feet, "exploration has no challenge countdown or time limit");
+            check(!expedition.target, "returning to the village does not enable editor targeting");
             check(expedition.statusText(0, 0, 0, 0, true, true).find("EXPEDITIONS AND BUILDING SERVICES COMING LATER") != std::string::npos,
                   "hub controls accurately identify the current development scope");
         }

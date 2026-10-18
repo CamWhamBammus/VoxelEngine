@@ -69,6 +69,7 @@ void Input::capture(bool enabled)
 void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
 {
     actions_ = {};
+    if (!editorMode) wireframe_ = false;
     const Buttons buttons = readButtons();
     const Buttons previous = previousButtons_;
     previousButtons_ = buttons;
@@ -87,7 +88,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
 
     if (pressed(buttons.releaseMouse, previous.releaseMouse)) capture(false);
     if (pressed(buttons.toggleMouse, previous.toggleMouse)) capture(!captured_);
-    if (pressed(buttons.wireframe, previous.wireframe)) wireframe_ = !wireframe_;
+    if (editorMode && pressed(buttons.wireframe, previous.wireframe)) wireframe_ = !wireframe_;
     const bool resetCamera = pressed(buttons.resetCamera, previous.resetCamera);
     if (resetCamera) {
         if (editorMode) camera.reset();
@@ -95,12 +96,14 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
         glfwGetCursorPos(window_, &cursorX_, &cursorY_);
     }
     if (pressed(buttons.help, previous.help)) help_ = !help_;
-    actions_.save = pressed(buttons.save, previous.save);
-    actions_.load = pressed(buttons.load, previous.load);
-    actions_.undo = editActions.undo;
-    actions_.redo = editActions.redo;
+    if (editorMode) {
+        actions_.save = pressed(buttons.save, previous.save);
+        actions_.load = pressed(buttons.load, previous.load);
+        actions_.undo = editActions.undo;
+        actions_.redo = editActions.redo;
+    }
 
-    // File/history shortcuts work with the cursor released. Movement, mouse
+    // Editor file/history shortcuts work with the cursor released. Movement, mouse
     // editing, and material selection below require mouse capture.
     if (!captured_) return;
     actions_.active = true;
@@ -111,14 +114,14 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode)
     actions_.jump = pressed(buttons.jump, previous.jump);
     actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT);
     actions_.respawn = resetCamera;
-    actions_.remove = pressed(buttons.remove, previous.remove);
-    actions_.place = pressed(buttons.place, previous.place);
-    actions_.pick = pressed(buttons.pick, previous.pick);
-    actions_.materialStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
-        - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
-    for (std::size_t slot = 0; slot < UndergroundHotbar.size(); ++slot) {
-        if (keyDown(GLFW_KEY_1 + static_cast<int>(slot))) {
-            actions_.selectedBlock = editorMode ? PlaceableBlocks[slot] : UndergroundHotbar[slot];
+    if (editorMode) {
+        actions_.remove = pressed(buttons.remove, previous.remove);
+        actions_.place = pressed(buttons.place, previous.place);
+        actions_.pick = pressed(buttons.pick, previous.pick);
+        actions_.materialStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
+            - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
+        for (int key = GLFW_KEY_1; key <= GLFW_KEY_9; ++key) {
+            if (keyDown(key)) actions_.selectedBlock = PlaceableBlocks[static_cast<std::size_t>(key - GLFW_KEY_1)];
         }
     }
     // Reset wins over queued mouse motion, zoom, and held movement keys this frame.
