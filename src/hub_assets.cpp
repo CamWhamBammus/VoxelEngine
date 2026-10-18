@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <glm/geometric.hpp>
 #include <glm/vec2.hpp>
 
 namespace voxel {
@@ -65,13 +66,44 @@ bool hangingClearance(const World& world, glm::ivec3 anchor)
     return true;
 }
 
+bool retainingFace(const World& world, glm::ivec3 anchor, glm::ivec3 outward)
+{
+    const glm::ivec3 across(outward.z, 0, -outward.x);
+    for (int drop = 1; drop <= 4; ++drop)
+        if (!isSolid(world.get(anchor - glm::ivec3(0,drop,0)))) return false;
+    // The lowest leaves stay above walking headroom. The full width must be
+    // clear, so ivy cannot spread over stairs, bridge rails, or nearby walls.
+    for (int drop = 0; drop <= 5; ++drop) {
+        for (int side = -1; side <= 1; ++side) {
+            const auto cell = anchor + outward + across * side - glm::ivec3(0,drop,0);
+            if (!World::contains(cell) || world.get(cell) != Block::Air) return false;
+        }
+    }
+    return true;
+}
+
+bool vineFits(const World& world, const HubAsset& asset)
+{
+    // An eave may border a higher terrace. Test the small model itself so its
+    // leaves cannot disappear into the hill; only the stem root embeds.
+    for (const auto& vertex : buildHubAsset(asset).vertices) {
+        const auto offset = vertex.position - asset.position;
+        if (glm::dot(offset, offset) > 0.0036f && !air(world, vertex.position)) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 std::vector<HubAsset> planHubAssets(const World& world)
 {
     std::vector<HubAsset> assets;
+    std::vector<HubAsset> planting;
     const auto add = [&](HubAssetKind kind, glm::vec3 position, int facing = 0, std::uint32_t seed = 0) {
         if (World::contains(glm::ivec3(glm::floor(position)))) assets.push_back({kind, position, facing, seed});
+    };
+    const auto plant = [&](HubAssetKind kind, glm::vec3 position, int facing, std::uint32_t seed) {
+        if (World::contains(glm::ivec3(glm::floor(position)))) planting.push_back({kind, position, facing, seed});
     };
 
     // Lantern fittings are anchored to actual light blocks, including edited
@@ -172,7 +204,8 @@ std::vector<HubAsset> planHubAssets(const World& world)
         if (!tower && !greenhouse) {
             // Half-cell Z avoids choosing the wrong roof cell after rotation.
             const auto eave = buildingPoint(building, {width + 0.07f, height + 1.02f, depth - 0.5f});
-            if (isSolid(world.get(glm::ivec3(glm::floor(eave)))))
+            if (isSolid(world.get(glm::ivec3(glm::floor(eave))))
+                && vineFits(world, {HubAssetKind::Vines, eave, (building.facing + 1) % 4, seed}))
                 add(HubAssetKind::Vines, eave, (building.facing + 1) % 4, seed);
         }
         if (storehouse) {
@@ -182,28 +215,45 @@ std::vector<HubAsset> planHubAssets(const World& world)
         }
     }
 
-    // Use actual terrain heights throughout the cavern. Seeded spacing leaves
-    // readable groups of plants without adding a model to every grass block.
-    for (int z = World::Min.z + 3; z < World::MaxExclusive.z - 3; z += 2) {
-        for (int x = World::Min.x + 3; x < World::MaxExclusive.x - 3; x += 2) {
-            const auto seed = variation(x, z, world.seed());
-            if (seed % 4 != 0) continue;
-            for (int y = World::MaxExclusive.y - 3; y >= 8; --y) {
-                if (!soil(world.get({x,y,z}))) continue;
-                const float jitterX = float((seed >> 8) % 5) * 0.06f;
-                const float jitterZ = float((seed >> 12) % 5) * 0.06f;
-                const glm::vec3 position(x + 0.38f + jitterX, y + 1.0f, z + 0.38f + jitterZ);
-                if (!plantedFootprint(world, position, 0.9f)) continue;
-                bool shore = false;
-                for (const auto side : {glm::ivec3(4,0,0), {-4,0,0}, {0,0,4}, {0,0,-4}})
-                    for (int depth = 0; depth <= 3; ++depth)
-                        shore |= world.get(glm::ivec3(x,y-depth,z) + side) == Block::Water;
-                const auto kind = shore ? HubAssetKind::Reeds
-                    : seed % 7 == 0 ? HubAssetKind::Mushrooms
-                    : (seed >> 4) % 3 == 0 ? HubAssetKind::Flowers
-                    : (seed >> 4) % 3 == 1 ? HubAssetKind::Fern : HubAssetKind::Shrub;
-                add(kind, position, (seed >> 16) % 4, seed);
-                break;
+    // A few complementary plants share each irregular garden pocket. Empty
+    // space between pockets keeps the paths and larger terrain shapes legible.
+    using Kind = HubAssetKind;
+    constexpr Kind gardens[4][5]{
+        {Kind::Shrub, Kind::Fern, Kind::Fern, Kind::Mushrooms, Kind::Fern},
+        {Kind::Flowers, Kind::Flowers, Kind::Fern, Kind::Flowers, Kind::Shrub},
+        {Kind::Mushrooms, Kind::Fern, Kind::Mushrooms, Kind::Shrub, Kind::Fern},
+        {Kind::Shrub, Kind::Flowers, Kind::Fern, Kind::Flowers, Kind::Shrub},
+    };
+    constexpr glm::vec2 offsets[5]{{0,0}, {1.8f,0.4f}, {-1.3f,1.7f}, {0.6f,-1.8f}, {-1.7f,-1.4f}};
+    for (int z = World::Min.z + 6; z < World::MaxExclusive.z - 6; z += 4) {
+        const bool elevatedPocket = ((z - World::Min.z - 6) / 4) % 2 != 0;
+        for (int x = World::Min.x + 6 + (elevatedPocket ? 4 : 0); x < World::MaxExclusive.x - 6; x += 8) {
+            const auto patch = variation(x, z, world.seed());
+            const float turn = float((patch >> 8) % 1024) * 0.006135923f;
+            const glm::vec2 along(std::cos(turn), std::sin(turn)), across(-along.y, along.x);
+            const glm::vec2 center(x + 0.5f + float(int((patch >> 18) % 7) - 3) * 0.25f,
+                                   z + 0.5f + float(int((patch >> 22) % 7) - 3) * 0.25f);
+            const int count = 3 + int((patch >> 4) % 3);
+            for (int slot = 0; slot < count; ++slot) {
+                const auto spot = center + along * offsets[slot].x + across * offsets[slot].y;
+                const int columnX = int(std::floor(spot.x)), columnZ = int(std::floor(spot.y));
+                const auto seed = variation(columnX, columnZ, patch);
+                for (int y = World::MaxExclusive.y - 3; y >= (elevatedPocket ? 12 : 8); --y) {
+                    if (!soil(world.get({columnX,y,columnZ}))) continue;
+                    const glm::vec3 position(spot.x, y + 1.0f, spot.y);
+                    // Extra pockets fill broad upper terraces; narrow banks
+                    // and stair shoulders keep their open edges.
+                    if (!plantedFootprint(world, position, elevatedPocket ? 1.25f : 0.9f)) continue;
+                    bool shore = false;
+                    for (const auto side : {glm::ivec3(4,0,0), {-4,0,0}, {0,0,4}, {0,0,-4}})
+                        for (int depth = 0; depth <= 3; ++depth)
+                            shore |= world.get(glm::ivec3(columnX,y-depth,columnZ) + side) == Block::Water;
+                    const auto kind = shore && slot % 2 == 0 ? Kind::Reeds : gardens[patch % 4][slot];
+                    // Nearby blossoms share a palette, while their shapes vary.
+                    const auto modelSeed = seed - seed % 3 + patch % 3;
+                    plant(kind, position, (seed >> 16) % 4, modelSeed);
+                    break;
+                }
             }
         }
     }
@@ -216,7 +266,7 @@ std::vector<HubAsset> planHubAssets(const World& world)
                 const glm::vec3 position(x + 0.5f, y + 1.0f, z + 0.5f);
                 // A broad, level surface excludes waterfalls and narrow channels.
                 if (!plantedFootprint(world, position, 1.5f, true)) continue;
-                add(HubAssetKind::LilyPads, position, seed % 4, seed);
+                plant(HubAssetKind::LilyPads, position, seed % 4, seed);
                 break;
             }
         }
@@ -233,7 +283,27 @@ std::vector<HubAsset> planHubAssets(const World& world)
                 const bool ceiling = y > World::MaxExclusive.y / 2 && seed % 11 == 0
                     && (block == Block::Stone || block == Block::Slate || block == Block::Limestone);
                 if ((!canopy && !ceiling) || !hangingClearance(world, {x,y,z})) continue;
-                add(HubAssetKind::Vines, {x + 0.5f, y + 0.02f, z + 0.5f}, seed % 4, seed);
+                plant(HubAssetKind::Vines, {x + 0.5f, y + 0.02f, z + 0.5f}, seed % 4, seed);
+                break;
+            }
+        }
+    }
+    constexpr glm::ivec3 faces[4]{{0,0,1}, {1,0,0}, {0,0,-1}, {-1,0,0}};
+    for (int z = World::Min.z + 4; z < World::MaxExclusive.z - 4; z += 4) {
+        for (int x = World::Min.x + 4; x < World::MaxExclusive.x - 4; x += 4) {
+            const auto seed = variation(x, z, world.seed());
+            if (seed % 3 != 0) continue;
+            for (int y = World::MaxExclusive.y - 3; y >= 13; --y) {
+                const glm::ivec3 anchor(x,y,z);
+                if (!soil(world.get(anchor)) || world.get(anchor + glm::ivec3(0,1,0)) != Block::Air) continue;
+                for (int side = 0; side < 4; ++side) {
+                    const int facing = (side + int(seed % 4)) % 4;
+                    if (!retainingFace(world, anchor, faces[facing])) continue;
+                    const auto position = glm::vec3(anchor) + glm::vec3(0.5f,0.75f,0.5f)
+                        + glm::vec3(faces[facing]) * 0.49f;
+                    plant(HubAssetKind::Vines, position, facing, seed);
+                    break;
+                }
                 break;
             }
         }
@@ -250,6 +320,17 @@ std::vector<HubAsset> planHubAssets(const World& world)
         }
         if (supported) add(HubAssetKind::CrystalBeacon, position);
     }
+    // If a custom world has unusually much plantable land, choose plants
+    // throughout it instead of spending the budget on the first scanned edge.
+    const std::size_t budget = std::min<std::size_t>(900, assets.size() < 1500 ? 1500 - assets.size() : 0);
+    if (planting.size() > budget) {
+        std::stable_sort(planting.begin(), planting.end(), [](const HubAsset& a, const HubAsset& b) {
+            return variation(int(std::floor(a.position.x)), int(std::floor(a.position.z)), a.variation)
+                 < variation(int(std::floor(b.position.x)), int(std::floor(b.position.z)), b.variation);
+        });
+        planting.resize(budget);
+    }
+    assets.insert(assets.end(), planting.begin(), planting.end());
     return assets;
 }
 

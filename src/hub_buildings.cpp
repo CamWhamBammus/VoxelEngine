@@ -25,6 +25,11 @@ bool sidewaysRoof(const HubBuilding& building)
         || (building.style == Style::Cottage && building.variant % 3 == 1);
 }
 
+int hallAisleWidth(const HubBuilding& building)
+{
+    return building.style == Style::Hall && building.width >= 15 ? 3 : 0;
+}
+
 int roofRise(const HubBuilding& building, int distanceFromEdge)
 {
     const int distance = std::max(0, distanceFromEdge);
@@ -118,14 +123,15 @@ void mainRoof(World& world, const HubBuilding& building)
 {
     const bool sideways = sidewaysRoof(building);
     const bool open = building.style == Style::Greenhouse;
-    const int acrossSize = sideways ? building.depth : building.width;
+    const int inset = hallAisleWidth(building);
+    const int acrossSize = sideways ? building.depth : building.width - 2 * inset;
     const int alongSize = sideways ? building.width : building.depth;
     const int base = hubBuildingWallHeight(building) + 1;
     const Block roof = building.style == Style::Workshop ? Block::Brick
         : building.style == Style::Storehouse && building.variant % 2 == 1 ? Block::Slate : Block::RoofTiles;
-    const Block trim = building.style == Style::Hall ? Block::Limestone : Block::Timber;
-    const auto cell = [sideways](int across, int y, int along) {
-        return sideways ? glm::ivec3(along, y, across) : glm::ivec3(across, y, along);
+    const Block trim = building.style == Style::Hall ? Block::Slate : Block::Timber;
+    const auto cell = [sideways, inset](int across, int y, int along) {
+        return sideways ? glm::ivec3(along, y, across) : glm::ivec3(across + inset, y, along);
     };
     for (int across = -1; across <= acrossSize; ++across) {
         const int distance = std::min(across, acrossSize-1-across);
@@ -141,8 +147,9 @@ void mainRoof(World& world, const HubBuilding& building)
             const bool rib = endTrim || along % 4 == 0 || across == acrossSize/2;
             if (open && !rib) continue;
             const bool edge = endTrim || across == -1 || across == acrossSize;
-            // Two-block ribs overlap at each step instead of touching only at an edge.
-            const int underside = open ? std::max(base, height - 1) : height;
+            // Courses overlap at each step; attic windows must not leave a roof
+            // strip supported only by a diagonal contact with its neighbor.
+            const int underside = std::max(base, height - 1);
             box(world, building, cell(across, underside, along), cell(across, height, along), open || edge ? trim : roof);
             if (open && endWall && across % 4 == 1)
                 box(world, building, cell(across, height-1, along), cell(across, height-1, along), Block::Leaves);
@@ -151,38 +158,95 @@ void mainRoof(World& world, const HubBuilding& building)
     const int peak = base + roofRise(building, acrossSize / 2);
     for (const int along : {-1, alongSize})
         box(world, building, cell(acrossSize/2, peak+1, along), cell(acrossSize/2, peak+1, along), trim);
+    if (open) return;
+
+    // A timber tie, short rake braces and a small attic opening give each gable
+    // a human scale instead of leaving a large uninterrupted plaster triangle.
+    for (const int along : {0, alongSize - 1}) {
+        for (int across = 1; across < acrossSize - 1; ++across) {
+            const int top = base + roofRise(building, std::min(across, acrossSize - 1 - across));
+            if (top > base)
+                box(world, building, cell(across, base, along), cell(across, base, along), Block::Timber);
+            if (top > base + 2)
+                box(world, building, cell(across, top - 2, along), cell(across, top - 2, along), Block::Timber);
+        }
+        box(world, building, cell(acrossSize/2, base, along), cell(acrossSize/2, peak-1, along), Block::Timber);
+        if (peak - base >= 4) {
+            const int middle = acrossSize / 2;
+            for (int offset = -1; offset <= 1; ++offset) {
+                const int bottom = base + 1 + std::abs(offset);
+                const int top = base + 3 - std::abs(offset);
+                box(world, building, cell(middle + offset, bottom, along), cell(middle + offset, top, along), Block::Air);
+            }
+        }
+    }
 }
 
 void monumentalHall(World& world, const HubBuilding& b)
 {
     const int w = b.width, d = b.depth, height = hubBuildingWallHeight(b);
+    const int aisle = hallAisleWidth(b);
+    if (aisle > 0) {
+        // Lower attached aisles make a stepped silhouette around the central hall.
+        box(world, b, {0, 7, 0}, {aisle-1, height, d-1}, Block::Air);
+        box(world, b, {w-aisle, 7, 0}, {w-1, height, d-1}, Block::Air);
+        for (const int x : {aisle, w-1-aisle})
+            box(world, b, {x, 7, 0}, {x, height, d-1}, Block::Limestone);
+        for (int step = 0; step <= aisle; ++step) {
+            const int top = 7 + step;
+            for (const int x : {step-1, w-step}) {
+                box(world, b, {x, top-1, -1}, {x, top, d}, Block::RoofTiles);
+                for (const int z : {0, d-1})
+                    box(world, b, {x, 7, z}, {x, top-2, z}, Block::Limestone);
+            }
+        }
+        for (const int x : {aisle, w-1-aisle})
+            for (int z = 3; z < d-2; z += 4)
+                box(world, b, {x, height-3, z}, {x, height-2, z}, Block::Air);
+    }
     wallRing(world, b, 6, 6, Block::Slate);
-    windowRow(world, b, 7, 10);
-    // Proud stone buttresses and raised corner piers frame the civic entrance.
-    for (const int x : {0, w-1}) {
+    for (int x = aisle+2; x < w-aisle-1; x += 4)
+        for (const int z : {0, d-1})
+            box(world, b, {x, 8, z}, {x, 10, z}, Block::Air);
+    // Narrow piers frame the taller nave, with low buttresses beside the aisles.
+    for (const int x : {aisle, w-1-aisle}) {
         box(world, b, {x, 1, d}, {x, height+2, d}, Block::Limestone);
         box(world, b, {x, height+3, d}, {x, height+3, d}, Block::Slate);
     }
     for (const int z : {3, d-4}) {
-        box(world, b, {-1, 1, z}, {-1, height-1, z}, Block::Limestone);
-        box(world, b, {w, 1, z}, {w, height-1, z}, Block::Limestone);
+        box(world, b, {-1, 1, z}, {-1, aisle > 0 ? 7 : height-1, z}, Block::Limestone);
+        box(world, b, {w, 1, z}, {w, aisle > 0 ? 7 : height-1, z}, Block::Limestone);
     }
-    for (int step=0;step<3;++step)
-        box(world, b, {w/2-2+step, height+step, d}, {w/2+2-step, height+step, d}, Block::Limestone);
+    mainRoof(world, b);
 }
 
 void inn(World& world, const HubBuilding& b)
 {
     const int w = b.width, d = b.depth;
     wallRing(world, b, 5, 5, Block::Timber);
-    windowRow(world, b, 6, 8);
+    // Alternate compact windows with braced panels rather than repeating tall
+    // openings across every bay of the upper facade.
+    for (int start = 1; start + 2 < w; start += 4) {
+        for (const int z : {0, d-1}) {
+            if ((start / 4 + b.variant) % 3 == 0) {
+                for (int step = 0; step < 3; ++step)
+                    box(world, b, {start+step, 6+step, z}, {start+step, 6+step, z}, Block::Timber);
+            } else {
+                box(world, b, {start+1, 6, z}, {start+1, 7, z}, Block::Air);
+                box(world, b, {start, 8, z}, {start+2, 8, z}, Block::Timber);
+            }
+        }
+    }
+    for (int z = 2; z < d-2; z += 4)
+        for (const int x : {0, w-1})
+            box(world, b, {x, 6, z}, {x, 7, z+1}, Block::Air);
     // A recessed entrance sits under the upper facade, forming a real porch.
     box(world, b, {1, 1, d-1}, {w-2, 4, d-1}, Block::Air);
     box(world, b, {1, 1, d-3}, {w-2, 4, d-3}, Block::Limestone);
     box(world, b, {0, 5, d-3}, {w-1, 5, d-1}, Block::Planks);
     for (const int x : {1, w-2}) box(world, b, {x, 1, d-1}, {x, 5, d-1}, Block::Timber);
     // The front cross-gable breaks the long roof; flanking dormers are smaller.
-    const int center = w/2;
+    const int center = w/2 + (w >= 17 ? (b.variant % 2 == 0 ? -2 : 2) : 0);
     const auto dormer = [&](int middle, int half, int base, int back) {
         for (int x=middle-half;x<=middle+half;++x) {
             const int top=base+half-std::abs(x-middle);
@@ -190,10 +254,23 @@ void inn(World& world, const HubBuilding& b)
             box(world, b, {x, top, back}, {x, top, d}, Block::RoofTiles);
             box(world, b, {x, top, d}, {x, top, d}, Block::Timber);
         }
+        box(world, b, {middle-1, 11, d-1}, {middle+1, 11, d-1}, Block::Timber);
         box(world, b, {middle, 12, d-1}, {middle, base, d-1}, Block::Air);
     };
     dormer(center, std::min(3, (w-3)/2), 13, d/2);
-    if (w>=17) { dormer(3, 1, 12, d-3); dormer(w-4, 1, 12, d-3); }
+    if (w>=17) dormer(center < w/2 ? w-4 : 3, 2, 12, d-3);
+}
+
+void cottagePorch(World& world, const HubBuilding& b)
+{
+    const int middle = b.width / 2, half = b.width >= 11 ? 2 : 1;
+    for (int x = middle-half; x <= middle+half; ++x) {
+        const int top = 5 + half - std::abs(x-middle);
+        box(world, b, {x, top, b.depth-2}, {x, top, b.depth}, Block::RoofTiles);
+        box(world, b, {x, top, b.depth}, {x, top, b.depth}, Block::Timber);
+    }
+    for (const int x : {middle-half, middle+half})
+        box(world, b, {x, 4, b.depth}, {x, 5, b.depth}, Block::Timber);
 }
 
 void tower(World& world, const HubBuilding& b)
@@ -204,6 +281,12 @@ void tower(World& world, const HubBuilding& b)
         for (const int x:{0, w-1}) box(world, b, {x, bottom, d/2}, {x, bottom+2, d/2}, Block::Air);
         for (const int z:{0, d-1}) box(world, b, {w/2, bottom, z}, {w/2, bottom+2, z}, Block::Air);
     }
+    // A timber belfry lightens the top of the solid stone landmark.
+    wallRing(world, b, 15, 19, Block::Timber);
+    for (int x = 2; x < w-2; x += 3)
+        for (const int z : {0, d-1}) box(world, b, {x, 16, z}, {x+1, 18, z}, Block::Air);
+    for (int z = 2; z < d-2; z += 3)
+        for (const int x : {0, w-1}) box(world, b, {x, 16, z}, {x, 18, z+1}, Block::Air);
     // The square landmark has a four-sided roof and capped corner merlons.
     for (int z=-1;z<=d;++z) for (int x=-1;x<=w;++x) {
         const int inset=std::max(0, std::min({x+1, w-x, z+1, d-z, 10}));
@@ -293,7 +376,7 @@ int hubBuildingHeight(const HubBuilding& b)
 {
     const int wall = hubBuildingWallHeight(b);
     if (b.style==Style::Tower) return wall+2+std::min({(b.width+1)/2, (b.depth+1)/2, 10});
-    const int across=sidewaysRoof(b)?b.depth:b.width;
+    const int across=sidewaysRoof(b)?b.depth:b.width-2*hallAisleWidth(b);
     int top=wall+2+roofRise(b, across/2);
     if (b.style==Style::Cottage) top=std::max(top, wall+6);
     if (b.style==Style::Workshop) top=std::max(top, wall+b.depth/4+7);
@@ -312,15 +395,21 @@ void buildHubBuilding(World& world, const HubBuilding& b)
 {
     validateBounds(b);
     room(world, b);
-    if (b.style==Style::Tower) tower(world, b); else mainRoof(world, b);
+    if (b.style==Style::Tower) tower(world, b);
+    else if (b.style==Style::Hall) monumentalHall(world, b);
+    else mainRoof(world, b);
     switch (b.style) {
-    case Style::Hall: monumentalHall(world, b); break;
     case Style::Inn: inn(world, b); break;
     case Style::Greenhouse: greenhouse(world, b); break;
     default: break;
     }
     if (b.style==Style::Workshop) {
         const int top=hubBuildingHeight(b);
+        // Side doors make the covered work yard open from the adjoining lane.
+        for (const int x : {0, b.width-1}) {
+            box(world, b, {x, 1, b.depth-4}, {x, 4, b.depth-2}, Block::Air);
+            box(world, b, {x, 5, b.depth-4}, {x, 5, b.depth-2}, Block::Timber);
+        }
         box(world, b, {b.width-4, 5, 0}, {b.width-2, 7, 2}, Block::Brick);
         box(world, b, {b.width-3, 6, 0}, {b.width-2, top-1, 1}, Block::Brick);
         box(world, b, {b.width-3, top, 0}, {b.width-2, top, 1}, Block::Slate);
@@ -328,9 +417,15 @@ void buildHubBuilding(World& world, const HubBuilding& b)
         box(world, b, {b.width-3, 2, 0}, {b.width-3, 2, 0}, Block::Lantern);
     }
     if (b.style==Style::Cottage) {
+        cottagePorch(world, b);
         const int top=hubBuildingWallHeight(b)+6;
         box(world, b, {b.width-2, hubBuildingWallHeight(b), 1}, {b.width-2, top-1, 1}, Block::Brick);
         box(world, b, {b.width-2, top, 1}, {b.width-2, top, 1}, Block::Slate);
+    }
+    if (b.style==Style::Storehouse) {
+        const int middle = b.width / 2;
+        box(world, b, {middle-1, 6, b.depth-1}, {middle+1, 6, b.depth-1}, Block::Timber);
+        box(world, b, {middle, 7, b.depth-1}, {middle+1, 8, b.depth-1}, Block::Air);
     }
     entrance(world, b);
 }

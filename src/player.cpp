@@ -106,8 +106,27 @@ bool Player::setFeetPosition(const World& world, glm::vec3 position)
 void Player::move(const World& world, glm::vec3 displacement)
 {
     if (!finite(displacement)) return;
-    moveAxis(world, 0, displacement.x);
-    moveAxis(world, 2, displacement.z);
+    bool canStep = displacement.y <= 0.0f && supported(world, feet_);
+    for (const int axis : {0, 2}) {
+        const float before = feet_[axis];
+        moveAxis(world, axis, displacement[axis]);
+        const float remaining = displacement[axis] - (feet_[axis] - before);
+        if (!canStep || std::abs(remaining) <= ContactTolerance || !supported(world, feet_)) continue;
+
+        // Try a low stair only after ordinary movement meets an obstacle.
+        // All three legs are swept, including headroom above the contact point.
+        Player raised = *this;
+        raised.moveAxis(world, 1, 1.0f);
+        if (raised.feet_.y - feet_.y < 1.0f - ContactTolerance) continue;
+        raised.moveAxis(world, axis, remaining);
+        const float progress = (raised.feet_[axis] - feet_[axis]) * (remaining > 0.0f ? 1.0f : -1.0f);
+        if (progress <= ContactTolerance) continue;
+        raised.moveAxis(world, 1, -1.0f);
+        const float rise = raised.feet_.y - feet_.y;
+        if (rise <= ContactTolerance || rise > 1.0f + ContactTolerance || !supported(world, raised.feet_)) continue;
+        feet_ = raised.feet_;
+        canStep = false; // A diagonal move must not climb two steps at once.
+    }
     moveAxis(world, 1, displacement.y);
     grounded_ = supported(world, feet_);
 }

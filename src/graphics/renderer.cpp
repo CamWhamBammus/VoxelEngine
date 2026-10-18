@@ -140,7 +140,7 @@ void main() {
         float cone = smoothstep(0.35, 0.94, dot(-viewDirection, cameraForward));
         float headlamp = 0.24 * (0.2 + 0.8 * max(dot(normal, viewDirection), 0.0))
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
-        vec3 ambient = mix(vec3(0.04, 0.028, 0.075), vec3(0.018, 0.064, 0.075),
+        vec3 ambient = mix(vec3(0.05, 0.035, 0.065), vec3(0.045, 0.09, 0.085),
                            surfaceNormal.y * 0.5 + 0.5);
         vec3 light = (ambient + vec3(0.82, 0.91, 1.0) * headlamp) * ao;
         vec3 pointLight = vec3(0.0);
@@ -352,7 +352,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         lights_.push_back({glm::vec3(position) + 0.5f,
                             block == Block::Lantern ? glm::vec3(1.15f, 0.58f, 0.18f)
                             : block == Block::Crystal ? glm::vec3(0.10f, 0.85f, 1.15f)
-                            : position.y > 44 ? glm::vec3(0.38f, 0.14f, 0.29f)
+                            : position.y > 34 ? glm::vec3(0.38f, 0.14f, 0.29f)
                                               : glm::vec3(0.08f, 0.48f, 0.31f),
                             block == Block::Lantern ? 11.0f : block == Block::Crystal ? 8.0f : 7.0f});
                     }

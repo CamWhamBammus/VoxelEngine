@@ -9,13 +9,13 @@ namespace voxel {
 class World;
 
 // Feet position on the arrival avenue, facing the tree island and north gate.
-inline constexpr glm::vec3 VillageSpawn{8.5f, 9.0f, 82.5f};
+inline constexpr glm::vec3 VillageSpawn{2.5f, 19.0f, 77.5f};
 inline constexpr float VillageYaw = -90.0f;
-inline constexpr float VillagePitch = 12.0f;
+inline constexpr float VillagePitch = 4.0f;
 inline constexpr glm::vec3 HeartTreeCenter{8.5f, 9.0f, 8.5f};
-inline constexpr glm::vec3 ExpeditionDeparture{8.5f, 9.0f, -88.5f};
+inline constexpr glm::vec3 ExpeditionDeparture{8.5f, 31.0f, -88.5f};
 inline constexpr std::array<glm::vec3, 2> ExpeditionBeacons{{
-    {-8.5f, 41.0f, -79.5f}, {25.5f, 41.0f, -79.5f}
+    {-8.5f, 63.0f, -79.5f}, {25.5f, 63.0f, -79.5f}
 }};
 // The fixed architectural plan is shared by construction, tours, and route tests.
 std::span<const HubBuilding> sceneBuildingPlan();

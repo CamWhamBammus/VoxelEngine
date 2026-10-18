@@ -20,7 +20,8 @@ public:
 
     // Teleport only when the entire body fits. Y may be outside the voxel world.
     bool setFeetPosition(const World& world, glm::vec3 position);
-    // Resolve each axis independently so the player slides along walls.
+    // Sweep each axis to slide along walls. Grounded, non-rising movement can
+    // step onto one-voxel stairs when the full body has clearance and support.
     void move(const World& world, glm::vec3 displacement);
     // Movement x is right and y is forward. Looking up/down never changes speed.
     void update(const World& world, glm::vec2 movement, glm::vec3 forward,

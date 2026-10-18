@@ -26,12 +26,13 @@ glm::vec3 radial(float angle)
 // Four broad facets give each leaf a folded midrib, with a painted light side.
 // Both sides are real triangles so leaves remain visible from below the canopy.
 void leaf(AssetBuilder& b, glm::vec3 base, glm::vec3 tip, float width,
-          glm::vec3 color, Block material = Block::Leaves)
+          glm::vec3 color, Block material = Block::Leaves, glm::vec3 facing = glm::vec3(0))
 {
     const auto direction = tip - base;
     const auto along = glm::normalize(direction);
-    const auto across = glm::normalize(glm::cross(along,
-        std::abs(along.y) > 0.9f ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0)));
+    if (facing == glm::vec3(0))
+        facing = std::abs(along.y) > 0.9f ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+    const auto across = glm::normalize(glm::cross(along, facing));
     const auto normal = glm::normalize(glm::cross(across, along));
     const auto ridge = base + direction * 0.48f + normal * width * 0.18f;
     const auto left = base + direction * 0.38f + across * width;
@@ -219,16 +220,17 @@ void vines(AssetBuilder& b, std::uint32_t seed)
     auto previous = glm::vec3(0);
     for (int node = 1; node <= 7; ++node) {
         const float t = static_cast<float>(node) / 7.0f;
-        const auto point = glm::vec3(std::sin(t * 4.5f + turn) * 0.18f * t,
-                                    -length * t, std::cos(t * 3.0f + turn) * 0.13f * t);
+        // The root meets a wall or canopy. Everything below it grows into
+        // local +Z air, so a rotated trail can hug a retaining face cleanly.
+        const auto point = glm::vec3(std::sin(t * 4.5f + turn) * 0.11f,
+                                    -length * t, 0.13f + 0.025f * std::cos(t * 3.0f + turn));
         b.beam(previous, point, 0.023f, Block::Leaves, Stem * 0.88f);
         previous = point;
-        const auto outward = radial(turn + static_cast<float>(node) * 0.63f);
         for (const float side : {-1.0f, 1.0f}) {
-            const auto branch = point + outward * side * 0.085f - glm::vec3(0, 0.025f, 0);
+            const auto branch = point + glm::vec3(side * 0.075f, -0.025f, 0.015f);
             b.beam(point, branch, 0.014f, Block::Leaves, Stem);
-            leaf(b, branch, branch + outward * side * (0.24f + 0.09f * variation(seed, node + 10))
-                     - glm::vec3(0, 0.15f, 0), 0.12f, Leaf * (side > 0 ? 1.05f : 0.84f));
+            leaf(b, branch, branch + glm::vec3(side * (0.24f + 0.09f * variation(seed, node + 10)), -0.15f, 0.025f),
+                 0.13f, Leaf * (side > 0 ? 1.05f : 0.84f), Block::Leaves, {0,0,1});
         }
         if (node == 3 || node == 6) {
             const auto bud = point + glm::vec3(0, -0.10f, 0);

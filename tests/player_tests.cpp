@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <glm/geometric.hpp>
 
 namespace {
 int failures = 0;
@@ -194,6 +195,73 @@ int main()
         player.update(world, {1, 1}, forward, true, true, invalid);
         check(player.feetPosition() == beforeInvalidUpdate, "invalid frame time does not move the player");
     }
+
+    // Stairs use the same movement entry point as normal physics and route tests.
+    const glm::ivec3 stairStart{39, 1, 40};
+    const auto stairFeet = glm::vec3(stairStart) + glm::vec3(0.5f, 0, 0.5f);
+    for (const auto direction : {glm::ivec3(1,0,0), {-1,0,0}, {0,0,1}, {0,0,-1}}) {
+        const auto obstacle = stairStart + direction;
+        world.set(obstacle, Block::Stone);
+        check(player.setFeetPosition(world, stairFeet), "stair approach is clear and supported");
+        player.move(world, glm::vec3(direction));
+        check(glm::distance(player.feetPosition(), stairFeet + glm::vec3(direction) + glm::vec3(0,1,0)) < 0.0001f
+              && player.grounded() && !player.overlapsBlock(obstacle),
+              "grounded movement climbs a one-voxel stair in every horizontal direction");
+        world.set(obstacle, Block::Air);
+    }
+    const auto step = stairStart + glm::ivec3(1,0,0);
+    world.set(step, Block::Stone);
+    world.set(step + glm::ivec3(0,1,0), Block::Stone);
+    player.setFeetPosition(world, stairFeet);
+    player.move(world, {1,0,0});
+    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1),
+          "auto-step cannot climb a two-voxel wall");
+    world.set(step + glm::ivec3(0,1,0), Block::Air);
+    for (const auto ceiling : {stairStart + glm::ivec3(0,2,0), step + glm::ivec3(0,2,0)}) {
+        world.set(ceiling, Block::Stone);
+        player.setFeetPosition(world, stairFeet);
+        player.move(world, {1,0,0});
+        check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1)
+              && !player.overlapsBlock(ceiling), "auto-step checks headroom both before and above the stair");
+        world.set(ceiling, Block::Air);
+    }
+    player.setFeetPosition(world, stairFeet + glm::vec3(0,0.5f,0));
+    player.move(world, {1,0,0});
+    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1.5f)
+          && !player.grounded(), "airborne movement cannot climb a nearby step");
+    player.setFeetPosition(world, stairFeet);
+    world.set(stairStart - glm::ivec3(0,1,0), Block::Air);
+    player.move(world, {1,0,0});
+    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1)
+          && !player.grounded(), "mined support cannot authorize a stale grounded step");
+    world.set(stairStart - glm::ivec3(0,1,0), Block::Stone);
+    player.setFeetPosition(world, stairFeet);
+    player.move(world, {1,0.1f,0});
+    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1.1f),
+          "upward jump movement does not gain extra lift from auto-step");
+    world.set(step, Block::Air);
+
+    // A diagonal input may gain one level, but must still collide with the next.
+    world.set({40,1,39}, Block::Stone);
+    world.set({40,1,40}, Block::Stone);
+    world.set({40,2,40}, Block::Stone);
+    player.setFeetPosition(world, {39.5f,1,39.5f});
+    player.move(world, {1,0,1});
+    check(near(player.feetPosition().x, 40.5f) && near(player.feetPosition().z, 39.7f)
+          && near(player.feetPosition().y, 2), "one diagonal move cannot gain two stair levels");
+    for (const auto cell : {glm::ivec3(40,1,39), {40,1,40}, {40,2,40}}) world.set(cell, Block::Air);
+
+    for (int x = 40; x <= 45; ++x)
+        for (int y = 1; y <= x - 39; ++y) world.set({x,y,40}, Block::Stone);
+    player.setFeetPosition(world, stairFeet);
+    for (int frame = 0; frame < 120; ++frame)
+        player.update(world, {0,1}, {1,0,0}, false, false, 1.0f / 120.0f);
+    check(near(player.feetPosition().x, 44.0f, 0.001f) && near(player.feetPosition().y, 6)
+          && player.grounded(), "normal walking climbs consecutive stairs without jumping or losing support");
+    player.update(world, {}, {1,0,0}, true, false, 1.0f / 120.0f);
+    check(player.feetPosition().y > 6 && !player.grounded(), "jump still launches normally from a stair landing");
+    for (int x = 40; x <= 45; ++x)
+        for (int y = 1; y <= x - 39; ++y) world.set({x,y,40}, Block::Air);
 
     World terrain(42);
     check(player.spawn(terrain), "generated terrain has a safe spawn");

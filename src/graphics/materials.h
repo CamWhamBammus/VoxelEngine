@@ -187,8 +187,8 @@ MaterialSurface evaluateMaterial() {
         vec3 pigment = mix(vec3(0.09, 0.30, 0.10), vec3(0.22, 0.48, 0.13), mass * 0.75 + leafSeed * 0.25);
         if (materialId == 18) pigment = mix(vec3(0.06, 0.40, 0.24), vec3(0.10, 0.54, 0.30), mass);
         // Broad crown regions make the heart tree a distinct landmark. Ordinary
-        // garden trees stay green; color varies across whole boughs, not blocks.
-        float crown = smoothstep(40.0, 54.0, worldPosition.y);
+        // low garden trees stay green; color varies across whole boughs, not blocks.
+        float crown = smoothstep(29.0, 39.0, worldPosition.y);
         float rose = smoothstep(0.22, 0.72, 0.5 + 0.30 * sin(worldPosition.x * 0.065)
                                             + 0.26 * cos(worldPosition.z * 0.055));
         vec3 blossom = mix(vec3(0.23, 0.055, 0.27), vec3(0.56, 0.16, 0.33),
@@ -301,15 +301,33 @@ MaterialSurface evaluateMaterial() {
             roughness = 0.22; emission = 1.0;
         }
         slope = sign(local - 0.5) * (1.0 - smoothstep(vec2(0.07), vec2(0.14), edge)) * 0.20;
-    } else if (materialId == 1) {
-        float moss = smoothstep(0.25, 0.75, broad * 0.7 + chips * 0.3);
-        color = mix(vec3(0.14, 0.35, 0.16), vec3(0.40, 0.64, 0.18), moss);
-        color *= 0.92 + 0.08 * floor(chips * 4.0) / 4.0;
-        if (!top) {
-            float grass = step(0.78 + chips * 0.12, local.y);
-            color = mix(vec3(0.39, 0.27, 0.15) * (0.90 + 0.14 * broad), color, grass);
+    } else if (materialId == 1 || materialId == 2) {
+        // Painted soil clumps, root strokes and a few embedded pebbles carry
+        // the exposed stair banks; moss spills down unevenly from the surface.
+        float clumps = materialNoise(p * vec2(4.0, 5.5) + seed);
+        float strata = materialNoise(vec2(p.x * 1.7, p.y * 9.0 + broad) + seed);
+        vec3 earth = mix(vec3(0.24, 0.17, 0.11), vec3(0.49, 0.35, 0.22),
+                         smoothstep(0.18, 0.82, clumps * 0.65 + broad * 0.35));
+        earth *= 0.80 + 0.28 * floor(strata * 5.0) / 4.0;
+        float roots = materialNoise(vec2(p.x * 16.0 + sin(p.y * 2.5), p.y * 1.4) + seed);
+        earth *= 1.0 - smoothstep(0.73, 0.88, roots) * 0.22;
+        vec2 pebble = p * vec2(5.0, 4.0);
+        vec2 q = fract(pebble) - 0.5;
+        float stone = (1.0 - smoothstep(0.20, 0.28, abs(q.x) + abs(q.y) * 1.4))
+                    * step(0.82, materialHash(floor(pebble) + seed));
+        earth = mix(earth, vec3(0.47, 0.44, 0.35) * (0.8 + clumps * 0.3), stone * 0.75);
+        color = earth;
+        if (materialId == 1) {
+            float moss = smoothstep(0.25, 0.75, broad * 0.7 + chips * 0.3);
+            vec3 green = mix(vec3(0.12, 0.29, 0.14), vec3(0.35, 0.52, 0.17), moss);
+            green *= 0.87 + 0.16 * floor(chips * 5.0) / 4.0;
+            float depth = 0.43 + 0.35 * materialNoise(vec2(p.x * 2.2, seed));
+            float fringe = smoothstep(depth - 0.10, depth + 0.04, local.y + chips * 0.12);
+            color = top ? green : mix(earth, green, fringe);
         }
+        slope = vec2(clumps - 0.5, strata - 0.5) * 0.13;
     }
+
     vec3 shadingNormal = decorative == 2 ? normalize(surfaceNormal) : normalize(n + u * slope.x + v * slope.y);
     return MaterialSurface(clamp(color, 0.0, 1.0), shadingNormal, roughness, emission);
 }
