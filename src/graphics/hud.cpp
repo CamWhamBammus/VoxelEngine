@@ -2,6 +2,7 @@
 #include "game.h"
 #include "equipment.h"
 #include "root_crossings.h"
+#include "section_editor.h"
 
 #include <algorithm>
 #include <array>
@@ -123,7 +124,12 @@ constexpr glm::vec4 Leaf{0.45f,0.86f,0.60f,1};
 // Coordinates start at the top-left; play UI uses logical pixels for high DPI.
 class Drawing {
 public:
-    Drawing(float width, float height) : width_(width), height_(height) {}
+    Drawing(float width, float height, float physicalScale=0)
+        : width_(width), height_(height), physicalScale_(physicalScale) {}
+    float physicalScale() const { return physicalScale_; }
+    float fontPixel(float pixel) const {
+        return physicalScale_>0 ? std::max(1.0f,std::round(pixel*physicalScale_))/physicalScale_ : pixel;
+    }
     std::vector<Vertex> vertices;
 
     void triangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, glm::vec4 color)
@@ -145,6 +151,11 @@ public:
     }
     void text(std::string_view value, float x, float y, float pixel, glm::vec4 color = Cream)
     {
+        pixel=fontPixel(pixel);
+        if (physicalScale_>0) {
+            x=std::round(x*physicalScale_)/physicalScale_;
+            y=std::round(y*physicalScale_)/physicalScale_;
+        }
         for (const char character : value) {
             const auto bitmap = glyph(character);
             for (int row = 0; row < 7; ++row) for (int column = 0; column < 5; ++column)
@@ -155,6 +166,7 @@ public:
     }
     void centered(std::string_view value, float center, float y, float pixel, glm::vec4 color = Cream)
     {
+        pixel=fontPixel(pixel);
         text(value, center - (value.size() * 6 - (value.empty() ? 0 : 1)) * pixel * 0.5f, y, pixel, color);
     }
     void frame(float x, float y, float width, float height, glm::vec4 border, glm::vec4 fill = Panel)
@@ -164,7 +176,7 @@ public:
     }
 
 private:
-    float width_, height_;
+    float width_, height_, physicalScale_;
 };
 
 void pickaxeIcon(Drawing& out, glm::vec2 center, float scale, int tier)
@@ -319,6 +331,380 @@ void crossingProgress(Drawing& out, const Game& game, float width, float height)
     out.frame(x,height-165,panelWidth,37,Edge);
     out.centered("N/P CHANGE  R CHECKPOINT  SHIFT+R RESTART",center,height-155,1,Cream);
     out.centered("F6 ALL COURSES  B VILLAGE  H CONTROLS",center,height-142,1,Muted);
+}
+
+struct SectionHit {
+    float x, y, width, height;
+    int action;
+};
+
+struct SectionCanvas {
+    float scale, width, height;
+};
+
+SectionCanvas sectionCanvas(int width, int height, float contentScale)
+{
+    if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
+    const float scale=std::min({std::clamp(contentScale,0.5f,4.0f),width/736.0f,height/516.0f});
+    return {scale,width/scale,height/scale};
+}
+
+void fittedText(Drawing& out, std::string_view text, float x, float y, float width,
+                float pixel=1.0f, glm::vec4 color=Cream)
+{
+    if (text.empty()) return;
+    pixel=out.fontPixel(std::min(pixel,width/(text.size()*6.0f-1)));
+    const auto columns=static_cast<std::size_t>(std::max(1.0f,(width/pixel+1)/6));
+    if (text.size()>columns) {
+        const auto clipped=std::string(text.substr(0,columns>3 ? columns-3 : columns))+(columns>3 ? "..." : "");
+        out.text(clipped,x,y,pixel,color);
+    } else out.text(text,x,y,pixel,color);
+}
+
+void sectionButton(Drawing& out, std::vector<SectionHit>& hits, float x,float y,float width,float height,
+                   std::string_view text,int action,bool active=false,bool enabled=true)
+{
+    const auto color=enabled ? (active ? Gold : Edge) : glm::vec4(0.14f,0.20f,0.21f,1);
+    out.frame(x,y,width,height,color,active ? glm::vec4(0.12f,0.22f,0.20f,1) : Panel);
+    const float pixel=out.fontPixel(std::min(1.1f,(width-14)/std::max(1.0f,text.size()*6.0f)));
+    const auto columns=static_cast<std::size_t>(std::max(1.0f,((width-12)/pixel+1)/6));
+    std::string clipped(text.substr(0,columns));
+    if (text.size()>columns && columns>3) clipped=std::string(text.substr(0,columns-3))+"...";
+    out.centered(clipped,x+width*0.5f,y+(height-7*pixel)*0.5f,pixel,enabled ? (active ? Gold : Cream) : Muted);
+    if (enabled) hits.push_back({x,y,width,height,action});
+}
+
+void sectionPanel(Drawing& out,float width,float height,float x,float y,float w,float h,
+                  std::string_view title,std::string_view subtitle)
+{
+    out.quad(0,0,width,height,{0.005f,0.02f,0.025f,0.76f});
+    out.quad(x+6,y+7,w,h,{0,0,0,0.35f});
+    out.frame(x,y,w,h,Edge);
+    out.quad(x+2,y+2,w-4,3,Leaf);
+    fittedText(out,title,x+22,y+18,w-44,2,Leaf);
+    fittedText(out,subtitle,x+23,y+43,w-46,1,Muted);
+}
+
+struct AssetThumbnailTriangle {
+    std::array<glm::vec2,3> points;
+    glm::vec4 color;
+    float depth;
+};
+using AssetThumbnail=std::vector<AssetThumbnailTriangle>;
+
+const AssetThumbnail& assetThumbnail(HubAssetKind kind)
+{
+    // Project the real asset geometry once. This keeps the inventory recognizable
+    // without a second renderer or per-frame model builds.
+    static const auto thumbnails=[] {
+        std::array<AssetThumbnail,38> result;
+        const auto right=glm::normalize(glm::vec3(1,0,-1));
+        const auto up=glm::normalize(glm::vec3(-1,2,-1));
+        const auto toward=glm::normalize(glm::vec3(1,1,1));
+        const auto light=glm::normalize(glm::vec3(-0.3f,0.9f,0.6f));
+        for (int id=0;id<static_cast<int>(result.size());++id) {
+            const auto mesh=buildHubAsset({static_cast<HubAssetKind>(id),{0,0,0},0,0});
+            glm::vec2 low(1e9f),high(-1e9f);
+            for (std::size_t index=0;index+2<mesh.indices.size();index+=3) {
+                const auto& a=mesh.vertices[mesh.indices[index]];
+                const auto& b=mesh.vertices[mesh.indices[index+1]];
+                const auto& c=mesh.vertices[mesh.indices[index+2]];
+                if (glm::dot(a.normal,toward)<-0.01f) continue;
+                AssetThumbnailTriangle face;
+                float depth=0;
+                const std::array<const MeshVertex*,3> vertices{&a,&b,&c};
+                for (int corner=0;corner<3;++corner) {
+                    const auto position=vertices[corner]->position;
+                    face.points[corner]={glm::dot(position,right),-glm::dot(position,up)};
+                    low=glm::min(low,face.points[corner]); high=glm::max(high,face.points[corner]);
+                    depth+=glm::dot(position,toward);
+                }
+                const float shade=0.65f+0.35f*std::max(0.0f,glm::dot(a.normal,light));
+                face.color={glm::clamp((a.color+b.color+c.color)/3.0f*shade,glm::vec3(0),glm::vec3(1)),1};
+                face.depth=depth;
+                result[id].push_back(face);
+            }
+            const auto center=(low+high)*0.5f;
+            const float extent=std::max({high.x-low.x,high.y-low.y,0.001f});
+            for (auto& face:result[id]) for (auto& point:face.points) point=(point-center)/extent;
+            std::stable_sort(result[id].begin(),result[id].end(),[](const auto& a,const auto& b){return a.depth<b.depth;});
+        }
+        return result;
+    }();
+    const auto index=std::clamp(static_cast<int>(kind),0,static_cast<int>(thumbnails.size())-1);
+    return thumbnails[index];
+}
+
+void sectionItemIcon(Drawing& out,const SectionPaletteItem& item,glm::vec2 center,float size)
+{
+    if (item.asset) {
+        for (const auto& face:assetThumbnail(*item.asset))
+            out.triangle(center+face.points[0]*size,center+face.points[1]*size,
+                         center+face.points[2]*size,face.color);
+    } else if (item.block) {
+        const auto color=glm::vec4(blockColor(*item.block),1);
+        const auto p=[&](float x,float y){return center+glm::vec2(x,y)*size;};
+        out.triangle(p(0,-0.47f),p(0.43f,-0.23f),p(0,0),color*glm::vec4(1.13f,1.13f,1.13f,1));
+        out.triangle(p(0,-0.47f),p(0,0),p(-0.43f,-0.23f),color*glm::vec4(1.13f,1.13f,1.13f,1));
+        out.triangle(p(-0.43f,-0.23f),p(0,0),p(0,0.47f),color*glm::vec4(0.70f,0.70f,0.70f,1));
+        out.triangle(p(-0.43f,-0.23f),p(0,0.47f),p(-0.43f,0.23f),color*glm::vec4(0.70f,0.70f,0.70f,1));
+        out.triangle(p(0,0),p(0.43f,-0.23f),p(0.43f,0.23f),color);
+        out.triangle(p(0,0),p(0.43f,0.23f),p(0,0.47f),color);
+        if (*item.block==Block::Grass || *item.block==Block::Timber || *item.block==Block::Planks
+            || *item.block==Block::Path || *item.block==Block::Brick)
+            out.bar(p(-0.35f,-0.17f),p(-0.35f,0.18f),1.2f,color*glm::vec4(0.45f,0.45f,0.45f,1));
+        if (*item.block==Block::CoalOre || *item.block==Block::CopperOre || *item.block==Block::IronOre) {
+            const glm::vec4 ore=*item.block==Block::CoalOre ? glm::vec4(0.09f,0.11f,0.12f,1)
+                : *item.block==Block::CopperOre ? glm::vec4(0.93f,0.52f,0.25f,1) : glm::vec4(0.82f,0.83f,0.76f,1);
+            out.triangle(p(0.10f,0.08f),p(0.22f,-0.03f),p(0.29f,0.17f),ore);
+            out.triangle(p(-0.29f,-0.08f),p(-0.13f,0.01f),p(-0.20f,0.17f),ore);
+        }
+    } else if (item.marker!=SectionMarker::None) {
+        const auto color=item.marker==SectionMarker::Start ? Leaf
+            : item.marker==SectionMarker::Checkpoint ? glm::vec4(0.28f,0.87f,0.93f,1) : Gold;
+        const auto p=[&](float x,float y){return center+glm::vec2(x,y)*size;};
+        out.bar(p(-0.15f,0.43f),p(-0.15f,-0.43f),size*0.07f,Cream);
+        out.triangle(p(-0.1f,-0.40f),p(0.38f,-0.23f),p(-0.1f,-0.05f),color);
+        out.bar(p(-0.34f,0.43f),p(0.12f,0.43f),size*0.08f,Edge);
+    }
+}
+
+std::string_view sectionItemGroup(const SectionPaletteItem& item)
+{
+    if (item.asset) for (const auto& entry:sectionAssetCatalog()) if (entry.kind==*item.asset) return entry.group;
+    if (item.block) return "SOLID BUILDING BLOCK";
+    return "SECTION MARKER";
+}
+
+void sectionHotbar(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,
+                   float center,float y,bool clickable)
+{
+    constexpr float slot=48,gap=5;
+    const float x=center-(9*slot+8*gap)*0.5f;
+    for (int index=0;index<9;++index) {
+        const float left=x+index*(slot+gap);
+        const bool selected=index==editor.selectedSlot();
+        out.frame(left,y,slot,slot,selected ? Gold : Edge,selected ? glm::vec4(0.11f,0.21f,0.18f,1) : Panel);
+        sectionItemIcon(out,editor.hotbar()[index],{left+24,y+26},32);
+        out.quad(left+4,y+4,9,10,Panel);
+        out.text(std::to_string(index+1),left+6,y+5,1,selected ? Gold : Muted);
+        if (selected) out.quad(left+5,y+slot-5,slot-10,2,Gold);
+        if (clickable) hits.push_back({left,y,slot,slot,SectionUiHotbarBase+index});
+    }
+}
+
+std::string sectionWorldName(SectionWorld world)
+{
+    for (const auto& item:sectionWorldCatalog()) if (item.id==world) return std::string(item.name);
+    return "Unknown world";
+}
+
+std::string sectionCategoryName(SectionCategory category)
+{
+    for (const auto& item:sectionCategoryCatalog()) if (item.id==category) return std::string(item.name);
+    return "Unsorted";
+}
+
+void sectionFeedback(Drawing& out,const SectionEditor& editor,float x,float y,float width)
+{
+    auto feedback=editor.message();
+    std::replace(feedback.begin(),feedback.end(),'\n',' ');
+    if (feedback.size()>96) feedback=feedback.substr(0,93)+"...";
+    fittedText(out,feedback,x,y,width,1,Leaf);
+}
+
+void sectionWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=620,h=410;
+    const float x=(width-w)*0.5f,y=(height-h)*0.5f;
+    sectionPanel(out,width,height,x,y,w,h,"SECTION WORKSHOP","CHOOSE THE WORLD YOUR NEW SECTION WILL BELONG TO");
+    const auto worlds=sectionWorldCatalog();
+    for (int index=0;index<static_cast<int>(worlds.size());++index) {
+        const auto& world=worlds[index];
+        const float top=y+72+index*78;
+        const auto color=index==0 ? Leaf : index==1 ? glm::vec4(0.36f,0.79f,0.94f,1) : glm::vec4(0.98f,0.53f,0.25f,1);
+        const bool selected=index==editor.selection();
+        out.frame(x+22,top,w-44,68,selected ? Gold : Edge,selected ? glm::vec4(0.09f,0.18f,0.16f,1) : Panel);
+        out.quad(x+30,top+10,4,48,color);
+        out.text("0"+std::to_string(index+1),x+48,top+24,2,color);
+        fittedText(out,world.name,x+94,top+13,w-130,1.8f,Cream);
+        fittedText(out,world.description,x+95,top+42,w-133,1,Muted);
+        hits.push_back({x+22,top,w-44,68,SectionUiWorldBase+index});
+    }
+    out.text("BUILD / WALK YOUR ROUTE / NAME AND ACCEPT",x+24,y+319,1,Leaf);
+    out.text("64 X 48 X 64 BLOCK BUILDING ROOM",x+24,y+339,1,Muted);
+    sectionButton(out,hits,x+22,y+365,158,28,"B - VILLAGE",SectionUiBack);
+    sectionButton(out,hits,x+w-242,y+365,220,28,"ENTER - CHOOSE WORLD",SectionUiConfirm,true);
+}
+
+void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=700,h=470;
+    const float x=(width-w)*0.5f,y=(height-h)*0.5f;
+    sectionPanel(out,width,height,x,y,w,h,"YOUR SECTIONS",sectionWorldName(editor.selectedWorld())+" / DRAFTS AND ACCEPTED SECTIONS");
+    sectionButton(out,hits,x+22,y+65,w-44,37,"+ NEW EMPTY SECTION / 64 X 48 X 64",SectionUiLibraryNew,editor.selection()==0);
+    const auto& drafts=editor.draftEntries();
+    const auto& entries=editor.entries();
+    const int count=static_cast<int>(drafts.size()+entries.size());
+    const int page=std::max(0,editor.selection()-1)/6;
+    for (int row=0;row<6;++row) {
+        const int index=page*6+row;
+        const float top=y+111+row*40;
+        if (index>=count) continue;
+        const bool draft=index<static_cast<int>(drafts.size());
+        const auto& entry=draft ? drafts[index] : entries[index-static_cast<int>(drafts.size())];
+        const bool selected=editor.selection()==index+1;
+        out.frame(x+22,top,w-44,35,selected ? Gold : Edge,selected ? glm::vec4(0.09f,0.19f,0.16f,1) : Panel);
+        fittedText(out,entry.meta.name,x+35,top+8,400,1.15f,Cream);
+        out.text(draft ? "DRAFT / CONTINUE" : "ACCEPTED / EDIT COPY",x+487,top+9,0.9f,draft ? Gold : Leaf);
+        fittedText(out,sectionCategoryName(entry.meta.category),x+35,top+23,390,0.8f,Muted);
+        hits.push_back({x+22,top,w-44,35,draft ? SectionUiLibraryDraftBase+index
+                        : SectionUiLibraryEntryBase+index-static_cast<int>(drafts.size())});
+    }
+    if (!count) {
+        out.centered("YOUR FIRST SECTION STARTS HERE",width*0.5f,y+190,1.5f,Cream);
+        out.centered("BUILD A ROUTE, PLAYTEST IT, THEN ACCEPT IT.",width*0.5f,y+218,1,Muted);
+        out.centered("ACCEPTED SECTIONS APPEAR IN THIS WORLD'S LIBRARY.",width*0.5f,y+240,1,Muted);
+    }
+    sectionButton(out,hits,x+22,y+358,100,26,"< PREVIOUS",SectionUiLibraryPrevious,false,page>0);
+    out.centered(std::to_string(count)+" SAVED / PAGE "+std::to_string(page+1)+" OF "+std::to_string(std::max(1,(count+5)/6)),width*0.5f,y+367,1,Muted);
+    sectionButton(out,hits,x+w-122,y+358,100,26,"NEXT >",SectionUiLibraryNext,false,(page+1)*6<count);
+    sectionFeedback(out,editor,x+24,y+396,w-48);
+    sectionButton(out,hits,x+22,y+h-46,158,29,"ESC - BACK",SectionUiBack);
+    sectionButton(out,hits,x+w-230,y+h-46,208,29,"ENTER - OPEN",SectionUiConfirm,true);
+}
+
+void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=700,h=478;
+    const float x=(width-w)*0.5f,y=(height-h)*0.5f;
+    sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY","CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
+    constexpr std::array<std::string_view,3> tabs{"BLOCKS","ASSETS","MARKERS"};
+    for (int tab=0;tab<3;++tab)
+        sectionButton(out,hits,x+22+tab*134,y+62,126,26,tabs[tab],SectionUiPaletteTabBase+tab,editor.paletteTab()==tab);
+    sectionButton(out,hits,x+w-118,y+62,96,26,"ESC CLOSE",SectionUiBack);
+    const auto& items=editor.paletteItems();
+    const int selection=std::clamp(editor.paletteSelection(),0,std::max(0,static_cast<int>(items.size())-1));
+    const int page=selection/24;
+    constexpr float cellWidth=104,cellHeight=54,gap=6;
+    for (int cell=0;cell<24;++cell) {
+        const int index=page*24+cell;
+        const float left=x+22+(cell%6)*(cellWidth+gap),top=y+97+(cell/6)*(cellHeight+gap);
+        if (index>=static_cast<int>(items.size())) continue;
+        const auto& item=items[index];
+        const bool selected=index==selection;
+        out.frame(left,top,cellWidth,cellHeight,selected ? Gold : Edge,selected ? glm::vec4(0.10f,0.21f,0.18f,1) : Panel);
+        const bool compact=out.physicalScale()<0.9f;
+        sectionItemIcon(out,item,compact ? glm::vec2(left+52,top+14) : glm::vec2(left+24,top+27),compact ? 23 : 35);
+        const float nameX=left+(compact ? 5 : 45),nameWidth=cellWidth-(compact ? 10 : 49);
+        std::string_view name=item.name;
+        auto split=name.size()>9 ? name.rfind(' ',10) : std::string_view::npos;
+        if (split==std::string_view::npos && name.size()>9) split=std::min<std::size_t>(9,name.size());
+        if (split!=std::string_view::npos) {
+            fittedText(out,name.substr(0,split),nameX,top+(compact ? 28 : 17),nameWidth,0.9f,selected ? Cream : Muted);
+            auto next=split+(name[split]==' ' ? 1 : 0);
+            fittedText(out,name.substr(next),nameX,top+(compact ? 40 : 30),nameWidth,0.9f,selected ? Cream : Muted);
+        } else fittedText(out,name,nameX,top+(compact ? 34 : 23),nameWidth,0.9f,selected ? Cream : Muted);
+        hits.push_back({left,top,cellWidth,cellHeight,SectionUiPaletteItemBase+index});
+    }
+    if (!items.empty()) {
+        const auto& item=items[selection];
+        fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
+        const auto hint=item.asset ? std::string(sectionItemGroup(item))+" / NO COLLISION" : item.block && *item.block==Block::Water ? "WATER / NO COLLISION"
+            : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE" : "BUILD WALKABLE SURFACES WITH BLOCKS";
+        fittedText(out,hint,x+23,y+359,405,0.9f,Muted);
+    }
+    sectionButton(out,hits,x+w-208,y+340,43,29,"<",SectionUiPalettePrevious,false,page>0);
+    out.centered(std::to_string(page+1)+" / "+std::to_string(std::max(1,(static_cast<int>(items.size())+23)/24)),x+w-118,y+350,1,Muted);
+    sectionButton(out,hits,x+w-65,y+340,43,29,">",SectionUiPaletteNext,false,(page+1)*24<static_cast<int>(items.size()));
+    sectionHotbar(out,hits,editor,width*0.5f,y+384,true);
+    out.centered("TAB - CATEGORY / ARROWS - ITEM / ENTER - EQUIP / 1-9 - SLOT",width*0.5f,y+444,0.9f,Muted);
+    sectionFeedback(out,editor,x+23,y+461,w-46);
+}
+
+void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=620,h=454;
+    const float x=(width-w)*0.5f,y=(height-h)*0.5f;
+    sectionPanel(out,width,height,x,y,w,h,"ADD TO WORLD",sectionWorldName(editor.selectedWorld())+" / NAME AND CLASSIFY THIS SECTION");
+    out.text(editor.nameSelected() ? "SECTION NAME / TYPE TO REPLACE SELECTED NAME" : "SECTION NAME / CTRL+A SELECTS ALL",x+23,y+72,1,Muted);
+    out.frame(x+22,y+88,w-44,36,Gold,{0.065f,0.12f,0.13f,1});
+    if (editor.nameSelected()) out.quad(x+31,y+95,std::min(w-62,editor.meta().name.size()*9.0f+10),22,{0.23f,0.37f,0.32f,1});
+    fittedText(out,editor.meta().name+(editor.nameSelected() ? "" : "_"),x+35,y+100,w-70,1.5f,Cream);
+    out.text("CATEGORY",x+23,y+143,1,Muted);
+    const auto categories=sectionCategoryCatalog();
+    for (int index=0;index<static_cast<int>(categories.size());++index) {
+        const auto& category=categories[index];
+        const float top=y+163+index*37;
+        const bool selected=editor.meta().category==category.id;
+        out.frame(x+22,top,w-44,31,selected ? Gold : Edge,selected ? glm::vec4(0.10f,0.21f,0.18f,1) : Panel);
+        out.text(selected ? ">" : "-",x+33,top+10,1.2f,selected ? Gold : Muted);
+        fittedText(out,category.name,x+51,top+10,142,1.1f,selected ? Gold : Cream);
+        fittedText(out,category.description,x+210,top+11,w-246,0.9f,Muted);
+        hits.push_back({x+22,top,w-44,31,SectionUiCategoryBase+index});
+    }
+    out.text(editor.meta().tested ? "PLAYTEST PASSED / READY TO ADD" : "COMPLETE A PLAYTEST BEFORE ACCEPTING",x+24,y+357,1,editor.meta().tested ? Leaf : Gold);
+    sectionFeedback(out,editor,x+24,y+377,w-48);
+    sectionButton(out,hits,x+22,y+h-51,175,30,"ESC - KEEP EDITING",SectionUiBack);
+    sectionButton(out,hits,x+w-275,y+h-51,253,30,"ENTER - ACCEPT SECTION",SectionUiConfirm,true,editor.meta().tested);
+    out.centered("TYPE NAME / CTRL+A SELECT ALL / UP-DOWN CATEGORY",width*0.5f,y+h-13,0.8f,Muted);
+}
+
+void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
+{
+    const auto& editor=game.sectionEditor();
+    const bool testing=editor.screen()==SectionEditorScreen::Test;
+    const float center=width*0.5f;
+    constexpr float w=620;
+    const float x=center-w*0.5f;
+    out.frame(x,14,w,66,Edge);
+    out.quad(x+2,16,3,62,testing ? Gold : Leaf);
+    out.text(testing ? "SECTION PLAYTEST" : "SECTION WORKSHOP / CREATIVE",x+16,25,1,testing ? Gold : Leaf);
+    fittedText(out,editor.meta().name,x+16,43,380,1.5f,Cream);
+    fittedText(out,sectionWorldName(editor.selectedWorld()),x+w-205,25,188,1,Muted);
+    out.text(testing ? "F8 - BACK TO BUILD" : editor.dirty() ? "DRAFT / UNSAVED CHANGES" : "DRAFT SAVED",x+w-205,45,1,testing ? Gold : Muted);
+    fittedText(out,editor.message(),x+16,67,w-32,0.85f,Leaf);
+    if (testing) {
+        out.frame(center-243,90,486,31,Edge);
+        out.text("TIME "+crossingTime(editor.testElapsed()),center-228,101,1,Cream);
+        out.text("FALLS "+std::to_string(editor.testFalls()),center-85,101,1,Muted);
+        out.text(editor.testComplete() ? "EXIT REACHED" : editor.checkpointReached() ? "CHECKPOINT SAVED" : "REACH THE GOLD EXIT",center+49,101,1,Leaf);
+        if (editor.testComplete()) {
+            out.frame(center-239,136,478,67,Leaf);
+            out.centered("SECTION TEST COMPLETE",center,149,1.8f,Leaf);
+            out.centered("F10 - NAME AND ACCEPT / F8 - KEEP BUILDING",center,178,1,Cream);
+        }
+        out.frame(center-255,height-66,510,49,Edge);
+        out.centered("WASD MOVE / SPACE JUMP / SHIFT SPRINT",center,height-54,1,Cream);
+        out.centered("R - RESET / F8 - BUILD / F10 - ACCEPT / B - VILLAGE",center,height-35,0.9f,Muted);
+    } else {
+        const auto& item=editor.hotbar()[editor.selectedSlot()];
+        const float labelY=height-129;
+        out.quad(center-280,labelY-6,560,39,{0.01f,0.03f,0.04f,0.87f});
+        fittedText(out,item.name,center-264,labelY,330,1.4f,Gold);
+        fittedText(out,item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
+                    : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK",center-264,labelY+20,528,0.9f,Muted);
+        sectionHotbar(out,hits,editor,center,height-86,false);
+        out.centered("E INVENTORY / F8 TEST / F10 ACCEPT / F5 SAVE / F9 LIBRARY",center,height-20,0.9f,Cream);
+        out.frame(15,97,246,82,Edge);
+        fittedText(out,"WASD FLY / SPACE UP / CTRL DOWN",27,109,222,0.95f,Cream);
+        fittedText(out,"SHIFT FAST / ALT SLOW / 1-9 SLOTS",27,127,222,0.9f,Muted);
+        fittedText(out,"CTRL+Z UNDO / CTRL+Y REDO",27,145,222,0.95f,Muted);
+        fittedText(out,"64 X 48 X 64 / PROTECTED SHELL",27,163,222,0.85f,Leaf);
+    }
+}
+
+void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
+{
+    const auto& editor=game.sectionEditor();
+    switch (editor.screen()) {
+    case SectionEditorScreen::Worlds: sectionWorldMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::Library: sectionLibraryMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::Palette: sectionPaletteMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::Accept: sectionAcceptMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::Build:
+    case SectionEditorScreen::Test: sectionBuildHud(out,hits,game,width,height); break;
+    }
 }
 
 class SavedState {
@@ -599,6 +985,31 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     }
     if (game.crossingMenuOpen()) crossingPicker(drawing,game,width,height);
     render(drawing, shader_, vao_, buffer_);
+}
+
+void Hud::drawSection(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    if (!game.devMode() || framebufferWidth<=0 || framebufferHeight<=0) return;
+    const auto canvas=sectionCanvas(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(canvas.width,canvas.height,canvas.scale);
+    std::vector<SectionHit> hits;
+    sectionUi(drawing,hits,game,canvas.width,canvas.height);
+    render(drawing,shader_,vao_,buffer_);
+}
+
+std::optional<int> Hud::sectionClick(const Game& game,int framebufferWidth,int framebufferHeight,
+                                     float contentScale,float x,float y)
+{
+    if (!game.devMode() || !game.sectionEditor().menuOpen() || framebufferWidth<=0 || framebufferHeight<=0
+        || !std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
+    const auto canvas=sectionCanvas(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(canvas.width,canvas.height,canvas.scale);
+    std::vector<SectionHit> hits;
+    sectionUi(drawing,hits,game,canvas.width,canvas.height);
+    x/=canvas.scale; y/=canvas.scale;
+    for (const auto& hit:hits)
+        if (x>=hit.x && x<hit.x+hit.width && y>=hit.y && y<hit.y+hit.height) return hit.action;
+    return std::nullopt;
 }
 
 } // namespace voxel

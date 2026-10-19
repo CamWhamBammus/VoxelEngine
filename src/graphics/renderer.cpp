@@ -5,6 +5,7 @@
 #include "graphics/materials.h"
 #include "graphics/water.h"
 #include "hub_assets.h"
+#include "sections.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -261,7 +262,8 @@ void WorldRenderer::uploadLights(const World& world)
 }
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
-                           bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets)
+                           bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets,
+                           std::span<const HubAsset> placedAssets)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -281,7 +283,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         if (index >= layer) rebuild[index - layer] = true;
         if (index + layer < meshes_.size()) rebuild[index + layer] = true;
     }
-    bool changed = hubAssets != hubAssets_;
+    bool changed = hubAssets != hubAssets_
+        || !std::equal(placedAssets.begin(), placedAssets.end(), placedAssets_.begin(), placedAssets_.end());
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (rebuild[index]) {
             auto opaque = buildMesh(world, index);
@@ -299,7 +302,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         // changed world refreshes the entire small set of handcrafted models.
         // Expedition test rooms keep voxel roots and natural cave details but
         // do not inherit fittings from the village's fixed architectural plan.
-        auto dressing = hubAssets ? buildHubDressing(world) : HubDressing{};
+        auto dressing = hubAssets ? buildHubDressing(world) : buildAssetDressing(placedAssets);
         for (std::size_t index = 0; index < assets_.size(); ++index) {
             assets_[index].upload(dressing.meshes[index]);
         }
@@ -389,6 +392,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         uploadLights(world);
         meshedWorld_ = world;
         hubAssets_ = hubAssets;
+        placedAssets_.assign(placedAssets.begin(), placedAssets.end());
     }
     glViewport(0, 0, width, height);
     if (underground) postProcess_.begin(width, height);
@@ -603,6 +607,66 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
     if (cullFace) glEnable(GL_CULL_FACE);
     else glDisable(GL_CULL_FACE);
     glPolygonMode(GL_FRONT_AND_BACK, polygonMode[0]);
+}
+
+void Overlay::drawSection(const SectionMetadata& section, const std::optional<HubAsset>& preview,
+                           const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height)
+{
+    if (width <= 0 || height <= 0) return;
+    const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST), cullFace = glIsEnabled(GL_CULL_FACE);
+    GLboolean depthMask = GL_TRUE;
+    GLint program = 0, vao = 0, buffer = 0;
+    std::array<GLint,2> polygon{};
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
+    glGetIntegerv(GL_POLYGON_MODE, polygon.data());
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDepthMask(GL_FALSE);
+    shader_.use();
+    const auto projection = camera.projectionMatrix(float(width) / height) * camera.viewMatrix();
+    const auto box = [&](glm::vec3 minimum, glm::vec3 extent, glm::vec3 color) {
+        glBindVertexArray(vao_);
+        shader_.setMat4("transform", projection * glm::scale(glm::translate(glm::mat4(1), minimum), extent));
+        shader_.setVec3("color", color);
+        glDrawArrays(GL_LINES, 0, 24);
+    };
+    const auto marker = [&](glm::vec3 position, glm::vec3 color) {
+        box(position + glm::vec3(-0.8f, 0.035f, -0.8f), {1.6f,0.06f,1.6f}, color);
+        box(position + glm::vec3(-0.55f, 0.04f, -0.55f), {1.1f,2.0f,1.1f}, color);
+    };
+    marker(section.spawn, {0.40f,1.0f,0.48f});
+    if (section.checkpoint) marker(*section.checkpoint, {0.15f,0.95f,1.0f});
+    marker(section.finish, {1.0f,0.70f,0.16f});
+    if (selectedAsset) {
+        const auto mesh = buildHubAsset(*selectedAsset);
+        if (!mesh.vertices.empty()) {
+            auto low = mesh.vertices.front().position, high = low;
+            for (const auto& vertex : mesh.vertices) {
+                low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
+            }
+            box(low - 0.015f, high - low + 0.03f, {1.0f,0.85f,0.45f});
+        }
+    }
+    if (preview) {
+        if (previewAsset_ != preview) {
+            previewMesh_.upload(buildHubAsset(*preview));
+            previewAsset_ = preview;
+        }
+        shader_.setMat4("transform", projection);
+        shader_.setVec3("color", {0.45f,1.0f,0.65f});
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        previewMesh_.draw();
+    }
+    glBindVertexArray(static_cast<GLuint>(vao));
+    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer));
+    glUseProgram(static_cast<GLuint>(program));
+    if (!depthTest) glDisable(GL_DEPTH_TEST);
+    if (cullFace) glEnable(GL_CULL_FACE);
+    glDepthMask(depthMask);
+    glPolygonMode(GL_FRONT_AND_BACK, polygon[0]);
 }
 
 } // namespace voxel

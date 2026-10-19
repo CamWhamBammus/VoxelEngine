@@ -2,6 +2,7 @@
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
 #include "root_crossing_hud_smoke.h"
+#include "section_hud_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -987,6 +988,42 @@ void verifyRootCrossingRendering(int width, int height)
     std::cout << "Root Crossings passed: all ten cave views, consecutive switches, and return to hub\n";
 }
 
+void verifySectionAssets(int width, int height)
+{
+    width = std::min(width, 960); height = std::min(height, 540);
+    World world;
+    buildBlankSection(world);
+    Camera camera;
+    camera.setPosition({5.0f,15.0f,22.0f});
+    WorldRenderer renderer;
+    const auto readFrameColor = [](int w, int h) {
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(w) * h * 4);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        return pixels;
+    };
+    renderer.render(world, camera, width, height, false, true, 1, true, false);
+    const auto baseline = renderer.triangleCount();
+    std::vector<HubAsset> assets{{HubAssetKind::Forge,{0.5f,9,15.5f},2,0},
+                               {HubAssetKind::FernBed,{-2.5f,9,15.5f},0,3},
+                               {HubAssetKind::HangingLamp,{2.5f,13,16.5f},0,0}};
+    renderer.render(world, camera, width, height, false, true, 1, true, false, assets);
+    std::size_t expected = baseline;
+    for (const auto& asset : assets) expected += buildHubAsset(asset).indices.size() / 3;
+    if (renderer.triangleCount() != expected) throw std::runtime_error("Placed section assets were not rendered");
+    const auto first = readFrameColor(width,height);
+    assets[0].position.x += 5;
+    assets[0].facing = 1;
+    renderer.render(world, camera, width, height, false, true, 1, true, false, assets);
+    if (readFrameColor(width,height) == first) throw std::runtime_error("Asset-only edit left the section render cache stale");
+    Overlay overlay;
+    overlay.drawSection(SectionMetadata{}, assets[1], assets[0], camera, width, height);
+    renderer.render(world, camera, width, height, false, true, 1, true, false);
+    if (renderer.triangleCount() != baseline) throw std::runtime_error("Removed section assets remained in the renderer");
+    verifyFrame(width, height, {});
+    checkOpenGl();
+    std::cout << "Section assets passed: placement, rotation, asset-only refresh, markers, preview, removal\n";
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -1148,6 +1185,8 @@ int runGraphicsSmokeTest(const Options& options)
     verifyPlayHud(width, height);
     verifyRootCrossingHud(width, height);
     verifyRootCrossingRendering(width, height);
+    verifySectionHud(width, height);
+    verifySectionAssets(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
@@ -1163,14 +1202,17 @@ int runGraphicsSmokeTest(const Options& options)
             throw std::runtime_error("Smoke test framebuffer is empty");
         }
         renderer.render(game.world, game.camera, width, height, false, !game.editorMode(), 0.0f,
-                        game.equipment.selectedTool() == Tool::Lantern, !game.rootCrossingActive());
+                        game.devMode() || game.equipment.selectedTool() == Tool::Lantern,
+                        !game.rootCrossingActive() && !game.devMode(),
+                        game.devMode() ? std::span<const HubAsset>(game.sectionEditor().assets()) : std::span<const HubAsset>{});
         float scaleX, scaleY;
         glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
         overlay.draw(game.target, game.camera, width, height, scaleY);
-        if (!game.rootCrossingActive())
+        if (!game.rootCrossingActive() && !game.devMode())
             hud.draw(game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                                      renderer.triangleCount(), 0.0, true, false), width, height, scaleY);
-        if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
+        if (game.devMode()) hud.drawSection(game, width, height, scaleY);
+        else if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
         if (frame == 2) {
             verifyFrame(width, height, options.screenshot);
             frameVerified = true;

@@ -5,6 +5,7 @@
 #include "equipment.h"
 #include "player.h"
 #include "root_crossings.h"
+#include "section_editor.h"
 #include "world.h"
 
 #include <array>
@@ -18,6 +19,8 @@ namespace voxel {
 // Startup settings. The command line is read once, before opening the window.
 struct Options {
     bool editor = false;
+    bool dev = false;
+    std::string sectionLibrary = "sections";
     int rootCrossing = -1; // -1 starts the hub; otherwise a zero-based test course.
     std::uint32_t seed = 1337;
     int editReach = 8;
@@ -32,6 +35,7 @@ struct Options {
 
 inline constexpr const char* Usage =
     "Usage: VoxelEngine [options]\n\n"
+    "  --dev              Open the section builder and world library.\n"
     "  --editor           Open the flying terrain editor instead of the cave sample.\n"
     "  --root-crossing N  Start Root Crossing test 1 to 10 directly.\n"
     "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
@@ -62,6 +66,11 @@ public:
     explicit Game(const Options& options);
     void update(const InputActions& actions, float deltaSeconds = 0.0f);
     bool editorMode() const { return editorMode_; }
+    bool devMode() const { return devMode_; }
+    bool devFlying() const { return devMode_ && sectionEditor_.flying(); }
+    bool devMenuOpen() const { return devMode_ && sectionEditor_.menuOpen(); }
+    SectionEditor& sectionEditor() { return sectionEditor_; }
+    const SectionEditor& sectionEditor() const { return sectionEditor_; }
     bool hasUnsavedChanges() const;
     bool smithOpen() const { return smithOpen_; }
     bool nearBlacksmith() const;
@@ -76,7 +85,7 @@ public:
     int crossingFalls() const { return crossingFalls_; }
     bool nearExpeditionGate() const;
     glm::vec3 compassTarget() const;
-    bool menuOpen() const { return smithOpen_ || crossingMenuOpen_; }
+    bool menuOpen() const { return smithOpen_ || crossingMenuOpen_ || devMenuOpen(); }
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
                            bool captured, bool showHelp) const;
@@ -92,6 +101,8 @@ public:
 
 private:
     bool returnToVillage();
+    void enterDevMode();
+    void leaveDevMode();
     void updatePlay(const InputActions& actions, float deltaSeconds);
     void upgradeEquipment();
     void openCrossingMenu();
@@ -106,6 +117,8 @@ private:
     void findTarget();
     void editTarget(const InputActions& actions);
 
+    SectionEditor sectionEditor_;
+    bool devMode_ = false;
     World savedWorld_;
     std::string savePath_;
     int editReach_;

@@ -3,6 +3,7 @@ build/
 build-*/
 *.vxl
 *.vxp
+*.vxs
 .voxel-progress-*
 cmake-build-*/
 

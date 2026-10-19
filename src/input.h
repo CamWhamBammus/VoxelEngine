@@ -5,6 +5,7 @@
 #include <glm/vec2.hpp>
 #include <array>
 #include <optional>
+#include <string>
 
 struct GLFWwindow;
 
@@ -29,6 +30,14 @@ struct InputActions {
     int crossingStep = 0;
     bool returnToHub = false;
     bool restartCrossing = false;
+    bool devToggle = false, devPalette = false, devTest = false, devAccept = false, devLibrary = false;
+    bool devRotate = false, devVariation = false, devBackspace = false, devSelectAll = false;
+    std::optional<int> devSlot, devClick;
+    int devTabStep = 0;
+    glm::ivec2 devMenuStep{0};
+    std::string devText;
+    bool devPointerPressed = false;
+    glm::vec2 devPointer{0}; // Window-relative position, normalized to [0,1].
     // Editing requests are emitted only in --editor mode.
     bool save = false;
     bool load = false;
@@ -78,7 +87,8 @@ public:
     Input& operator=(const Input&) = delete;
 
     void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false,
-                bool crossingPicker = false);
+                bool crossingPicker = false, bool devMode = false, bool devFlying = false,
+                bool devTyping = false);
     const InputActions& actions() const { return actions_; }
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
@@ -109,12 +119,17 @@ private:
         bool previousCrossing = false;
         bool nextCrossing = false;
         bool returnToHub = false;
+        bool devToggle = false, devTest = false, devAccept = false;
+        bool rotate = false, variation = false, backspace = false, selectAll = false;
+        bool menuLeft = false, menuRight = false;
     };
 
     bool keyDown(int key) const;
     Buttons readButtons() const;
     void capture(bool enabled);
     void updateCamera(Camera& camera, float deltaSeconds, bool editingShortcut, bool editorMode);
+    void updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons, const Buttons& previous,
+                   bool modal, bool flying, bool typing, bool modifier, EditShortcutActions shortcuts);
 
     GLFWwindow* window_;
     InputActions actions_;
@@ -126,6 +141,11 @@ private:
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;
     double scroll_ = 0.0;
+    std::string pendingText_;
+    bool wasDevMode_ = false, wasDevMenu_ = false;
+    float removeRepeat_ = 0.0f, placeRepeat_ = 0.0f;
+    float backspaceRepeat_ = 0.0f;
+    bool suppressDevMouse_ = true, wasDevFlying_ = false;
 };
 
 } // namespace voxel

@@ -2,6 +2,7 @@
 
 #include "mesh.h"
 #include <array>
+#include <span>
 #include <vector>
 
 namespace voxel {
@@ -25,6 +26,7 @@ struct HubAsset {
     glm::vec3 position;
     int facing = 0;
     std::uint32_t variation = 0;
+    bool operator==(const HubAsset&) const = default;
 };
 
 struct HubAssetLight {
@@ -54,5 +56,7 @@ std::vector<HubAsset> planHubAssets(const World& world);
 std::vector<HubAsset> planLandscapeAssets(const World& world);
 MeshData buildHubAsset(const HubAsset& asset);
 HubDressing buildHubDressing(const World& world);
+// Explicit placements used by authored sections, without village auto-dressing.
+HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standaloneLights = true);
 
 } // namespace voxel

@@ -480,8 +480,14 @@ MeshData buildHubAsset(const HubAsset& asset)
 
 HubDressing buildHubDressing(const World& world)
 {
+    return buildAssetDressing(planHubAssets(world), false);
+}
+
+HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standaloneLights)
+{
     HubDressing dressing;
-    for (const auto& asset : planHubAssets(world)) {
+    for (const auto& asset : assets) {
+        if (!World::contains(glm::ivec3(glm::floor(asset.position)))) continue;
         const auto local = glm::ivec3(glm::floor(asset.position)) - World::Min;
         const auto index = static_cast<std::size_t>(local.x / Chunk::Size
             + World::Width * (local.z / Chunk::Size + World::Width * (local.y / Chunk::Size)));
@@ -492,6 +498,8 @@ HubDressing buildHubDressing(const World& world)
         for (const auto vertex : mesh.indices) destination.indices.push_back(start + vertex);
         if (asset.kind == HubAssetKind::HangingLamp)
             dressing.lights.push_back({asset.position, {1.05f,0.57f,0.23f},8.0f});
+        if (standaloneLights && (asset.kind == HubAssetKind::LanternCap || asset.kind == HubAssetKind::WallBracket))
+            dressing.lights.push_back({asset.position + glm::vec3(0,0.2f,0), {1.05f,0.57f,0.23f},9.0f});
         if (asset.kind == HubAssetKind::CrystalBeacon)
             dressing.lights.push_back({asset.position + glm::vec3(0,1.4f,0), {0.12f,0.66f,0.88f},7.0f});
         if (asset.kind == HubAssetKind::Forge)

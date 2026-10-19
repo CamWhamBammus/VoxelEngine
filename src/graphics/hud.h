@@ -3,6 +3,7 @@
 #include "graphics/opengl.h"
 
 #include <string_view>
+#include <optional>
 
 namespace voxel {
 class Game;
@@ -19,6 +20,13 @@ public:
               float contentScale = 1.0f);
     void drawPlay(const Game& game, int framebufferWidth, int framebufferHeight,
                   float contentScale = 1.0f);
+    void drawSection(const Game& game, int framebufferWidth, int framebufferHeight,
+                     float contentScale = 1.0f);
+    // Pointer coordinates are physical framebuffer pixels, measured from the
+    // top-left. Drawing and hit testing share the same scaled layout.
+    static std::optional<int> sectionClick(const Game& game, int framebufferWidth,
+                                          int framebufferHeight, float contentScale,
+                                          float x, float y);
 
 private:
     Shader shader_;

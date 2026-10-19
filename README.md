@@ -2,7 +2,7 @@
 
 A small C++20 voxel game for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. The direction is an **entirely underground expedition game**: leave a starting village, find resources, return, and upgrade the settlement.
 
-This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. A **ten-course Root Crossing test collection** is the first playable expedition section. Full expeditions, other building services, village upgrades, and villagers are not implemented yet.
+This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. A **creative section builder** lets you author, test, and accept rooms into world libraries. The ten Root Crossing prototypes remain available as movement tests. Full expeditions, other building services, village upgrades, and villagers are not implemented yet.
 
 ## Explore the underground hub
 
@@ -30,13 +30,37 @@ Stone, limestone, and slate have sparse chipped fracture edges, with fewer chips
 
 **WASD** walks, **mouse** looks, **Space** jumps, and **Shift** sprints. Walking automatically climbs one-voxel stairs when there is full body clearance and support. **R** returns you to a safe space in the village. **Escape** pauses and releases the mouse; **Tab** resumes. **H** shows the walking controls, and **Q** quits.
 
-The bottom hotbar holds a **pickaxe, lantern, and compass**. Select with **1–3**, the **mouse wheel**, or **[ / ]**. Equipping the lantern adds warm light; equipping the compass points toward the central heart tree. The pickaxe can be upgraded, but ore extraction is not implemented yet. Block editing remains exclusive to `--editor`.
+The bottom hotbar holds a **pickaxe, lantern, and compass**. Select with **1–3**, the **mouse wheel**, or **[ / ]**. Equipping the lantern adds warm light; equipping the compass points toward the central heart tree. The pickaxe can be upgraded, but ore extraction is not implemented yet. Block editing is available in the section builder (`--dev`) and the original terrain editor (`--editor`).
 
 Find the **blacksmith in the southwest district, west of the arrival avenue**. Its hanging anvil sign marks the entrance; inside are a glowing forge, anvil, tool rack, and workbench. Approach the anvil and press **E**, then **Enter** to upgrade. **E**, **Escape**, or **Tab** closes the forge menu. The menu pauses walking and looking. New equipment starts with **12 copper**; tier 1 → 2 costs **8 copper**, and tier 2 → 3 costs **8 iron**. Iron gathering will come with expeditions. Lantern and compass upgrades are not offered yet.
 
 Successful upgrades save the pickaxe tier and ore balances to **`progress.vxp` in the working directory**. Restarting restores that profile; starter copper is not added to an existing profile. The profile is separate from editor world files. Invalid profiles report an error and are preserved; failed saves leave the upgrade and ore balances unchanged. Smoke tests use fresh in-memory equipment.
 
 The hub follows a fixed architectural plan, with seeded variations in rock, ore, and foliage. The terrain resets on launch and does not load or overwrite editor saves. Use `--seed N` to change the variation. The original surface editor remains available through `--editor`.
+
+## Build your own expedition sections
+
+Run **`./build/VoxelEngine --dev`**, or press **F7** in the game. On a Mac keyboard you may need **Fn** with the function keys.
+
+1. Choose a world, then **New empty section**. The room has a protected stone shell around a **64 × 48 × 64** editable interior. Lush Caves is the current world; Crystal Hollows and Ember Depths are library destinations for future themes.
+2. Press **E** for the creative inventory. Choose a hotbar slot, then click a block, asset, or marker to equip it. The tabs contain all **19 building materials**, **38 decorative models**, and start/checkpoint/exit markers. Asset icons show the actual models. Use the page arrows to see the rest of the assets; **Escape** or **E** closes the inventory.
+3. Fly and build. **Left click** removes, **right click** places, and **middle click** picks the targeted item. Holding a button repeats block edits. **1–9** or the wheel selects a hotbar slot; **T** rotates models and **Y** changes their variant. The green model preview shows where an asset will go.
+4. Equip markers from the inventory and right click a clear, solid top face. **Green** is the start, **cyan** is an optional checkpoint, and **gold** is the exit. Keep headroom above each marker. Decorative models have no collision: use terrain blocks for walkable roots, rocks, platforms, and floors.
+5. Press **F8** to test with normal walking, jumping, gravity, and collision. Reach the gold exit to pass. **R** returns to the start or checkpoint; **Shift+R** restarts the attempt. **F8** returns to your previous build view. Any geometry or marker edit, including undo/redo, requires another test before acceptance.
+6. Press **F10** after passing, type a name, and choose **Parkour, Puzzle, Exploration, Mining, or Treasure**. Press **Enter** or click **Accept section**. It appears in that world's library immediately. **F9** opens the library to continue a draft or edit a copy of an accepted section.
+
+**WASD** flies, **Space** rises, **Left Ctrl** descends, **Shift** speeds up, and **Alt/Option** slows down for precision. **Ctrl/Cmd+Z** undoes; **Ctrl/Cmd+Y** or **Ctrl/Cmd+Shift+Z** redoes blocks, models, and markers. **Escape** pauses; **Tab** resumes. The inventory also supports arrows, **Tab** to switch tabs, and **Enter** to equip. In the acceptance form, typing replaces the initially selected name; **Ctrl/Cmd+A** selects it again.
+
+**F5** saves a draft. Changed work also saves after 20 seconds of active editing, before tests or library changes, when leaving with **B/F7**, and when closing the window. A failed save keeps your work open. New rooms and accepted revisions receive unique files so earlier creations are preserved. Files live under **`sections/` in the working directory**, separately from equipment and terrain-editor saves:
+
+```text
+sections/
+  drafts/lush-caves/untitled-section-001.vxs
+  lush-caves/parkour/your-section-name-001.vxs
+  lush-caves/puzzle/another-section-001.vxs
+```
+
+Each `.vxs` contains the blocks, placed models, markers, name, world, category, and successful-test flag. Keep or copy this directory to preserve your creations; these local files are ignored by Git. Accepted rooms are available to reopen and test from the library. Automatic expedition assembly and puzzle/treasure/mining mechanics are future work; categories organize the authored sections now. Dev mode preserves your equipment and does not award or spend resources.
 
 ## Test the Root Crossings
 
@@ -63,7 +87,7 @@ The number accepts **1 through 10**. Each course is an enclosed lush grotto with
 
 **N / P** switches to the next or previous course. **R** returns to the active checkpoint; **Shift+R** starts a fresh attempt at the entrance. **F6** reopens the picker, and **B** returns to the village. The HUD tracks time, falls, checkpoint activation, and the best time for each course during the current session. The compass points toward the course exit. Pausing or opening a menu pauses the timer.
 
-These are individual movement tests: finishing grants no resources and does not change your saved equipment. Session best times reset when you quit. Ore mining, treasure rewards, and chaining sections into complete expeditions come later. Terrain editing remains exclusive to the separate editor; `--root-crossing` cannot be combined with `--editor` or `--world`.
+These are individual movement tests: finishing grants no resources and does not change your saved equipment. Session best times reset when you quit. Ore mining, treasure rewards, and chaining sections into complete expeditions come later. Terrain editing is disabled during these tests; use F7 for the section builder. `--root-crossing` cannot be combined with `--dev`, `--editor`, or `--world`.
 
 ## Planned expedition loop
 
@@ -85,6 +109,8 @@ src/
   player.h/.cpp     Player body, terrain collision, walking, jumping, and spawning
   scene.h/.cpp      Hub layout, landscape, tree, water, bridges, and departure hall
   root_crossings.h/.cpp Ten lush crossing layouts, shared landings, and cave construction
+  sections.h/.cpp   Room template, world/category catalogs, and .vxs file library
+  section_editor.h/.cpp Creative building, palette, markers, tests, and acceptance
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
   hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
   hub_landscape.cpp Attach large rocks and roots to supporting terrain
@@ -316,6 +342,8 @@ Player tests cover collision, one-block stair climbing, headroom, jumping, safe 
 
 Root Crossing tests traverse all ten main routes with the actual player physics at 30 and 60 FPS, check the optional fork, and verify that solid roots connect each landing to the cave terrain. They also check safe reset landings, real jump gaps, deterministic layouts, selection, timing, checkpoints, completion, and unchanged equipment. Native checks render all ten rooms, switch back to the hub, and verify the picker, compass, and completion HUD at different display scales.
 
+Section tests cover protected room bounds, all model catalogs, marker safety, block/model/marker undo, a real walking test, test invalidation, world/category acceptance, safe hub transitions, draft recovery, and rejected saves. The file tests check complete round-trips, malformed documents, checksum failures, atomic writes, unique revisions, and world-filtered library discovery. Native checks cover all inventory pages, mouse hit regions at different DPI scales, test/accept menus, explicit model rendering, and asset-only cache updates.
+
 GitHub Actions builds Debug and Release on Linux, runs core and sanitizer tests, and exercises graphics transitions and screenshot capture with Mesa through Xvfb.
 
-This is a finite hub prototype with a tool hotbar, saved blacksmith pickaxe upgrades, and ten selectable Root Crossing movement tests. Full expeditions, other building services, mining, village upgrades, NPCs, enemies, loot containers, general crafting, and chunk streaming are not implemented yet.
+This is a finite hub prototype with a tool hotbar, saved blacksmith pickaxe upgrades, ten selectable Root Crossing movement tests, and a creative section builder with world libraries. Full expeditions, other building services, mining, village upgrades, NPCs, enemies, loot containers, general crafting, and chunk streaming are not implemented yet.

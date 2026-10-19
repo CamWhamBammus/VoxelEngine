@@ -4,6 +4,7 @@
 #include "graphics/post_process.h"
 #include "world.h"
 #include "editing.h"
+#include "hub_assets.h"
 
 #include <array>
 #include <optional>
@@ -11,6 +12,7 @@
 
 namespace voxel {
 class Camera;
+struct SectionMetadata;
 
 // Each renderer keeps its own copy of the meshed chunks, so multiple views can
 // share a world without consuming one another's pending updates.
@@ -20,7 +22,7 @@ public:
     ~WorldRenderer();
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
                 bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false,
-                bool hubAssets = true);
+                bool hubAssets = true, std::span<const HubAsset> placedAssets = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -44,6 +46,7 @@ private:
     std::size_t drawnTriangles_ = 0;
     bool underground_ = false;
     bool hubAssets_ = true;
+    std::vector<HubAsset> placedAssets_;
 };
 
 // Draws the selected block outline and the screen-center crosshair.
@@ -55,11 +58,15 @@ public:
     Overlay& operator=(const Overlay&) = delete;
     void draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height,
               float contentScale = 1.0f);
+    void drawSection(const SectionMetadata& section, const std::optional<HubAsset>& preview,
+                     const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height);
 
 private:
     Shader shader_;
     GLuint vao_ = 0;
     GLuint buffer_ = 0;
+    GpuMesh previewMesh_;
+    std::optional<HubAsset> previewAsset_;
 };
 
 } // namespace voxel

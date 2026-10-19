@@ -46,14 +46,32 @@ int main(int argc, char** argv)
         std::string statusText;
 
         // 3. Each frame: read input, update the world, then draw it.
-        while (!window.shouldClose()) {
+        while (true) {
+            if (window.shouldClose()) {
+                if (game.devMode() && !game.sectionEditor().saveDraft(game)) {
+                    // Keep the document alive so a failed save can be corrected.
+                    std::cerr << game.sectionEditor().message() << '\n';
+                    glfwSetWindowShouldClose(window.handle(), GLFW_FALSE);
+                } else break;
+            }
             glfwPollEvents();
             const double now = glfwGetTime();
             const float deltaSeconds = static_cast<float>(now - previousTime);
             previousTime = now;
 
-            input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen());
-            game.update(input.actions(), deltaSeconds);
+            input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen(),
+                         game.devMode(), game.devFlying(),
+                         game.devMode() && game.sectionEditor().screen() == voxel::SectionEditorScreen::Accept);
+            auto actions = input.actions();
+            if (game.devMenuOpen() && actions.devPointerPressed) {
+                int menuWidth, menuHeight;
+                float menuScaleX, menuScaleY;
+                window.framebufferSize(menuWidth, menuHeight);
+                glfwGetWindowContentScale(window.handle(), &menuScaleX, &menuScaleY);
+                actions.devClick = voxel::Hud::sectionClick(game, menuWidth, menuHeight, menuScaleY,
+                    actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight);
+            }
+            game.update(actions, deltaSeconds);
 
             int width, height;
             window.framebufferSize(width, height);
@@ -63,12 +81,19 @@ int main(int argc, char** argv)
             }
             renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
                             static_cast<float>(now), !game.editorMode()
-                                && game.equipment.selectedTool() == voxel::Tool::Lantern, !game.rootCrossingActive());
+                                && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
+                            !game.rootCrossingActive() && !game.devMode(),
+                            game.devMode() ? std::span<const voxel::HubAsset>(game.sectionEditor().assets())
+                                           : std::span<const voxel::HubAsset>{});
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
                 selection.draw(game.target, game.camera, width, height, scaleY);
             }
+            if (game.devMode() && game.sectionEditor().hasSection() && !game.devMenuOpen())
+                selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
+                                      game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
+                                      game.camera, width, height);
 
             // Refresh text four times per second; draw the cached text every frame.
             ++sampleFrames;
@@ -77,7 +102,8 @@ int main(int argc, char** argv)
                 const double fps = sampleSeconds >= 0.25 ? sampleFrames / sampleSeconds : 0.0;
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
-                const char* title = game.editorMode()
+                const char* title = game.devMode() ? "Section Builder"
+                    : game.editorMode()
                     ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor")
                     : game.rootCrossingActive() ? "Root Crossing Playtest" : "Underground Village";
                 glfwSetWindowTitle(window.handle(), title);
@@ -86,9 +112,12 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
-            if ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible())
+            if (!game.devMode() && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
                 hud.draw(statusText, width, height, scaleY);
-            if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
+            if (game.devMode()) hud.drawSection(game, width, height, scaleY);
+            else if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
+            if (game.devMode() && !game.devMenuOpen() && !input.captured())
+                hud.draw("PAUSED | TAB TO RESUME", width, height, scaleY);
             window.present();
         }
         return EXIT_SUCCESS;
