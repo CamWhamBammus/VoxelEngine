@@ -41,7 +41,7 @@ private:
     std::vector<Light> lights_; // Rebuilt only when world contents change.
     std::array<int, World::ChunkCount> lightOffsets_{}, lightCounts_{};
     GLuint lightTexture_ = 0; // Per-chunk candidates: position/radius, then color.
-    GLuint occupancy_ = 0; // Solid=255, water=127, air=0; lighting and shoreline queries.
+    GLuint occupancy_ = 0; // Opaque=255, water=127, air/foliage=0; lighting and shoreline queries.
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
     bool underground_ = false;

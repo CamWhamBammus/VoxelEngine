@@ -51,7 +51,12 @@ Coverage naiveCoverage(const Chunk& chunk, glm::ivec3 origin, const Sampler& out
                         const Block adjacent = Chunk::inBounds(neighbor.x, neighbor.y, neighbor.z)
                             ? chunk.get(neighbor.x, neighbor.y, neighbor.z)
                             : (outside ? outside(origin + neighbor) : Block::Air);
-                        if (adjacent == Block::Air || (adjacent == Block::Water && block != Block::Water)) {
+                        const bool leafNeighbor = adjacent == Block::Leaves || adjacent == Block::GlowLeaves
+                            || adjacent == Block::BlossomLeaves;
+                        const bool leafFace = block == Block::Leaves || block == Block::GlowLeaves
+                            || block == Block::BlossomLeaves;
+                        if (adjacent == Block::Air || (adjacent == Block::Water && block != Block::Water)
+                            || (leafNeighbor && !leafFace)) {
                             ++result[faceKey(origin + local, axis, sign, block)];
                         }
                     }
@@ -225,6 +230,12 @@ int main()
         check(verify(bank, "solid-water bank").indices.size() == 66,
               "solid banks remain visible next to water without overlapping opposite water faces");
     }
+    Chunk canopy;
+    fill(canopy, Block::Leaves);
+    check(verify(canopy, "dense leaf canopy").indices.size() == 36,
+          "cutout foliage remains a cheap outer shell with no interior leaf faces");
+    check(verify(canopy, "connected mixed foliage", {}, [](glm::ivec3) { return Block::BlossomLeaves; }).indices.empty(),
+          "different foliage across chunk boundaries also hides internal leaf faces");
     Chunk full;
     fill(full, Block::Grass);
     const glm::ivec3 origin(-48, -32, -16);

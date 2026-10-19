@@ -127,6 +127,11 @@ void verifySectionHud(int width,int height)
         act(SectionUiHotbarBase+8); act(SectionUiPaletteItemBase+18);
         require(game.sectionEditor().selectedSlot()==8 && game.sectionEditor().hotbar()[8].block==Block::Path,
                 "Creative inventory did not equip the selected hotbar slot");
+        act(SectionUiPaletteNext);
+        require(game.sectionEditor().paletteSelection()/24==1,"New building materials cannot be reached on page two");
+        act(SectionUiPaletteItemBase+static_cast<int>(PlaceableBlocks.size())-1);
+        require(game.sectionEditor().hotbar()[8].block==Block::GlowMoss,"Last lush material cannot be equipped");
+        draw(width,height); draw(640,360,2);
         act(SectionUiPaletteTabBase+1);
         require(game.sectionEditor().paletteItems().size()==sectionAssetCatalog().size(),"Asset palette omitted a model");
         const auto assetsFirst=draw(width,height);
@@ -137,7 +142,7 @@ void verifySectionHud(int width,int height)
         const auto assetsLast=draw(width,height);
         require(difference(assetsFirst,assetsLast)>1000,"Second asset page did not replace visible models");
         act(SectionUiPaletteItemBase+37);
-        require(game.sectionEditor().hotbar()[8].asset==HubAssetKind::AnvilSign,"Last asset cannot be equipped");
+        require(game.sectionEditor().hotbar()[8].asset==HubAssetKind::AnvilSign,"Existing workshop asset cannot be equipped");
         for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
             const float dpi=size.x==640 ? 2.0f : 1.0f;
             const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
@@ -146,6 +151,19 @@ void verifySectionHud(int width,int height)
                     "Second-page model hit area disagrees with the scaled drawing");
             require(logicalHit(size.x/scale*.5f+212,y+408,size.x,size.y,dpi)==SectionUiHotbarBase+8,
                     "Creative hotbar hit area disagrees with the scaled drawing");
+            draw(size.x,size.y,dpi);
+        }
+        act(SectionUiPaletteNext);
+        require(game.sectionEditor().paletteSelection()/24==2,"Lush assets cannot be reached on page three");
+        require(difference(assetsLast,draw(width,height))>1000,"New lush model icons did not replace page two");
+        act(SectionUiPaletteItemBase+static_cast<int>(HubAssetCount)-1);
+        require(game.sectionEditor().hotbar()[8].asset==HubAssetKind::HangingPlanter,"Last lush asset cannot be equipped");
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.0f : 1.0f;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            require(logicalHit(x+22+5*110+52,y+97+27,size.x,size.y,dpi)==SectionUiPaletteItemBase+53,
+                    "Third-page lush asset target disagrees with scaled drawing");
             draw(size.x,size.y,dpi);
         }
         act(SectionUiPaletteTabBase+2); draw(width,height);

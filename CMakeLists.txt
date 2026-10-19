@@ -28,6 +28,7 @@ add_library(VoxelCore
     src/hub_buildings.cpp
     src/hub_assets.cpp
     src/hub_landscape.cpp
+    src/hub_lush.cpp
     src/player.cpp
     src/camera.cpp
     src/world.cpp
@@ -41,6 +42,7 @@ add_library(VoxelCore
     src/graphics/hub_gardens.cpp
     src/graphics/hub_architecture.cpp
     src/graphics/hub_blacksmith.cpp
+    src/graphics/hub_lush.cpp
     src/editing.cpp
     src/save.cpp
 )
@@ -67,6 +69,7 @@ if(VOXEL_BUILD_APP)
         tests/root_crossing_hud_smoke.cpp
         tests/section_hud_smoke.cpp
         tests/level_hud_smoke.cpp
+        tests/lush_material_smoke.cpp
     )
     target_include_directories(VoxelEngine PRIVATE tests)
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
@@ -81,6 +84,7 @@ if(BUILD_TESTING)
         root_crossings root_crossing_game
         sections section_editor
         levels levels_game
+        lush_hub
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

@@ -18,8 +18,14 @@ enum class HubAssetKind {
     Boulder, RockLedge, StalactiteCluster, RootArch, RootCurtain,
     BroadleafClump, FernBed, MossGarden,
     Dormer, BayWindow, Chimney, Balcony, PorchCanopy,
-    Forge, Anvil, ToolRack, SmithWorkbench, AnvilSign
+    Forge, Anvil, ToolRack, SmithWorkbench, AnvilSign,
+    TreeFern, LushSapling, HangingRoots, BlossomVines,
+    GlowMushroomColony, GiantMushroom, ShelfFungi, CaveLotus,
+    WaterGrass, MossyLog, RootFan, MossyStones,
+    CrystalFlower, SporeStalks, CaveOrchid, HangingPlanter
 };
+
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::HangingPlanter) + 1;
 
 struct HubAsset {
     HubAssetKind kind;
@@ -44,6 +50,15 @@ constexpr bool isBlacksmithAsset(HubAssetKind kind)
 {
     return kind >= HubAssetKind::Forge && kind <= HubAssetKind::AnvilSign;
 }
+
+constexpr bool isLushAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::TreeFern && kind <= HubAssetKind::HangingPlanter;
+}
+
+// Lush ground models sit on their origin. HangingRoots/HangingPlanter grow
+// down from a ceiling; BlossomVines/ShelfFungi/RootFan grow out of a local
+// Z=0 wall toward +Z. CaveLotus/WaterGrass use the water surface as their origin.
 
 // Includes full model extents for chunk culling and light candidate bounds.
 inline constexpr float HubAssetMargin = 4.0f;

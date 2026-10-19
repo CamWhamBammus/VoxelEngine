@@ -12,20 +12,11 @@
 namespace {
 using namespace voxel;
 int failures = 0;
-constexpr std::array kinds{
-    HubAssetKind::LanternCap, HubAssetKind::WallBracket, HubAssetKind::HangingLamp,
-    HubAssetKind::CrystalBeacon, HubAssetKind::WindowBox, HubAssetKind::Shutters,
-    HubAssetKind::Awning, HubAssetKind::RoofBrace, HubAssetKind::Banner, HubAssetKind::CrateStack,
-    HubAssetKind::Fern, HubAssetKind::Flowers, HubAssetKind::Mushrooms, HubAssetKind::Reeds,
-    HubAssetKind::LilyPads, HubAssetKind::Vines, HubAssetKind::Shrub,
-    HubAssetKind::PathPaving, HubAssetKind::PathEdging, HubAssetKind::PathStep,
-    HubAssetKind::Boulder, HubAssetKind::RockLedge, HubAssetKind::StalactiteCluster,
-    HubAssetKind::RootArch, HubAssetKind::RootCurtain, HubAssetKind::BroadleafClump,
-    HubAssetKind::FernBed, HubAssetKind::MossGarden, HubAssetKind::Dormer,
-    HubAssetKind::BayWindow, HubAssetKind::Chimney, HubAssetKind::Balcony, HubAssetKind::PorchCanopy,
-    HubAssetKind::Forge, HubAssetKind::Anvil, HubAssetKind::ToolRack,
-    HubAssetKind::SmithWorkbench, HubAssetKind::AnvilSign,
-};
+constexpr auto kinds = [] {
+    std::array<HubAssetKind, HubAssetCount> result{};
+    for (std::size_t i = 0; i < result.size(); ++i) result[i] = static_cast<HubAssetKind>(i);
+    return result;
+}();
 
 void check(bool condition, const char* message)
 {
@@ -306,9 +297,11 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
     const auto cell = [](glm::vec3 point) { return glm::ivec3(glm::floor(point)); };
     const auto natural = [](Block block) {
         return block == Block::Grass || block == Block::Dirt || block == Block::Stone
-            || block == Block::Slate || block == Block::Limestone;
+            || block == Block::Slate || block == Block::Limestone || block == Block::MossStone
+            || block == Block::Calcite || block == Block::RootedDirt || block == Block::Moss || block == Block::GlowMoss;
     };
-    const auto soil = [](Block block) { return block == Block::Grass || block == Block::Dirt; };
+    const auto soil = [](Block block) { return block == Block::Grass || block == Block::Dirt
+        || block == Block::RootedDirt || block == Block::Moss; };
     const auto air = [](Block block) { return block == Block::Air; };
     const auto volume = [&](glm::vec3 low, glm::vec3 high, auto accepts) {
         const auto first = cell(low + glm::vec3(0.0001f));
@@ -574,8 +567,8 @@ int main()
         check(World::contains(glm::ivec3(glm::floor(asset.position))), "asset origins have owning world chunks");
         expectedIndices += buildHubAsset(asset).indices.size();
     }
-    check(std::all_of(present.begin(), present.end(), [](bool found) { return found; }),
-          "the actual hub uses every registered asset kind");
+    check(std::all_of(present.begin(), present.begin() + static_cast<std::size_t>(HubAssetKind::AnvilSign) + 1, [](bool found) { return found; }),
+          "the lush pass retains every existing hub asset family");
     checkHubPlacement(world, plan);
     checkBlacksmith(world, plan);
     const auto dressing = buildHubDressing(world);
@@ -589,7 +582,7 @@ int main()
         actualIndices += dressing.meshes[index].indices.size();
     }
     check(actualIndices == expectedIndices, "batching retains every planned model exactly once");
-    check(!dressing.lights.empty() && dressing.lights.size() <= 30, "asset lights have a small explicit budget");
+    check(!dressing.lights.empty() && dressing.lights.size() <= 100, "lanterns and lush bioluminescence retain a bounded source budget");
     check(dressing.lights.size() == repeated.lights.size(), "the asset light count is deterministic");
     for (std::size_t i = 0; i < dressing.lights.size(); ++i) {
         const auto& light = dressing.lights[i];

@@ -51,8 +51,9 @@ MaterialSurface evaluateMaterial() {
         float roughness = 0.88, emission = 0.0;
         if (materialId == 10) { roughness = 0.24; emission = 0.30 + brush * 0.08; }
         if (materialId == 14) { roughness = 0.22; emission = 1.0; }
-        if (materialId == 17) emission = 0.025;
-        if (materialId == 18) emission = 0.15;
+        if (materialId == 17 || materialId == 30) emission = 0.025;
+        if (materialId == 18 || materialId == 32) emission = 0.15;
+        if (materialId == 31) { roughness = 0.25; emission = 0.30; }
         return MaterialSurface(clamp(color, 0.0, 1.0), n, roughness, emission);
     }
     // Sample the same paint on a raised chip and on its supporting block.
@@ -76,6 +77,7 @@ MaterialSurface evaluateMaterial() {
     vec2 slope = vec2(0.0);
     float roughness = 0.90, emission = 0.0;
     if (materialId == 3 || materialId == 5 || materialId == 6 || materialId == 15
+        || materialId == 21 || materialId == 28
         || (materialId >= 7 && materialId <= 9)) {
         bool shale = materialId == 6 || materialId == 15;
         // These irregular fracture lines also anchor the occasional rock chips
@@ -123,6 +125,22 @@ MaterialSurface evaluateMaterial() {
         float rim = smoothstep(0.025, 0.05, edge) * (1.0 - smoothstep(0.05, 0.09, edge));
         color += vec3(0.040, 0.045, 0.045) * rim * max(edgeLight, 0.0) * fracture;
         slope = outward * bevel * fracture * (shale ? 0.08 : 0.10);
+        if (materialId == 21) {
+            // Irregular velvet patches settle in fissures and creep over ledges.
+            float cover = smoothstep(0.43, 0.64, broad * 0.60 + chips * 0.32
+                                      + crack * 0.13 + (top ? 0.12 : 0.0));
+            vec3 moss = mix(vec3(0.095, 0.22, 0.105), vec3(0.34, 0.48, 0.16), chips);
+            color = mix(color * 0.88, moss * (0.91 + fine * 0.09), cover);
+            slope *= 1.0 - cover * 0.75;
+        }
+        if (materialId == 28) {
+            // Pale calcite has broad cream bands and cool mineral seams.
+            float band = materialNoise(vec2(p.x * 0.8 + chips * 0.4, p.y * 7.5) + seed);
+            color = mix(vec3(0.59, 0.66, 0.62), vec3(0.87, 0.84, 0.66), broad);
+            color *= 0.86 + 0.17 * floor(band * 5.0) / 4.0 - crack * 0.13;
+            color += vec3(0.065, 0.06, 0.045) * rim * max(edgeLight, 0.0);
+            roughness = 0.65;
+        }
         if (materialId >= 7 && materialId <= 9) {
             // These elongated, asymmetric fragments also define the attached
             // ore geometry in block_relief.cpp. Nearby pieces share a direction.
@@ -187,37 +205,54 @@ MaterialSurface evaluateMaterial() {
             slope = vec2((ribbon - 0.5) * 0.18, sin(falling.y * 4.0 + ribbon) * 0.025);
         }
         roughness = top ? 0.13 : 0.24;
-    } else if (materialId == 17 || materialId == 18) {
-        // Paint overlapping leaf shapes into the cubes: a dense tree keeps a
-        // simple silhouette instead of multiplying thousands of small meshes.
-        vec2 leafGrid = p * 1.5;
-        leafGrid.x += mod(floor(leafGrid.y), 2.0) * 0.45;
-        float leafSeed = materialHash(floor(leafGrid) + seed);
-        vec2 q = fract(leafGrid) - 0.5;
-        q.x += q.y * (leafSeed - 0.5) * 0.7;
-        float shape = abs(q.x) * 1.55 + abs(q.y) * 0.85;
-        float leaf = 1.0 - smoothstep(0.30, 0.62, shape);
-        float mass = materialNoise(p * 0.45 + seed);
-        vec3 pigment = mix(vec3(0.09, 0.30, 0.10), vec3(0.22, 0.48, 0.13), mass * 0.75 + leafSeed * 0.25);
-        if (materialId == 18) pigment = mix(vec3(0.06, 0.40, 0.24), vec3(0.10, 0.54, 0.30), mass);
-        // Broad crown regions make the heart tree a distinct landmark. Ordinary
-        // low garden trees stay green; color varies across whole boughs, not blocks.
-        float crown = smoothstep(29.0, 39.0, worldPosition.y);
-        float rose = smoothstep(0.22, 0.72, 0.5 + 0.30 * sin(worldPosition.x * 0.065)
-                                            + 0.26 * cos(worldPosition.z * 0.055));
-        vec3 blossom = mix(vec3(0.23, 0.055, 0.27), vec3(0.56, 0.16, 0.33),
-                           clamp(mass * 0.45 + leafSeed * 0.20 + n.y * 0.20 + 0.20, 0.0, 1.0));
-        vec3 crownPigment = mix(vec3(0.11, 0.27, 0.23), blossom, rose);
-        pigment = mix(pigment, crownPigment, crown);
-        color = mix(pigment * 0.82, pigment * (0.95 + q.y * 0.12), leaf);
-        float vein = (1.0 - smoothstep(0.015, 0.045, abs(q.x))) * leaf;
-        color += (materialId == 18 ? vec3(0.015, 0.045, 0.025) : vec3(0.025, 0.04, 0.01)) * vein;
-        color *= 0.91 + 0.16 * broad;
-        slope = q * leaf * 0.08;
-        roughness = 0.85;
-        // A tiny emissive fill keeps unlit canopy readable. Glow leaves remain
-        // accents within that canopy instead of bright cyan checker tiles.
-        emission = materialId == 18 ? mix(0.08 + leaf * 0.04, 0.065, crown) : 0.030;
+    } else if (materialId == 17 || materialId == 18 || materialId == 30) {
+        // Pointed overlapping leaves leave real holes in the voxel face. This
+        // fixed world-space mask never animates or switches off with distance.
+        // Model foliage returned above already has shaped leaves, so only the
+        // block shell gets cut out. No sorted transparency pass is necessary.
+        vec2 grid = p * 3.0;
+        vec2 tile = floor(grid), within = fract(grid);
+        float best = -10.0, leafSeed = 0.0;
+        vec2 leafPoint = vec2(0.0);
+        for (int y = -1; y <= 1; ++y) for (int x = -1; x <= 1; ++x) {
+            vec2 offset = vec2(x, y);
+            float h = materialHash(tile + offset + seed);
+            float h2 = materialHash(tile + offset + seed + 13.0);
+            vec2 center = offset + vec2(0.18 + 0.64 * h, 0.18 + 0.64 * h2);
+            vec2 q = within - center;
+            float angle = floor(h2 * 8.0) * 0.785398;
+            vec2 along = vec2(cos(angle), sin(angle));
+            q = vec2(dot(q, along), dot(q, vec2(-along.y, along.x)));
+            q /= vec2(0.70 + h * 0.14, 0.36 + h2 * 0.08);
+            // The curved sides meet in pointed tips, unlike the soil/grass paint.
+            float inside = 1.0 - q.x * q.x - abs(q.y);
+            if (inside > best) { best = inside; leafPoint = q; leafSeed = h; }
+        }
+        if (best <= 0.035) discard;
+        float mass = materialNoise(p * 0.43 + seed);
+        vec3 pigment = mix(vec3(0.075, 0.25, 0.11), vec3(0.30, 0.57, 0.18),
+                           mass * 0.55 + leafSeed * 0.45);
+        if (materialId == 18)
+            pigment = mix(vec3(0.055, 0.32, 0.22), vec3(0.18, 0.65, 0.42), leafSeed);
+        // Preserve the heart tree's broad rose crown and add a pink leaf block
+        // that builders can use at any height in their own gardens.
+        float crown = materialId == 30 ? 1.0 : smoothstep(29.0, 39.0, worldPosition.y);
+        float rose = materialId == 30 ? 1.0
+            : smoothstep(0.22, 0.72, 0.5 + 0.30 * sin(worldPosition.x * 0.065)
+                                       + 0.26 * cos(worldPosition.z * 0.055));
+        vec3 blossom = mix(vec3(0.27, 0.065, 0.26), vec3(0.77, 0.31, 0.48),
+                           clamp(mass * 0.35 + leafSeed * 0.40 + n.y * 0.15 + 0.12, 0.0, 1.0));
+        pigment = mix(pigment, mix(vec3(0.12, 0.34, 0.26), blossom, rose), crown);
+        float edge = smoothstep(0.035, 0.21, best);
+        color = pigment * (0.70 + edge * 0.28 + leafPoint.y * 0.12);
+        // A pale midrib and a few oblique veins make each leaf recognizable.
+        float vein = 1.0 - smoothstep(0.025, 0.10, abs(leafPoint.y));
+        float ribs = 1.0 - smoothstep(0.03, 0.08,
+            abs(fract(leafPoint.x * 2.2 - abs(leafPoint.y) * 1.2) - 0.5));
+        color += pigment * (vein * 0.27 + ribs * 0.075) * edge;
+        slope = vec2(leafPoint.x, -leafPoint.y) * 0.09;
+        roughness = 0.84;
+        emission = materialId == 18 ? mix(0.14, 0.09, crown) : 0.025;
     } else if (materialId == 19) {
         vec2 tiles = p * vec2(2.0, 2.5);
         tiles.x += mod(floor(tiles.y), 2.0) * 0.5;
@@ -230,8 +265,15 @@ MaterialSurface evaluateMaterial() {
         else color += vec3(0.045, 0.08, 0.10) * (1.0 - smoothstep(0.08, 0.18, f.y));
         slope = vec2((f.x - 0.5) * 0.22, -0.08);
         roughness = 0.62;
-    } else if (materialId == 11 || materialId == 12) {
-        bool timber = materialId == 11;
+    } else if (materialId == 11 || materialId == 12 || materialId == 26 || materialId == 27) {
+        bool timber = materialId == 11 || materialId == 26;
+        if (materialId == 26) {
+            // Twisting fibrous roots, kept separate from regular straight timber.
+            p.x += sin(p.y * 2.1 + seed) * 0.09 + sin(p.y * 0.73 + seed) * 0.12;
+            color = mix(vec3(0.23, 0.17, 0.105), vec3(0.50, 0.37, 0.20), broad);
+        }
+        if (materialId == 27)
+            color = mix(vec3(0.30, 0.34, 0.30), vec3(0.58, 0.53, 0.37), broad);
         if (timber && top) {
             vec2 q = local - vec2(0.46, 0.52);
             float radius = length(q * vec2(1.0, 1.12)) + chips * 0.025;
@@ -265,8 +307,17 @@ MaterialSurface evaluateMaterial() {
             if (min(edge.x, edge.y) < 0.023) color *= 0.43;
             else slope += sign(f - 0.5) * (1.0 - smoothstep(vec2(0.025), vec2(0.06), edge)) * 0.22;
         }
-        roughness = 0.78;
-    } else if (materialId == 13) {
+        if (materialId == 26 && !top) {
+            float deepGrain = materialNoise(vec2(p.x * 13.0, p.y * 0.65) + seed);
+            color *= 0.82 + deepGrain * 0.34;
+            color = mix(color, vec3(0.24, 0.37, 0.14), smoothstep(0.72, 0.85, chips) * 0.48);
+        }
+        if (materialId == 27) {
+            float wear = smoothstep(0.53, 0.72, chips);
+            color = mix(color, vec3(0.48, 0.50, 0.41), wear * 0.40);
+        }
+        roughness = materialId >= 26 ? 0.93 : 0.78;
+    } else if (materialId == 13 || materialId == 22) {
         float row = floor(p.y * 2.0);
         vec2 brick = vec2(p.x + mod(row, 2.0) * 0.5, p.y * 2.0);
         vec2 f = fract(brick), edge = min(f, 1.0 - f) * vec2(1.0, 0.5);
@@ -276,7 +327,13 @@ MaterialSurface evaluateMaterial() {
             slope = sign(f - 0.5) * (1.0 - smoothstep(vec2(0.025), vec2(0.065), edge)) * 0.28;
             color *= 0.91 + 0.09 * smoothstep(0.025, 0.06, min(edge.x, edge.y));
         }
-    } else if (materialId == 10) {
+        if (materialId == 22) {
+            float crevice = 1.0 - smoothstep(0.03, 0.14, min(edge.x, edge.y));
+            float growth = smoothstep(0.39, 0.72, chips * 0.50 + broad * 0.28 + crevice * 0.35);
+            vec3 moss = mix(vec3(0.10, 0.23, 0.11), vec3(0.35, 0.46, 0.17), broad);
+            color = mix(color, moss, growth);
+        }
+    } else if (materialId == 10 || materialId == 31) {
         // Long angular mineral planes continue across voxels rather than stamping
         // the same X onto every cube. Sparse edge gleams preserve deep jewel hues.
         vec2 mineral = p * (top ? vec2(1.8) : vec2(2.8, 0.70));
@@ -301,6 +358,12 @@ MaterialSurface evaluateMaterial() {
         float gleam = smoothstep(0.02, 0.045, edge) * (1.0 - smoothstep(0.045, 0.11, edge));
         color += vec3(0.09, 0.22, 0.25) * gleam * smoothstep(-0.10, 0.25, plane.x);
         slope = vec2((facet - 0.5) * 0.60, (fract(facet * 13.71) - 0.5) * 0.24);
+        if (materialId == 31) {
+            color = mix(vec3(0.46, 0.12, 0.025), vec3(0.95, 0.57, 0.12), facet);
+            color *= 0.83 + 0.17 * broad;
+            color *= 0.76 + 0.24 * smoothstep(0.015, 0.10, edge);
+            color += vec3(0.18, 0.15, 0.065) * gleam * smoothstep(-0.10, 0.25, plane.x);
+        }
         roughness = 0.20; emission = 0.26 + 0.14 * facet;
     } else if (materialId == 20) {
         // The fitted slab models sit just above this recessed mortar bed.
@@ -328,7 +391,33 @@ MaterialSurface evaluateMaterial() {
             roughness = 0.22; emission = 1.0;
         }
         slope = sign(local - 0.5) * (1.0 - smoothstep(vec2(0.07), vec2(0.14), edge)) * 0.20;
-    } else if (materialId == 1 || materialId == 2) {
+    } else if (materialId == 24 || materialId == 25) {
+        // Broad sediment bands for riverbanks: warm clay and damp grey-green silt.
+        float band = materialNoise(vec2(p.x * 0.75 + chips * 0.3, p.y * 6.5) + seed);
+        float steps = floor(band * 6.0) / 5.0;
+        vec3 low = materialId == 24 ? vec3(0.44, 0.22, 0.15) : vec3(0.23, 0.29, 0.26);
+        vec3 high = materialId == 24 ? vec3(0.75, 0.47, 0.31) : vec3(0.46, 0.48, 0.37);
+        color = mix(low, high, broad * 0.55 + steps * 0.45);
+        float pebbles = smoothstep(0.78, 0.90, materialNoise(p * 11.0 + seed));
+        color += (materialId == 24 ? vec3(0.10, 0.07, 0.035) : vec3(0.08, 0.085, 0.065)) * pebbles;
+        slope = vec2(chips - 0.5, band - 0.5) * 0.07;
+        roughness = materialId == 24 ? 0.92 : 0.68;
+    } else if (materialId == 29 || materialId == 32) {
+        float cushions = materialNoise(p * 3.7 + seed);
+        float tips = floor(chips * 5.0) / 4.0;
+        vec3 low = materialId == 32 ? vec3(0.025, 0.26, 0.17) : vec3(0.11, 0.23, 0.075);
+        vec3 high = materialId == 32 ? vec3(0.16, 0.68, 0.41) : vec3(0.40, 0.56, 0.16);
+        color = mix(low, high, cushions * 0.65 + tips * 0.35);
+        color *= 0.92 + fine * 0.10;
+        slope = vec2(cushions - 0.5, chips - 0.5) * 0.12;
+        roughness = 0.98;
+        if (materialId == 32) {
+            // Clusters of soft luminous spores, no temporal twinkling/pop-in.
+            float spores = smoothstep(0.66, 0.86, chips);
+            color += vec3(0.055, 0.13, 0.065) * spores;
+            emission = 0.10 + spores * 0.25;
+        }
+    } else if (materialId == 1 || materialId == 2 || materialId == 23) {
         // Painted soil clumps, root strokes and a few embedded pebbles carry
         // the exposed stair banks; moss spills down unevenly from the surface.
         float clumps = materialNoise(p * vec2(4.0, 5.5) + seed);
@@ -351,6 +440,14 @@ MaterialSurface evaluateMaterial() {
             float depth = 0.43 + 0.35 * materialNoise(vec2(p.x * 2.2, seed));
             float fringe = smoothstep(depth - 0.10, depth + 0.04, local.y + chips * 0.12);
             color = top ? green : mix(earth, green, fringe);
+        }
+        if (materialId == 23) {
+            vec2 rootUV = p;
+            rootUV.x += sin(p.y * 3.8 + seed) * 0.075;
+            float root = abs(fract(rootUV.x * 2.7 + materialNoise(p * 0.85 + seed) * 0.65) - 0.5);
+            float skin = 1.0 - smoothstep(0.035, 0.10, root);
+            vec3 wood = mix(vec3(0.34, 0.22, 0.12), vec3(0.62, 0.43, 0.23), 1.0 - root * 7.0);
+            color = mix(earth * 0.91, wood, skin);
         }
         slope = vec2(clumps - 0.5, strata - 0.5) * 0.13;
     }

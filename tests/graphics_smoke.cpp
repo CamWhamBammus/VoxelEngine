@@ -4,6 +4,7 @@
 #include "root_crossing_hud_smoke.h"
 #include "section_hud_smoke.h"
 #include "level_hud_smoke.h"
+#include "lush_material_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -632,8 +633,8 @@ void verifyUndergroundMaterials(int width, int height)
         for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Leaves);
     }
     const auto throughLeaves = sample(Block::Stone);
-    if (glm::length(throughLeaves - blocked) > 2.0f) {
-        throw std::runtime_error("Solid foliage failed to block lantern light");
+    if (glm::length(throughLeaves - warm) > 2.0f) {
+        throw std::runtime_error("Cutout foliage incorrectly cast a solid cube shadow");
     }
     for (int x = 1; x <= 3; ++x) {
         for (int y = 5; y <= 9; ++y) world.set({x, y, 2}, Block::Air);
@@ -1189,6 +1190,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifySectionHud(width, height);
     verifySectionAssets(width, height);
     verifyLevelHud(width, height);
+    verifyLushMaterials(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.

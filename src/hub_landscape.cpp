@@ -40,7 +40,8 @@ Bounds placedBounds(const HubAsset& asset,Bounds local)
 bool natural(Block block)
 {
     return block==Block::Grass || block==Block::Dirt || block==Block::Stone
-        || block==Block::Limestone || block==Block::Slate;
+        || block==Block::Limestone || block==Block::Slate || block==Block::MossStone
+        || block==Block::Calcite || block==Block::RootedDirt || block==Block::Moss || block==Block::GlowMoss;
 }
 
 // Small conservative boxes cover the whole model, not just its center. The

@@ -20,7 +20,13 @@ Underground rendering uses HDR color, multisample antialiasing, and a small bloo
 
 Paired crystal spires, occasional short wall growths, ceiling formations, and leafy grass tufts with sparse flowers are decorative meshes attached to exposed blocks. These details have no collision; movement follows the underlying voxel shapes.
 
-A 38-type model library dresses the hub with lantern fittings, building details, plants, and fitted paving. Selected cottages have projecting bay windows, roof dormers, and bracketed porch canopies; inns gain timber balconies, and masonry chimney fittings break up roof silhouettes. Details vary by building style and available support. Ferns, flowers, mushrooms, and shrubs share garden pockets with broad folded leaves, layered fern beds, and low moss cushions. Reeds and lily pads follow the water, while leafy vines trail from eaves and canopies.
+A 54-type model library dresses the hub with lantern fittings, building details, plants, and fitted paving. Selected cottages have projecting bay windows, roof dormers, and bracketed porch canopies; inns gain timber balconies, and masonry chimney fittings break up roof silhouettes. Details vary by building style and available support. Ferns, flowers, mushrooms, and shrubs share garden pockets with broad folded leaves, layered fern beds, and low moss cushions. Reeds and lily pads follow the water, while leafy vines trail from eaves and canopies.
+
+The lush-cave kit adds **16 models** with layered, faceted silhouettes: tree ferns, saplings, hanging roots, blossom vines, glowing mushroom colonies, giant mushrooms, shelf fungi, cave lotus, water grass, mossy logs, root fans, mossy stones, crystal flowers, spore stalks, cave orchids, and hanging planters. The village uses these around its tree, gardens, banks, cave walls, and overhead ledges. Ground models need full support, water plants sit on real water, and hanging growths attach to actual ceilings or branches. Placement reserves path shoulders, bridge headroom, doors, and the existing decorations. Glowing fungi and flowers add small, fixed lights.
+
+**Leaves, glow leaves, and blossom leaves have cutout gaps** between painted leaf shapes and veins. Scenery remains visible through those gaps, and foliage allows light through instead of casting a solid cube shadow. The blocks remain solid for walking. The sculpted leaves on decorative models keep their shaped geometry.
+
+The **12 new blocks** are mossy stone, mossy bricks, rooted dirt, clay, silt, root wood, aged planks, calcite, velvet moss, blossom leaves, amber crystal, and glow moss. They supply damp rock, soft garden floors, old ruins, twisted roots, pink canopy accents, and warm/cool glowing seams for authored lush rooms. Hub rock and soil gain matching surface accents without changing paths or water levels.
 
 Faceted mossy boulders, layered rock ledges, and ceiling stalactite clusters soften the cavern's block outlines. Thick root arches sit inside the tree's planted bed, facing the four bridge approaches while leaving the full bridges and paved loop clear. Twisting root curtains attach to tall retaining faces. Placement checks the supporting terrain and clearance; larger nature models reserve space before small plants are scattered. These are cosmetic models with seeded variations: movement still uses the underlying voxels. Lamps and beacons add light; building fittings and plants have no interaction.
 
@@ -43,8 +49,8 @@ The hub follows a fixed architectural plan, with seeded variations in rock, ore,
 Run **`./build/VoxelEngine --dev`**, or press **F7** in the game. On a Mac keyboard you may need **Fn** with the function keys.
 
 1. Choose a world, then **New empty section**. The room has a protected stone shell around a **64 × 48 × 64** editable interior. Lush Caves is the current world; Crystal Hollows and Ember Depths are library destinations for future themes.
-2. Press **E** for the creative inventory. Choose a hotbar slot, then click a block, asset, or marker to equip it. The tabs contain all **19 building materials**, **38 decorative models**, and **Start**, **End**, and optional **Checkpoint** markers. Asset icons show the actual models. Use the page arrows to see the rest of the assets; **Escape** or **E** closes the inventory.
-3. Fly and build. **Left click** removes, **right click** places, and **middle click** picks the targeted item. Holding a button repeats block edits. **1–9** or the wheel selects a hotbar slot; **T** rotates models and **Y** changes their variant. The green model preview shows where an asset will go.
+2. Press **E** for the creative inventory. Choose a hotbar slot, then click a block, asset, or marker to equip it. The tabs contain all **31 building materials**, **54 decorative models**, and **Start**, **End**, and optional **Checkpoint** markers. Asset icons show the actual models. The inventory has two block pages and three asset pages; the new lush models are on asset pages two and three. The selected item shows its suggested ground, wall, ceiling, or water placement. Use the page arrows to see the rest of the assets; **Escape** or **E** closes the inventory.
+3. Fly and build. **Left click** removes, **right click** places, and **middle click** picks the targeted item. Holding a button repeats block edits. **1–9** or the wheel selects a hotbar slot; **T** rotates models and **Y** changes their variant. The green model preview shows where an asset will go. Aim at the underside of a ceiling for hanging roots or planters, a wall for shelf fungi or root fans, and the top of water for lotus or water grass; aquatic roots extend below the surface.
 4. Equip markers from the inventory and right click a clear, solid top face. **Green Start** sets the spawn, **gold End** advances to the next section, and **cyan** is an optional checkpoint. Every section has exactly one Start and one End: placing either moves the existing marker, and undo restores its previous position. Their labeled frames have no collision. Keep headroom above each marker. Decorative models have no collision: use terrain blocks for walkable roots, rocks, platforms, and floors.
 5. Press **F8** to test with normal walking, jumping, gravity, and collision. Reach the gold End to pass. **R** returns to the start or checkpoint; **Shift+R** restarts the attempt. **F8** returns to your previous build view. Any geometry or marker edit, including undo/redo, requires another test before acceptance.
 6. Press **F10** after passing, type a name, and choose **Parkour, Puzzle, Exploration, Mining, or Treasure**. Press **Enter** or click **Accept section**. It appears in that world's library immediately. **F9** opens the library to continue a draft or edit a copy of an accepted section.
@@ -138,6 +144,7 @@ src/
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
   hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
   hub_landscape.cpp Attach large rocks and roots to supporting terrain
+  hub_lush.h/.cpp   Layer lush gardens, wall growths, water plants, and natural surface accents
   input.h/.cpp      Keyboard and mouse controls
   camera.h/.cpp     Camera movement, view math, and visibility checks
   world.h/.cpp      Blocks, chunks, world storage, and terrain generation
@@ -159,6 +166,7 @@ src/
     hub_paths.cpp  Fitted paving, border stones, and stair caps
     hub_nature.cpp Sculpted rocks, stalactites, and large roots
     hub_gardens.cpp Broad leaves, fern beds, and moss cushions
+    hub_lush.cpp    Sixteen lush models: trees, fungi, roots, orchids, and aquatic plants
     hub_architecture.cpp Dormers, bay windows, chimneys, balconies, and canopies
     hub_blacksmith.cpp Forge, anvil, tools, workbench, and workshop sign
     hud.h/.cpp      Draw text, tool icons, the compass, and the blacksmith panel

@@ -69,8 +69,24 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::ToolRack, "Tool rack", "Workshop"},
     SectionAssetInfo{HubAssetKind::SmithWorkbench, "Workbench", "Workshop"},
     SectionAssetInfo{HubAssetKind::AnvilSign, "Anvil sign", "Workshop"},
+    SectionAssetInfo{HubAssetKind::TreeFern, "Tree fern", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::LushSapling, "Lush sapling", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::HangingRoots, "Hanging roots", "Lush / ceiling"},
+    SectionAssetInfo{HubAssetKind::BlossomVines, "Blossom vines", "Lush / wall"},
+    SectionAssetInfo{HubAssetKind::GlowMushroomColony, "Glow mushrooms", "Lush / ground / light"},
+    SectionAssetInfo{HubAssetKind::GiantMushroom, "Giant mushroom", "Lush / ground / light"},
+    SectionAssetInfo{HubAssetKind::ShelfFungi, "Shelf fungi", "Lush / wall"},
+    SectionAssetInfo{HubAssetKind::CaveLotus, "Cave lotus", "Lush / water surface"},
+    SectionAssetInfo{HubAssetKind::WaterGrass, "Water grass", "Lush / water surface"},
+    SectionAssetInfo{HubAssetKind::MossyLog, "Mossy log", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::RootFan, "Root fan", "Lush / wall"},
+    SectionAssetInfo{HubAssetKind::MossyStones, "Mossy stones", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::CrystalFlower, "Crystal flower", "Lush / ground / light"},
+    SectionAssetInfo{HubAssetKind::SporeStalks, "Spore stalks", "Lush / ground / light"},
+    SectionAssetInfo{HubAssetKind::CaveOrchid, "Cave orchid", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::HangingPlanter, "Hanging planter", "Lush / ceiling"},
 };
-static_assert(Assets.size() == static_cast<std::size_t>(HubAssetKind::AnvilSign) + 1);
+static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
 constexpr std::uint32_t Version = 1;
 constexpr std::size_t MaxNameLength = 64;

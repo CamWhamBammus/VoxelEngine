@@ -2,6 +2,7 @@
 #include "input.h"
 #include "sections.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -117,6 +118,44 @@ int main()
             press(game, &voxel::InputActions::remove);
             check(editor.assets().empty(), "left click removes a targeted model without deleting its supporting block");
         }
+        // Aquatic models use their waterline, not their lowest root, as the
+        // anchor. Hanging models must instead meet the real ceiling underside.
+        const auto equipAsset = [&](voxel::HubAssetKind kind) {
+            press(game, &voxel::InputActions::devPalette);
+            click(game, voxel::SectionUiPaletteTabBase + 1);
+            int index = -1;
+            for (std::size_t i = 0; i < editor.paletteItems().size(); ++i)
+                if (editor.paletteItems()[i].asset == kind) index = static_cast<int>(i);
+            check(index >= 0, "new lush models can be found in the creative inventory");
+            click(game, voxel::SectionUiPaletteItemBase + index);
+            press(game, &voxel::InputActions::devPalette);
+        };
+        game.world.set({12,9,12}, voxel::Block::Water);
+        game.camera.setPosition({12.5f,13,14.5f}); aim(game.camera,{12.5f,9.5f,12.5f});
+        equipAsset(voxel::HubAssetKind::CaveLotus);
+        game.update(action);
+        check(editor.placementPreview() && std::abs(editor.placementPreview()->position.y - 10) < .001f,
+              "lotus placement aligns its waterline with the water surface");
+        press(game, &voxel::InputActions::place);
+        check(editor.assets().size() == 1 && editor.assets()[0].kind == voxel::HubAssetKind::CaveLotus,
+              "new aquatic model can be placed");
+        press(game, &voxel::InputActions::undo);
+        game.world.set({12,9,12}, voxel::Block::Air);
+        game.camera.setPosition({12.5f,52,14.5f}); aim(game.camera,{12.5f,57.5f,12.5f});
+        equipAsset(voxel::HubAssetKind::HangingRoots);
+        game.update(action);
+        check(editor.placementPreview().has_value(), "hanging roots preview on the ceiling underside");
+        if (editor.placementPreview()) {
+            float highest = 0;
+            for (const auto& vertex : voxel::buildHubAsset(*editor.placementPreview()).vertices)
+                highest = std::max(highest, vertex.position.y);
+            check(std::abs(highest - 57) < .01f, "hanging root geometry meets the ceiling without floating");
+        }
+        press(game, &voxel::InputActions::place);
+        check(editor.assets().size() == 1 && editor.assets()[0].kind == voxel::HubAssetKind::HangingRoots,
+              "hanging roots can be placed and removed through editor history");
+        press(game, &voxel::InputActions::undo);
+
         // Marker placement and undo use the same authored edit history.
         game.camera.setPosition({5.5f, 13, 18.5f}); aim(game.camera, {5.5f, 8.5f, 14.5f});
         press(game, &voxel::InputActions::devPalette);

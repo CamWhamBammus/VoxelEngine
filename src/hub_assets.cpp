@@ -1,4 +1,5 @@
 #include "hub_assets.h"
+#include "hub_lush.h"
 #include "scene.h"
 #include "graphics/asset_builder.h"
 
@@ -36,7 +37,7 @@ bool air(const World& world, glm::vec3 point)
 
 bool soil(Block block)
 {
-    return block == Block::Grass || block == Block::Dirt;
+    return block == Block::Grass || block == Block::Dirt || block == Block::RootedDirt || block == Block::Moss;
 }
 
 // Check the whole model footprint, not just its origin. This keeps wide leaves
@@ -462,13 +463,15 @@ std::vector<HubAsset> planHubAssets(const World& world)
     // Paving is part of the street surface, so its coverage does not compete
     // with the decorative plant budget. Each exposed Path tile owns its kit.
     assets.insert(assets.end(), paths.begin(), paths.end());
+    blendLushAssets(world, assets);
     return assets;
 }
 
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
+    if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
+    else if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
     else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);
     else if (asset.kind >= HubAssetKind::BroadleafClump) appendHubGarden(mesh, asset);
     else if (asset.kind >= HubAssetKind::Boulder) appendHubNature(mesh, asset);
@@ -504,6 +507,14 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
             dressing.lights.push_back({asset.position + glm::vec3(0,1.4f,0), {0.12f,0.66f,0.88f},7.0f});
         if (asset.kind == HubAssetKind::Forge)
             dressing.lights.push_back({asset.position + glm::vec3(0,1.55f,0.45f), {1.35f,0.43f,0.10f},8.0f});
+        if (asset.kind == HubAssetKind::GlowMushroomColony)
+            dressing.lights.push_back({asset.position + glm::vec3(0,0.55f,0), {0.12f,0.65f,0.64f},5.0f});
+        if (asset.kind == HubAssetKind::GiantMushroom)
+            dressing.lights.push_back({asset.position + glm::vec3(0,2.55f,0), {0.13f,0.57f,0.46f},6.5f});
+        if (asset.kind == HubAssetKind::CrystalFlower)
+            dressing.lights.push_back({asset.position + glm::vec3(0,0.8f,0), {0.84f,0.48f,0.13f},5.0f});
+        if (asset.kind == HubAssetKind::SporeStalks)
+            dressing.lights.push_back({asset.position + glm::vec3(0,1.5f,0), {0.19f,0.48f,0.68f},5.0f});
     }
     return dressing;
 }

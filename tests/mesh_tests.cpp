@@ -65,6 +65,33 @@ int main()
         chunk.set(adjacent.x, adjacent.y, adjacent.z, voxel::Block::Air);
     }
 
+    for (const auto leaf : {voxel::Block::Leaves, voxel::Block::GlowLeaves, voxel::Block::BlossomLeaves}) {
+        for (int axis = 0; axis < 3; ++axis) {
+            voxel::Chunk canopy;
+            canopy.set(4, 4, 4, voxel::Block::RootWood);
+            glm::ivec3 beside(4); ++beside[axis];
+            canopy.set(beside.x, beside.y, beside.z, leaf);
+            const auto mesh = voxel::buildMesh(canopy);
+            check(mesh.indices.size() == 66, "trunk and foliage keep eleven faces for visible wood behind gaps");
+            std::size_t woodFaces = 0, leafFaces = 0;
+            for (const auto& vertex : mesh.vertices) {
+                woodFaces += vertex.material == static_cast<float>(voxel::Block::RootWood);
+                leafFaces += vertex.material == static_cast<float>(leaf);
+            }
+            check(woodFaces == 24 && leafFaces == 20, "the hidden face belongs to the leaf, never to its solid backing");
+            canopy.set(4, 4, 4, leaf);
+            check(voxel::buildMesh(canopy).indices.size() == 36,
+                  "touching matching foliage cubes merge their outer shell without internal faces");
+            canopy.set(4, 4, 4, voxel::Block::Water);
+            check(voxel::buildMesh(canopy).indices.size() == 72,
+                  "leaf gaps and water refraction both keep the other material's surface");
+        }
+        voxel::Chunk trunk;
+        trunk.set(15, 3, 4, voxel::Block::RootWood);
+        const auto seam = voxel::buildMesh(trunk, origin, [leaf](glm::ivec3) { return leaf; });
+        check(seam.indices.size() == 36, "leaf blocks in a neighbor chunk do not hide solid back faces");
+    }
+
     voxel::Chunk boundary;
     boundary.set(15, 3, 4, voxel::Block::Grass);
     int outsideSamples = 0;

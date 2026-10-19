@@ -327,7 +327,9 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         constexpr auto size = World::MaxExclusive - World::Min;
         std::vector<unsigned char> voxels(size.x * size.y * size.z);
         std::vector<bool> crystalCovered(voxels.size());
+        std::vector<bool> amberCovered(voxels.size());
         std::vector<bool> foliageCovered(voxels.size());
+        std::vector<bool> mossCovered(voxels.size());
         for (std::size_t index = 0; index < World::ChunkCount; ++index) {
             const auto origin = world.origin(index);
             const auto& chunk = world.chunk(index);
@@ -338,22 +340,27 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         const auto position = origin + glm::ivec3(x, y, z);
                         const auto local = position - World::Min;
                         // OpenGL 3D images run x, then y, then z (unlike Chunk).
-                        voxels[local.x + size.x * (local.y + size.y * local.z)] = isSolid(block) ? 255 : block == Block::Water ? 127 : 0;
-                        if (block != Block::Lantern && block != Block::Crystal && block != Block::GlowLeaves) continue;
+                        // Cutout leaf holes transmit light; collision is independent.
+                        // Keep water's distinct code for shoreline/refraction queries.
+                        voxels[local.x + size.x * (local.y + size.y * local.z)] = isOpaque(block) ? 255 : block == Block::Water ? 127 : 0;
+                        if (block != Block::Lantern && block != Block::Crystal && block != Block::GlowLeaves
+                            && block != Block::AmberCrystal && block != Block::GlowMoss) continue;
                         bool exposed = false;
                         for (const auto offset : {glm::ivec3(1,0,0), glm::ivec3(-1,0,0),
                              glm::ivec3(0,1,0), glm::ivec3(0,-1,0), glm::ivec3(0,0,1), glm::ivec3(0,0,-1)}) {
-                            exposed |= !isSolid(world.get(position + offset));
+                            exposed |= !occludes(world.get(position + offset), block);
                         }
                         if (!exposed) continue;
-                        if (block == Block::Crystal || block == Block::GlowLeaves) {
+                        if (block != Block::Lantern) {
                             // Dense crystals and glowing foliage share fixed
                             // sources at actual exposed blocks. Foliage uses a
                             // wider spacing so a canopy cannot flood the light list.
                             // This world-order grouping never follows the camera;
                             // every lantern still keeps its own light.
-                            auto& covered = block == Block::Crystal ? crystalCovered : foliageCovered;
-                            const int spacing = block == Block::Crystal ? 1 : 3;
+                            auto& covered = block == Block::Crystal ? crystalCovered
+                                : block == Block::AmberCrystal ? amberCovered
+                                : block == Block::GlowMoss ? mossCovered : foliageCovered;
+                            const int spacing = block == Block::Crystal || block == Block::AmberCrystal ? 1 : 3;
                             if (covered[local.x + size.x * (local.y + size.y * local.z)]) continue;
                             for (int dz = -spacing; dz <= spacing; ++dz) {
                                 for (int dy = -spacing; dy <= spacing; ++dy) {
@@ -369,9 +376,12 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         lights_.push_back({glm::vec3(position) + 0.5f,
                             block == Block::Lantern ? glm::vec3(1.15f, 0.58f, 0.18f)
                             : block == Block::Crystal ? glm::vec3(0.10f, 0.85f, 1.15f)
+                            : block == Block::AmberCrystal ? glm::vec3(1.05f, 0.48f, 0.10f)
+                            : block == Block::GlowMoss ? glm::vec3(0.08f, 0.40f, 0.24f)
                             : position.y > 34 ? glm::vec3(0.38f, 0.14f, 0.29f)
                                               : glm::vec3(0.08f, 0.48f, 0.31f),
-                            block == Block::Lantern ? 11.0f : block == Block::Crystal ? 8.0f : 7.0f});
+                            block == Block::Lantern ? 11.0f : block == Block::GlowMoss ? 5.5f
+                            : block == Block::Crystal || block == Block::AmberCrystal ? 8.0f : 7.0f});
                     }
                 }
             }

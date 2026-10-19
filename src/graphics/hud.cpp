@@ -398,7 +398,7 @@ const AssetThumbnail& assetThumbnail(HubAssetKind kind)
     // Project the real asset geometry once. This keeps the inventory recognizable
     // without a second renderer or per-frame model builds.
     static const auto thumbnails=[] {
-        std::array<AssetThumbnail,38> result;
+        std::array<AssetThumbnail,HubAssetCount> result;
         const auto right=glm::normalize(glm::vec3(1,0,-1));
         const auto up=glm::normalize(glm::vec3(-1,2,-1));
         const auto toward=glm::normalize(glm::vec3(1,1,1));
@@ -582,7 +582,8 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     constexpr float w=700,h=478;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
     sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY","CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
-    constexpr std::array<std::string_view,3> tabs{"BLOCKS","ASSETS","MARKERS"};
+    const std::array<std::string,3> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
+        "ASSETS "+std::to_string(sectionAssetCatalog().size()),"MARKERS"};
     for (int tab=0;tab<3;++tab)
         sectionButton(out,hits,x+22+tab*134,y+62,126,26,tabs[tab],SectionUiPaletteTabBase+tab,editor.paletteTab()==tab);
     sectionButton(out,hits,x+w-118,y+62,96,26,"ESC CLOSE",SectionUiBack);
@@ -615,7 +616,9 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
         const auto hint=item.asset ? std::string(sectionItemGroup(item))+" / NO COLLISION" : item.block && *item.block==Block::Water ? "WATER / NO COLLISION"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
-            : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE" : "BUILD WALKABLE SURFACES WITH BLOCKS";
+            : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE"
+            : item.block && isLeafBlock(*item.block) ? "LEAF CUTOUTS / SOLID FOR WALKING"
+            : "BUILD WALKABLE SURFACES WITH BLOCKS";
         fittedText(out,hint,x+23,y+359,405,0.9f,Muted);
     }
     sectionButton(out,hits,x+w-208,y+340,43,29,"<",SectionUiPalettePrevious,false,page>0);

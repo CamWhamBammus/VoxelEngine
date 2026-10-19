@@ -334,7 +334,10 @@ void SectionEditor::refreshTarget(Game& game)
                 // Attach the model's actual bounds to the selected surface:
                 // floor assets stand on it, hanging assets meet the underside,
                 // and wall attachments face away from the wall.
-                if (normal.y > 0) candidate.position.y = support.y + 1.0f - minimum.y;
+                if (normal.y > 0 && game.world.get(support) == Block::Water
+                    && (candidate.kind == HubAssetKind::CaveLotus || candidate.kind == HubAssetKind::WaterGrass))
+                    candidate.position.y = support.y + 1.0f;
+                else if (normal.y > 0) candidate.position.y = support.y + 1.0f - minimum.y;
                 else if (normal.y < 0) candidate.position.y = support.y - maximum.y;
                 else {
                     candidate.position.y = support.y + .5f;

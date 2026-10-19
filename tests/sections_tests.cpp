@@ -65,14 +65,14 @@ int main()
     TemporaryDirectory temp;
     check(sectionWorldCatalog().size() == 3, "three world collections must be available");
     check(sectionCategoryCatalog().size() == 5, "five section categories must be available");
-    check(sectionAssetCatalog().size() == 38, "every existing asset must be exposed");
+    check(sectionAssetCatalog().size() == HubAssetCount, "every existing and lush asset must be exposed");
     std::set<HubAssetKind> uniqueAssets;
     for (const auto& info : sectionAssetCatalog()) {
         uniqueAssets.insert(info.kind);
         check(!info.name.empty() && !info.group.empty(), "asset names and groups must be readable");
     }
     check(uniqueAssets.size() == sectionAssetCatalog().size(), "asset catalog must not contain duplicates");
-    check(PlaceableBlocks.size() == 19, "the builder must have all nineteen placeable materials");
+    check(PlaceableBlocks.size() == BlockCount - 2, "the builder exposes every material except air and protected bedrock");
     check(sectionInterior({-32, 9, -32}) && sectionInterior({31, 56, 31}), "both interior corners must be editable");
     for (const auto cell : {glm::ivec3{-33, 9, 0}, {32, 9, 0}, {0, 8, 0}, {0, 57, 0}, {0, 9, -33}, {0, 9, 32}}) {
         check(!sectionInterior(cell), "the enclosing shell must be protected");

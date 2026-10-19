@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "hub_lush.h"
 #include "world.h"
 
 #include <algorithm>
@@ -729,5 +730,6 @@ void buildUndergroundScene(World& world)
                         {-57,5},{-54,-21},{-29,-52},{23,-58},{-44,76},{50,76},
                         {-88,18},{100,34},{-64,-73},{64,-34}})
         smallTree(world,p,9+int(hash(p.x,p.y,world.seed())%6),4+int(hash(p.y,p.x,world.seed())%2));
+    dressLushTerrain(world);
 }
 } // namespace voxel

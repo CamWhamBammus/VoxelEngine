@@ -14,15 +14,21 @@ enum class Block : std::uint8_t {
     Air = 0, Grass = 1, Dirt = 2, Stone = 3, Sand = 4,
     Limestone = 5, Slate = 6, CoalOre = 7, CopperOre = 8, IronOre = 9,
     Crystal = 10, Timber = 11, Planks = 12, Brick = 13, Lantern = 14, Bedrock = 15,
-    Water = 16, Leaves = 17, GlowLeaves = 18, RoofTiles = 19, Path = 20
+    Water = 16, Leaves = 17, GlowLeaves = 18, RoofTiles = 19, Path = 20,
+    MossStone = 21, MossBrick = 22, RootedDirt = 23, Clay = 24, Silt = 25,
+    RootWood = 26, AgedPlanks = 27, Calcite = 28, Moss = 29, BlossomLeaves = 30,
+    AmberCrystal = 31, GlowMoss = 32
 };
 
-inline constexpr std::size_t BlockCount = 21;
+inline constexpr std::size_t BlockCount = 33;
 inline constexpr std::array PlaceableBlocks{
     Block::Grass, Block::Dirt, Block::Stone, Block::Sand,
     Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre, Block::IronOre,
     Block::Crystal, Block::Timber, Block::Planks, Block::Brick, Block::Lantern,
-    Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles, Block::Path
+    Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles, Block::Path,
+    Block::MossStone, Block::MossBrick, Block::RootedDirt, Block::Clay, Block::Silt,
+    Block::RootWood, Block::AgedPlanks, Block::Calcite, Block::Moss, Block::BlossomLeaves,
+    Block::AmberCrystal, Block::GlowMoss
 };
 
 constexpr bool isValidBlock(Block block) noexcept
@@ -54,6 +60,18 @@ constexpr std::string_view blockName(Block block) noexcept
     case Block::GlowLeaves: return "Glow leaves";
     case Block::RoofTiles: return "Roof tiles";
     case Block::Path: return "Fitted paving";
+    case Block::MossStone: return "Mossy stone";
+    case Block::MossBrick: return "Mossy ruins";
+    case Block::RootedDirt: return "Rooted earth";
+    case Block::Clay: return "Terracotta clay";
+    case Block::Silt: return "River silt";
+    case Block::RootWood: return "Ancient root wood";
+    case Block::AgedPlanks: return "Weathered planks";
+    case Block::Calcite: return "Pale calcite";
+    case Block::Moss: return "Velvet moss";
+    case Block::BlossomLeaves: return "Blossom leaves";
+    case Block::AmberCrystal: return "Amber crystal";
+    case Block::GlowMoss: return "Glow moss";
     }
     return "Unknown";
 }
@@ -68,11 +86,24 @@ constexpr bool isRenderable(Block block) noexcept
     return isValidBlock(block) && block != Block::Air;
 }
 
-// Water has a refractive surface but no collision. Solid banks remain
-// visible beside it; water hides only other water faces, avoiding internal seams.
+constexpr bool isLeafBlock(Block block) noexcept
+{
+    return block == Block::Leaves || block == Block::GlowLeaves || block == Block::BlossomLeaves;
+}
+
+// Collision and visual opacity are separate: cutout foliage is still walkable,
+// but cannot hide an adjacent trunk or cast a completely solid cube shadow.
+constexpr bool isOpaque(Block block) noexcept
+{
+    return isSolid(block) && !isLeafBlock(block);
+}
+
+// Keep solid surfaces behind leaf gaps and water. Adjacent leaf cubes share
+// one outer canopy shell rather than filling it with expensive internal faces.
 constexpr bool occludes(Block adjacent, Block faceMaterial) noexcept
 {
-    return isSolid(adjacent) || (adjacent == Block::Water && faceMaterial == Block::Water);
+    return isOpaque(adjacent) || (isLeafBlock(adjacent) && isLeafBlock(faceMaterial))
+        || (adjacent == Block::Water && faceMaterial == Block::Water);
 }
 
 inline glm::vec3 blockColor(Block block) noexcept
@@ -98,6 +129,18 @@ inline glm::vec3 blockColor(Block block) noexcept
     case Block::GlowLeaves: return {0.23f, 0.76f, 0.57f};
     case Block::RoofTiles: return {0.44f, 0.29f, 0.50f};
     case Block::Path: return {0.32f, 0.33f, 0.28f};
+    case Block::MossStone: return {0.36f, 0.48f, 0.34f};
+    case Block::MossBrick: return {0.43f, 0.48f, 0.35f};
+    case Block::RootedDirt: return {0.42f, 0.29f, 0.17f};
+    case Block::Clay: return {0.68f, 0.39f, 0.25f};
+    case Block::Silt: return {0.37f, 0.40f, 0.34f};
+    case Block::RootWood: return {0.39f, 0.29f, 0.18f};
+    case Block::AgedPlanks: return {0.48f, 0.46f, 0.34f};
+    case Block::Calcite: return {0.83f, 0.81f, 0.66f};
+    case Block::Moss: return {0.32f, 0.57f, 0.19f};
+    case Block::BlossomLeaves: return {0.70f, 0.31f, 0.50f};
+    case Block::AmberCrystal: return {0.94f, 0.52f, 0.11f};
+    case Block::GlowMoss: return {0.13f, 0.62f, 0.39f};
     case Block::Air: return {0.0f, 0.0f, 0.0f};
     }
     return {1.0f, 0.0f, 1.0f};

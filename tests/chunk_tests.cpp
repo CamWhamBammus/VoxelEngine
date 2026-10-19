@@ -53,7 +53,10 @@ int main()
         voxel::Block::Crystal, voxel::Block::Timber, voxel::Block::Planks,
         voxel::Block::Brick, voxel::Block::Lantern, voxel::Block::Bedrock,
         voxel::Block::Water, voxel::Block::Leaves, voxel::Block::GlowLeaves, voxel::Block::RoofTiles,
-        voxel::Block::Path
+        voxel::Block::Path, voxel::Block::MossStone, voxel::Block::MossBrick,
+        voxel::Block::RootedDirt, voxel::Block::Clay, voxel::Block::Silt, voxel::Block::RootWood,
+        voxel::Block::AgedPlanks, voxel::Block::Calcite, voxel::Block::Moss,
+        voxel::Block::BlossomLeaves, voxel::Block::AmberCrystal, voxel::Block::GlowMoss
     };
     check(voxel::BlockCount == expectedMaterials.size(), "block count covers every stored material");
     for (std::size_t value = 0; value < expectedMaterials.size(); ++value) {
@@ -62,6 +65,11 @@ int main()
         check(voxel::isValidBlock(block), "every declared material is valid");
         check(voxel::isSolid(block) == (block != voxel::Block::Air && block != voxel::Block::Water),
               "air and water have no collision");
+        const bool foliage = block == voxel::Block::Leaves || block == voxel::Block::GlowLeaves
+            || block == voxel::Block::BlossomLeaves;
+        check(voxel::isLeafBlock(block) == foliage, "only leaf cubes use the cutout foliage treatment");
+        check(voxel::isOpaque(block) == (block != voxel::Block::Air && block != voxel::Block::Water && !foliage),
+              "leaf collision must not imply opaque geometry or shadows");
         check(voxel::isRenderable(block) == (block != voxel::Block::Air), "every material except air renders");
         check(!voxel::blockName(block).empty() && voxel::blockName(block) != "Unknown",
               "every declared material has a display name");
