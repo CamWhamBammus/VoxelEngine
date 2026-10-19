@@ -210,12 +210,13 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
         if (actions.devTest || (actions.devClick && *actions.devClick == SectionUiTest)) {
             if (screen_ == SectionEditorScreen::Test) stopTest(game);
             else if (hasSection_ && (screen_ == SectionEditorScreen::Build || screen_ == SectionEditorScreen::Palette
-                                    || screen_ == SectionEditorScreen::Tools)) startTest(game);
+                                    || screen_ == SectionEditorScreen::Tools || screen_ == SectionEditorScreen::PasteSettings)) startTest(game);
             return;
         }
         if (actions.devAccept || (actions.devClick && *actions.devClick == SectionUiAccept)) {
             if (hasSection_ && (screen_ == SectionEditorScreen::Build || screen_ == SectionEditorScreen::Test
-                                || screen_ == SectionEditorScreen::Palette || screen_ == SectionEditorScreen::Tools)) openAccept(game);
+                                || screen_ == SectionEditorScreen::Palette || screen_ == SectionEditorScreen::Tools
+                                || screen_ == SectionEditorScreen::PasteSettings)) openAccept(game);
             return;
         }
         if (menuOpen()) updateMenu(game, actions);
@@ -232,6 +233,7 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
 void SectionEditor::updateMenu(Game& game, const InputActions& actions)
 {
     if (screen_ == SectionEditorScreen::Tools) { updateToolsMenu(game, actions); return; }
+    if (screen_ == SectionEditorScreen::PasteSettings) { updatePasteSettings(game, actions); return; }
     const int click = actions.devClick.value_or(-1);
     const bool confirm = actions.upgrade || click == SectionUiConfirm;
     const bool back = actions.closeMenu || click == SectionUiBack;
@@ -474,6 +476,8 @@ void SectionEditor::resetBuildTools()
     cornerA_.reset(); cornerB_.reset(); toolPreview_.reset(); previewOrigin_.reset();
     previewPlan_ = {}; previewRevision_ = ~std::uint64_t(0);
     toolPreviewValid_ = false;
+    pasteFillGaps_ = false; pasteFloorHeight_.reset(); pinnedPasteOrigin_.reset();
+    ++pastePreviewRevision_;
     // Keep the clipboard for reusing structures in another section this session.
 }
 
@@ -499,6 +503,7 @@ void SectionEditor::copySelection(Game& game)
     ++clipboardRevision_;
     previewRevision_ = ~std::uint64_t(0);
     pasteRotation_ = 0;
+    pasteFloorHeight_.reset(); pinnedPasteOrigin_.reset();
     message_ = "COPIED " + std::to_string(clipboard_.size.x) + " X " + std::to_string(clipboard_.size.y)
         + " X " + std::to_string(clipboard_.size.z) + " + " + std::to_string(clipboard_.assets.size())
         + " ASSETS | CTRL/CMD+V TO PREVIEW";
@@ -511,7 +516,10 @@ void SectionEditor::beginPaste()
     screen_ = SectionEditorScreen::Build;
     preview_.reset();
     previewRevision_ = ~std::uint64_t(0);
-    message_ = "PASTE PREVIEW | RIGHT CLICK STAMP / T ROTATE / X CANCEL";
+    pasteFloorHeight_.reset(); pinnedPasteOrigin_.reset();
+    toolPreview_.reset(); previewPlan_ = {}; ++pastePreviewRevision_;
+    message_ = pasteFillGaps_ ? "FILL GAPS | LEFT CLICK A FLOOR TOP TO SET ITS HEIGHT"
+                            : "PASTE | RIGHT CLICK STAMP / ARROWS + PGUP-DOWN NUDGE / P PIN";
 }
 
 void SectionEditor::fillSelection(Game& game, SectionFillMode mode)
@@ -553,8 +561,9 @@ void SectionEditor::updateToolsMenu(Game& game, const InputActions& actions)
     else if (click == SectionUiErase) fillSelection(game, SectionFillMode::Erase);
     else if (click == SectionUiCopy) copySelection(game);
     else if (click == SectionUiPaste) beginPaste();
+    else if (click == SectionUiPasteSettings) { screen_ = SectionEditorScreen::PasteSettings; }
     else if (click == SectionUiPasteAir) {
-        pasteIncludesAir_ = !pasteIncludesAir_;
+        if (!pasteFillGaps_) pasteIncludesAir_ = !pasteIncludesAir_;
         message_ = pasteIncludesAir_ ? "PASTE WITH AIR: REPLACES THE WHOLE BOX AND ITS DECORATIONS"
                                     : "PASTE SOLIDS ONLY: EMPTY CELLS KEEP EXISTING SCENERY";
     } else if (click == SectionUiClearSelection) {
@@ -569,13 +578,33 @@ void SectionEditor::updateToolsMenu(Game& game, const InputActions& actions)
     if (screen_ == SectionEditorScreen::Build) { refreshTarget(game); refreshToolPreview(game); }
 }
 
+void SectionEditor::updatePasteSettings(Game& game, const InputActions& actions)
+{
+    if (actions.undo || actions.redo) { undo(game, actions.redo && !actions.undo); return; }
+    const int click = actions.devClick.value_or(-1);
+    if (actions.closeMenu || click == SectionUiBack) { screen_ = SectionEditorScreen::Tools; return; }
+    if (actions.devTools || click == SectionUiPasteResume) {
+        if (buildMode_ == SectionBuildMode::Paste) screen_ = SectionEditorScreen::Build;
+        else beginPaste();
+    } else if (click == SectionUiPasteModeBase || click == SectionUiPasteModeBase + 1) {
+        pasteFillGaps_ = click == SectionUiPasteModeBase + 1;
+        if (pasteFillGaps_) pasteIncludesAir_ = false;
+        beginPaste();
+    } else if (click == SectionUiPasteAir && !pasteFillGaps_) {
+        pasteIncludesAir_ = !pasteIncludesAir_;
+        message_ = pasteIncludesAir_ ? "STANDARD PASTE REPLACES THE WHOLE BOX, INCLUDING AIR AND MODELS"
+                                    : "STANDARD PASTE SKIPS COPIED AIR";
+    }
+    if (screen_ == SectionEditorScreen::Build) { refreshTarget(game); refreshToolPreview(game); }
+}
+
 void SectionEditor::refreshToolPreview(Game& game)
 {
     toolPreview_.reset(); toolPreviewValid_ = false;
     if (buildMode_ != SectionBuildMode::Brush && buildMode_ != SectionBuildMode::Paste) return;
     preview_.reset(); targetAsset_.reset();
-    if (!game.target || game.target->normal == glm::ivec3(0)) return;
     if (buildMode_ == SectionBuildMode::Brush) {
+        if (!game.target || game.target->normal == glm::ivec3(0)) return;
         toolPreview_ = brushBox(*game.target, brushSize_, !brushErasing_);
         const auto block = hotbar_[selectedSlot_].block;
         if (block && validSectionBox(*toolPreview_)) {
@@ -587,17 +616,75 @@ void SectionEditor::refreshToolPreview(Game& game)
         return;
     }
     const auto size = rotatedSectionSize(clipboard_, pasteRotation_);
-    auto origin = game.target->position + game.target->normal;
-    for (int axis = 0; axis < 3; ++axis) if (game.target->normal[axis] < 0) origin[axis] -= size[axis] - 1;
+    glm::ivec3 origin;
+    if (pinnedPasteOrigin_) origin = *pinnedPasteOrigin_;
+    else if (pasteFillGaps_) {
+        if (!pasteFloorHeight_) return;
+        // Follow a plane at the picked floor's top, not the next terrain hit.
+        // A lower floor at the bottom of a hole cannot pull the stamp down.
+        const auto direction = game.camera.forward();
+        if (std::abs(direction.y) < .0001f) return;
+        const float distance = (float(*pasteFloorHeight_) + 1.f - game.camera.position().y) / direction.y;
+        if (!std::isfinite(distance) || distance < 0 || distance > 128.f) return;
+        const auto point = game.camera.position() + direction * distance;
+        origin = {int(std::floor(point.x)), *pasteFloorHeight_, int(std::floor(point.z))};
+    } else {
+        if (!game.target || game.target->normal == glm::ivec3(0)) return;
+        origin = game.target->position + game.target->normal;
+        for (int axis = 0; axis < 3; ++axis) if (game.target->normal[axis] < 0) origin[axis] -= size[axis] - 1;
+    }
     toolPreview_ = SectionBox{origin, origin + size - 1};
     const auto cameraCell = glm::ivec3(glm::floor(game.camera.position()));
     if (!previewOrigin_ || *previewOrigin_ != origin || previewRevision_ != revision_
-        || previewCameraCell_ != cameraCell || previewRotation_ != pasteRotation_ || previewAir_ != pasteIncludesAir_) {
-        previewPlan_ = planSectionPaste(game.world, assets_, clipboard_, origin, pasteRotation_, pasteIncludesAir_, game.camera.position());
+        || previewCameraCell_ != cameraCell || previewRotation_ != pasteRotation_ || previewAir_ != pasteIncludesAir_
+        || previewFillGaps_ != pasteFillGaps_) {
+        previewPlan_ = planSectionPaste(game.world, assets_, clipboard_, origin, pasteRotation_, pasteIncludesAir_, game.camera.position(), pasteFillGaps_);
         previewOrigin_ = origin; previewRevision_ = revision_; previewCameraCell_ = cameraCell;
         previewRotation_ = pasteRotation_; previewAir_ = pasteIncludesAir_;
+        previewFillGaps_ = pasteFillGaps_; ++pastePreviewRevision_;
     }
     toolPreviewValid_ = previewPlan_.error.empty();
+}
+
+void SectionEditor::positionPaste(Game& game, const InputActions& actions)
+{
+    if (pasteFillGaps_ && (actions.removePressed || actions.devPasteLevel)) {
+        if (!game.target || game.target->normal.y != 1 || !isSolid(game.world.get(game.target->position))) {
+            message_ = "AIM AT A SOLID FLOOR TOP, THEN LEFT CLICK OR L TO PICK ITS HEIGHT";
+        } else {
+            auto cell = game.target->position;
+            if (!sectionInterior(cell)) cell += game.target->normal;
+            if (!sectionInterior(cell)) { message_ = "PICK A FLOOR INSIDE THE ROOM"; return; }
+            pasteFloorHeight_ = cell.y; pinnedPasteOrigin_.reset();
+            refreshToolPreview(game);
+            message_ = "FLOOR HEIGHT " + std::to_string(cell.y) + " LOCKED | RIGHT CLICK FILLS EMPTY CELLS";
+        }
+    }
+    if (actions.devPastePin) {
+        if (pinnedPasteOrigin_) {
+            pinnedPasteOrigin_.reset();
+            message_ = pasteFillGaps_ ? "FOLLOWING AIM AT THE LOCKED FLOOR HEIGHT" : "PASTE FOLLOWS THE AIMED SURFACE";
+        } else if (toolPreview_) {
+            pinnedPasteOrigin_ = toolPreview_->min;
+            message_ = "PASTE PINNED | ARROWS + PGUP-DOWN NUDGE / P FOLLOW AIM";
+        } else message_ = pasteFillGaps_ ? "PICK A FLOOR HEIGHT BEFORE PINNING" : "AIM AT A SURFACE BEFORE PINNING";
+    }
+    if (actions.devPasteNudge != glm::ivec3(0)) {
+        if (!pinnedPasteOrigin_ && toolPreview_) pinnedPasteOrigin_ = toolPreview_->min;
+        if (!pinnedPasteOrigin_) {
+            message_ = pasteFillGaps_ ? "PICK A FLOOR HEIGHT BEFORE NUDGING" : "AIM AT A SURFACE BEFORE NUDGING";
+            return;
+        }
+        const auto direction = game.camera.forward();
+        const glm::ivec3 forward = std::abs(direction.x) > std::abs(direction.z)
+            ? glm::ivec3(direction.x > 0 ? 1 : -1, 0, 0) : glm::ivec3(0, 0, direction.z > 0 ? 1 : -1);
+        const glm::ivec3 right(-forward.z, 0, forward.x);
+        const auto steps = glm::clamp(actions.devPasteNudge, glm::ivec3(-1), glm::ivec3(1));
+        *pinnedPasteOrigin_ = glm::clamp(*pinnedPasteOrigin_ + right * steps.x - forward * steps.z + glm::ivec3(0,steps.y,0),
+                                       SectionInteriorMin - 128, SectionInteriorMax + 128);
+        if (pasteFillGaps_) pasteFloorHeight_ = pinnedPasteOrigin_->y;
+        message_ = "PASTE PINNED | ARROWS + PGUP-DOWN NUDGE / P FOLLOW AIM";
+    }
 }
 
 bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
@@ -607,6 +694,7 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
     }
     if (actions.devCancel) {
         buildMode_ = SectionBuildMode::Single; toolPreview_.reset();
+        pasteFloorHeight_.reset(); pinnedPasteOrigin_.reset();
         message_ = "SINGLE BUILD | SELECTION AND CLIPBOARD KEPT"; return true;
     }
     if (actions.devCornerA || actions.devCornerB) {
@@ -620,7 +708,13 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
     if (actions.devPaste) beginPaste();
     if (buildMode_ == SectionBuildMode::Brush && (actions.remove || actions.place)) brushErasing_ = actions.remove;
     refreshToolPreview(game);
+    if (buildMode_ == SectionBuildMode::Paste) {
+        positionPaste(game, actions);
+        refreshToolPreview(game);
+    }
     if (actions.undo || actions.redo || actions.devCopy || actions.devPaste || actions.devCornerA || actions.devCornerB) return true;
+    if (buildMode_ == SectionBuildMode::Paste && (actions.devPastePin || actions.devPasteLevel
+        || actions.devPasteNudge != glm::ivec3(0) || (pasteFillGaps_ && actions.removePressed))) return true;
     if (buildMode_ == SectionBuildMode::Single) return false;
     preview_.reset(); targetAsset_.reset();
     if (buildMode_ == SectionBuildMode::Select) {
@@ -637,9 +731,10 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
     }
     if (buildMode_ == SectionBuildMode::Paste) {
         if (actions.placePressed) {
-            if (!toolPreview_) message_ = "AIM AT A SURFACE FOR THE PASTE PREVIEW";
+            if (!toolPreview_) message_ = pasteFillGaps_ && !pasteFloorHeight_ ? "LEFT CLICK A FLOOR TOP TO SET THE HEIGHT FIRST"
+                                                                                          : "AIM TOWARD THE PASTE SURFACE OR PIN A PREVIEW";
             else {
-                applyPlan(game, std::move(previewPlan_), "PASTED STRUCTURE");
+                applyPlan(game, std::move(previewPlan_), pasteFillGaps_ ? "FILLED GAPS" : "PASTED STRUCTURE");
                 previewRevision_ = ~std::uint64_t(0);
                 refreshTarget(game); refreshToolPreview(game);
             }

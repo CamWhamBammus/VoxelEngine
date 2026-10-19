@@ -15,7 +15,7 @@ namespace voxel {
 class Game;
 struct InputActions;
 
-enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, Test, Accept };
+enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept };
 enum class SectionBuildMode { Single, Select, Brush, Paste };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
@@ -45,6 +45,8 @@ inline constexpr int SectionUiBrushSizeBase = 3320; // Sizes 1, 3, 5, 9.
 inline constexpr int SectionUiFill = 3330, SectionUiShell = 3331, SectionUiErase = 3332;
 inline constexpr int SectionUiCopy = 3333, SectionUiPaste = 3334, SectionUiPasteAir = 3335;
 inline constexpr int SectionUiClearSelection = 3336, SectionUiHeightDown = 3337, SectionUiHeightUp = 3338;
+inline constexpr int SectionUiPasteSettings = 3340, SectionUiPasteModeBase = 3350;
+inline constexpr int SectionUiPasteResume = 3352;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.
@@ -95,6 +97,11 @@ public:
     std::uint64_t clipboardRevision() const { return clipboardRevision_; }
     int pasteRotation() const { return pasteRotation_; }
     bool pasteIncludesAir() const { return pasteIncludesAir_; }
+    bool pasteFillGaps() const { return pasteFillGaps_; }
+    bool pastePinned() const { return pinnedPasteOrigin_.has_value(); }
+    const std::optional<int>& pasteFloorHeight() const { return pasteFloorHeight_; }
+    const std::vector<SectionBlockEdit>& previewBlockChanges() const { return previewPlan_.blocks; }
+    std::uint64_t pastePreviewRevision() const { return pastePreviewRevision_; }
     const std::optional<SectionBox>& toolPreview() const { return toolPreview_; }
     bool toolPreviewValid() const { return toolPreviewValid_; }
 
@@ -125,6 +132,8 @@ private:
     void faceMarker(Game& game, glm::vec3 position);
     void resetBuildTools();
     void updateToolsMenu(Game& game, const InputActions& actions);
+    void updatePasteSettings(Game& game, const InputActions& actions);
+    void positionPaste(Game& game, const InputActions& actions);
     bool updateBuildTools(Game& game, const InputActions& actions);
     void refreshToolPreview(Game& game);
     void copySelection(Game& game);
@@ -169,5 +178,9 @@ private:
     std::uint64_t previewRevision_ = ~std::uint64_t(0);
     int previewRotation_ = -1;
     bool previewAir_ = false;
+    bool pasteFillGaps_ = false, previewFillGaps_ = false;
+    std::optional<int> pasteFloorHeight_;
+    std::optional<glm::ivec3> pinnedPasteOrigin_;
+    std::uint64_t pastePreviewRevision_ = 0;
 };
 } // namespace voxel

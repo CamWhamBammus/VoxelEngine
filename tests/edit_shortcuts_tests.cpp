@@ -51,6 +51,35 @@ int main()
     checkClipboard({}, false, false);
     checkClipboard({.modifier = true, .v = true}, false, true);
 
+    voxel::PasteShortcuts positioning;
+    const auto position = [&](voxel::PasteShortcutKeys keys, bool enabled, bool pin, bool level,
+                              glm::ivec3 nudge = {}) {
+        const auto actions = positioning.update(keys, enabled);
+        if (actions.pin != pin || actions.level != level || actions.nudge != nudge) {
+            std::cerr << "Unexpected paste positioning key transition\n";
+            ++failures;
+        }
+    };
+    position({.pin = true}, true, true, false);
+    position({.pin = true}, true, false, false); // Held P does not unpin again.
+    position({}, true, false, false);
+    position({.level = true}, true, false, true);
+    position({.level = true}, true, false, false);
+    position({}, true, false, false);
+    position({.right = true, .forward = true, .raise = true}, true, false, false, {1, 1, -1});
+    position({.right = true, .forward = true, .raise = true}, true, false, false);
+    position({.left = true, .back = true, .lower = true}, true, false, false, {-1, -1, 1});
+    position({}, false, false, false);
+    // Keys used to navigate a menu, while unfocused, or with Cmd/Ctrl held must
+    // not move a paste on the first frame that ordinary building resumes.
+    position({.pin = true, .level = true, .right = true, .lower = true}, false, false, false);
+    position({.pin = true, .level = true, .right = true, .lower = true}, true, false, false);
+    position({}, true, false, false);
+    position({.pin = true, .level = true, .right = true, .lower = true}, true, true, true, {1, -1, 0});
+    position({}, true, false, false);
+    position({.left = true, .right = true, .forward = true, .back = true, .raise = true, .lower = true},
+             true, false, false); // Opposing physical presses cancel on each axis.
+
     voxel::HotbarScroll scroll;
     const auto wheel = [&](double offset, int expected) {
         if (scroll.update(offset) != expected) {

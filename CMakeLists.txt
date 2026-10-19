@@ -83,7 +83,7 @@ if(BUILD_TESTING)
         chunk mesh terrain camera world raycast editor options equipment world_codec
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
         root_crossings root_crossing_game
-        sections section_editor section_tools section_build_tools
+        sections section_editor section_tools section_build_tools section_gap_tools
         levels levels_game
         lush_hub
     )

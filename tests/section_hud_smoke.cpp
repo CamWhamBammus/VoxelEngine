@@ -183,16 +183,32 @@ void verifySectionHud(int width,int height)
             const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
             const std::array<std::pair<glm::vec2,int>,9> targets{{
                 {{128,283},SectionUiFill},{{350,283},SectionUiShell},{{572,283},SectionUiErase},
-                {{128,345},SectionUiCopy},{{350,345},SectionUiPaste},{{572,345},SectionUiPasteAir},
+                {{128,345},SectionUiCopy},{{350,345},SectionUiPaste},{{572,345},SectionUiPasteSettings},
                 {{546,226},SectionUiHeightDown},{{624,226},SectionUiHeightUp},{{128,450},SectionUiClearSelection}}};
             for (const auto& [point,id]:targets)
                 require(logicalHit(x+point.x,y+point.y,size.x,size.y,dpi)==id,
                         "Building tool hit area disagrees with the scaled drawing");
             draw(size.x,size.y,dpi);
         }
+        const auto tools=draw(width,height);
+        act(SectionUiPasteSettings);
+        require(game.sectionEditor().screen()==SectionEditorScreen::PasteSettings,"Paste settings did not open");
+        require(difference(tools,draw(width,height))>2000,"Paste settings did not replace the tools panel");
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.0f : 1.0f;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            const std::array<std::pair<glm::vec2,int>,5> targets{{
+                {{183,83},SectionUiPasteModeBase},{{517,83},SectionUiPasteModeBase+1},
+                {{131,219},SectionUiPasteAir},{{128,450},SectionUiBack},{{559,450},SectionUiPasteResume}}};
+            for (const auto& [point,id]:targets)
+                require(logicalHit(x+point.x,y+point.y,size.x,size.y,dpi)==id,
+                        "Paste settings hit area disagrees with the scaled drawing");
+            draw(size.x,size.y,dpi);
+        }
         act(SectionUiPasteAir);
         require(game.sectionEditor().pasteIncludesAir(),"Paste-air option did not enable");
-        act(SectionUiPasteAir); act(SectionUiPaste);
+        act(SectionUiPasteAir); act(SectionUiPasteModeBase);
         game.camera.setPosition({8.5f,16,14.5f}); aim({8.5f,8.5f,8.5f});
         InputActions refresh; refresh.active=true; game.update(refresh);
         require(game.sectionEditor().toolPreview() && game.sectionEditor().toolPreviewValid(),
@@ -210,6 +226,46 @@ void verifySectionHud(int width,int height)
         std::size_t redPixels=0;
         for (std::size_t i=0;i<invalid.size();i+=4) redPixels+=invalid[i]>150 && invalid[i]>invalid[i+1]+50;
         require(redPixels>50,"Invalid paste preview is not visibly red");
+        press(&InputActions::devCancel);
+        // A one-layer copy overlaps a solid floor with two holes. Its ghost
+        // must draw exactly those holes, then disappear after one stamp.
+        game.camera.setPosition({-3.5f,10.5f,4.5f}); press(&InputActions::devCornerA);
+        game.camera.setPosition({-1.5f,10.5f,5.5f}); press(&InputActions::devCornerB);
+        press(&InputActions::devTools); act(SectionUiCopy); act(SectionUiPasteSettings);
+        act(SectionUiPasteModeBase+1);
+        require(game.sectionEditor().pasteFillGaps() && !game.sectionEditor().pasteIncludesAir(),
+                "Fill Gaps did not disable copied air");
+        require(!game.sectionEditor().toolPreview(),"Fill Gaps ghost appeared before choosing a floor");
+        const auto waiting=draw(width,height);
+        for (int x=8;x<=10;++x) for (int z=8;z<=9;++z) game.world.set({x,9,z},Block::Clay);
+        game.world.set({9,9,8},Block::Air); game.world.set({10,9,9},Block::Air);
+        game.camera.setPosition({8.5f,17,14.5f}); aim({8.5f,9.99f,8.5f});
+        press(&InputActions::devPasteLevel);
+        require(game.sectionEditor().pasteFloorHeight()==9 && game.sectionEditor().toolPreviewValid(),
+                "Fill Gaps did not lock to the floor block height");
+        require(game.sectionEditor().previewBlockChanges().size()==2,"Fill Gaps preview includes existing floor blocks");
+        require(difference(waiting,draw(width,height))>50,"Build HUD did not show locked floor and block count");
+        press(&InputActions::devPastePin);
+        require(game.sectionEditor().pastePinned(),"Paste pin did not lock the preview");
+        const auto gaps=drawToolsOverlay();
+        press(&InputActions::placePressed);
+        require(game.sectionEditor().previewBlockChanges().empty(),"Filled holes remain in the additions preview");
+        require(difference(gaps,drawToolsOverlay())>50,"Filled terrain is still drawn as a ghost addition");
+        press(&InputActions::undo);
+        require(game.sectionEditor().previewBlockChanges().size()==2,"Undo did not restore the hole preview");
+        require(difference(gaps,drawToolsOverlay())==0,"Undo reused a stale Fill Gaps overlay mesh");
+        press(&InputActions::devTools); act(SectionUiPasteSettings);
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.0f : 1.0f;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            require(!logicalHit(x+131,y+219,size.x,size.y,dpi),"Copied-air toggle is clickable in Fill Gaps mode");
+            require(logicalHit(x+559,y+450,size.x,size.y,dpi)==SectionUiPasteResume,"Resume preview target moved in Fill Gaps mode");
+            draw(size.x,size.y,dpi);
+        }
+        act(SectionUiPasteResume);
+        require(game.sectionEditor().pastePinned() && game.sectionEditor().pasteFloorHeight()==9,
+                "Resuming settings discarded the pinned floor preview");
         press(&InputActions::devCancel); press(&InputActions::devTools);
         act(SectionUiClearSelection); act(SectionUiBack);
         require(!game.sectionEditor().buildSelection(),"Clear selection left an active volume");
@@ -284,6 +340,6 @@ void verifySectionHud(int width,int height)
         require(state()==before,"Minimized section HUD changed OpenGL state");
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout << "Section HUD passed: world library, build tools, volume and rotated paste previews, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
+    std::cout << "Section HUD passed: world library, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
 }
 }

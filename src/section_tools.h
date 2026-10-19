@@ -40,8 +40,11 @@ SectionEditPlan planSectionFill(const World& world, std::span<const HubAsset> as
                                glm::vec3 cameraPosition);
 // Positive turns match HubAsset::facing: local +Z rotates toward +X.
 // includeAir replaces the whole destination (including its anchored models).
+// emptyOnly repairs terrain gaps: copies nonair blocks only into air, ignores
+// includeAir, and preserves the existing models without copying any new ones.
 SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> assets,
                                 const SectionClipboard& clipboard, glm::ivec3 origin,
-                                int quarterTurns, bool includeAir, glm::vec3 cameraPosition);
+                                int quarterTurns, bool includeAir, glm::vec3 cameraPosition,
+                                bool emptyOnly = false);
 
 } // namespace voxel

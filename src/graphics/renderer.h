@@ -70,7 +70,8 @@ private:
     GpuMesh previewMesh_;
     GpuMesh markerCube_, startLabel_, endLabel_;
     std::optional<HubAsset> previewAsset_;
-    GpuMesh clipboardMesh_;
+    GpuMesh clipboardMesh_, pasteChangesMesh_;
+    std::uint64_t pasteChangesRevision_ = ~std::uint64_t(0);
     std::uint64_t clipboardRevision_ = ~std::uint64_t(0);
     int clipboardRotation_ = -1;
 };

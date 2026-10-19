@@ -681,15 +681,46 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     fittedText(out,"SHELL BUILDS BOUNDARY / CLEAR REMOVES BLOCKS AND ASSETS / MARKERS STAY",x+24,y+307,w-48,1.15f,Muted);
     button(x+22,y+329,212,32,"COPY AREA",SectionUiCopy,false,selection.has_value());
     button(x+244,y+329,212,32,"PASTE PREVIEW",SectionUiPaste,editor.buildMode()==SectionBuildMode::Paste,!editor.clipboard().empty());
-    button(x+466,y+329,212,32,editor.pasteIncludesAir() ? "WITH AIR: ON" : "WITH AIR: OFF",SectionUiPasteAir,editor.pasteIncludesAir());
+    button(x+466,y+329,212,32,"PASTE SETTINGS",SectionUiPasteSettings);
     const auto& clipboard=editor.clipboard();
     fittedText(out,clipboard.empty() ? "CLIPBOARD EMPTY / COPY BLOCKS AND ASSETS TOGETHER"
                 : "COPIED / "+sectionDimensions(clipboard.size)+" / "+std::to_string(clipboard.assets.size())+" ASSETS / START AND END STAY",
                 x+24,y+371,w-48,1.15f,clipboard.empty() ? Muted : Leaf);
-    fittedText(out,"PASTE: RIGHT CLICK STAMP / T ROTATE / X CANCEL / CMD OR CTRL + C / V",x+24,y+390,w-48,1.15f,Muted);
+    fittedText(out,"PASTE SETTINGS: FILL GAPS / LOCK HEIGHT / MOVE PREVIEW ONE BLOCK",x+24,y+390,w-48,1.15f,Muted);
     sectionFeedback(out,editor,x+24,y+413,w-48);
     button(x+22,y+h-42,212,28,"CLEAR SELECTION",SectionUiClearSelection,false,editor.firstCorner().has_value() || editor.secondCorner().has_value());
     button(x+w-234,y+h-42,212,28,"G / ESC - BUILD",SectionUiBack,true);
+}
+
+void sectionPasteMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=700,h=478;
+    const float x=(width-w)*0.5f,y=(height-h)*0.5f;
+    sectionPanel(out,width,height,x,y,w,h,"PASTE SETTINGS","CHOOSE HOW YOUR COPIED PIECE FITS INTO THE WORLD");
+    const bool copied=!editor.clipboard().empty();
+    sectionButton(out,hits,x+22,y+66,322,34,"STANDARD PASTE",SectionUiPasteModeBase,!editor.pasteFillGaps(),copied,1.3f);
+    sectionButton(out,hits,x+356,y+66,322,34,"FILL GAPS",SectionUiPasteModeBase+1,editor.pasteFillGaps(),copied,1.3f);
+    fittedText(out,"COPY BLOCKS AND DECORATIONS",x+30,y+116,306,1.15f,Cream);
+    fittedText(out,"SNAP TO THE AIMED SURFACE",x+30,y+138,306,1.0f,Muted);
+    fittedText(out,"REPLACE EXISTING BLOCKS",x+30,y+158,306,1.0f,Muted);
+    fittedText(out,"ADD BLOCKS ONLY IN EMPTY SPACES",x+364,y+116,306,1.15f,Leaf);
+    fittedText(out,"KEEP BLOCKS AND DECORATIONS",x+364,y+138,306,1.0f,Muted);
+    fittedText(out,"SKIP COPIED MODELS",x+364,y+158,306,1.0f,Muted);
+    out.frame(x+22,y+190,w-44,60,Edge);
+    sectionButton(out,hits,x+34,y+204,194,30,editor.pasteIncludesAir() ? "WITH AIR: ON" : "WITH AIR: OFF",
+                  SectionUiPasteAir,editor.pasteIncludesAir() && !editor.pasteFillGaps(),!editor.pasteFillGaps(),1.15f);
+    fittedText(out,"STANDARD ONLY: COPY EMPTY SPACE TOO",x+246,y+204,416,1.1f,Cream);
+    fittedText(out,"WITH AIR ALSO CLEARS DECORATIONS IN THE STAMP",x+246,y+225,416,1.0f,Muted);
+    fittedText(out,"FILL GAPS: AIM AT A FLOOR TOP / LEFT CLICK OR L TO LOCK ITS HEIGHT",x+24,y+271,w-48,1.1f,Leaf);
+    fittedText(out,"MOVE THE PREVIEW ACROSS THE FLOOR / ONLY NEW BLOCKS GLOW GREEN",x+24,y+293,w-48,1.1f,Muted);
+    fittedText(out,"ARROWS MOVE ONE BLOCK / PAGE UP-DOWN MOVE VERTICALLY",x+24,y+322,w-48,1.15f,Cream);
+    fittedText(out,"FIRST NUDGE PINS THE PREVIEW / P TOGGLE PIN OR FOLLOW AIM",x+24,y+344,w-48,1.1f,Muted);
+    fittedText(out,"RIGHT CLICK STAMP / T ROTATE / X CANCEL",x+24,y+366,w-48,1.15f,Muted);
+    fittedText(out,copied ? "COPIED / "+sectionDimensions(editor.clipboard().size)
+                         : "CLIPBOARD EMPTY / SELECT AND COPY AN AREA FIRST",x+24,y+394,w-48,1.1f,copied ? Leaf : Gold);
+    sectionFeedback(out,editor,x+24,y+414,w-48);
+    sectionButton(out,hits,x+22,y+h-42,212,28,"ESC - BACK TO TOOLS",SectionUiBack);
+    sectionButton(out,hits,x+w-260,y+h-42,238,28,"RESUME PREVIEW",SectionUiPasteResume,true,copied);
 }
 
 void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
@@ -749,20 +780,33 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         out.centered("R - RESET / F8 - BUILD / F10 - ACCEPT / B - VILLAGE",center,height-35,0.9f,Muted);
     } else {
         const auto& item=editor.hotbar()[editor.selectedSlot()];
-        const float labelY=height-129;
-        out.quad(center-280,labelY-6,560,39,{0.01f,0.03f,0.04f,0.87f});
         const auto mode=editor.buildMode();
+        const bool pasting=mode==SectionBuildMode::Paste;
+        const float labelY=height-(pasting ? 164 : 129);
+        out.quad(center-280,labelY-6,560,pasting ? 74 : 39,{0.01f,0.03f,0.04f,0.87f});
         const auto title=mode==SectionBuildMode::Select ? "SELECT AREA / PICK TWO CORNERS"
-            : mode==SectionBuildMode::Paste ? "PASTE / "+sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
+            : pasting ? std::string(editor.pasteFillGaps() ? "FILL GAPS / " : "PASTE / ")+sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
                 +" / "+std::to_string(editor.pasteRotation()*90)+" DEG"
             : mode==SectionBuildMode::Brush ? std::string(editor.brushErasing() ? "CARVE " : "ADD ")+std::to_string(editor.brushSize())+" / "+item.name : item.name;
         fittedText(out,title,center-264,labelY,528,1.4f,Gold);
         const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
-            : mode==SectionBuildMode::Paste ? "RIGHT STAMP / T ROTATE / X CANCEL / G AIR OPTIONS"
+            : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
-        fittedText(out,help,center-264,labelY+20,528,.9f,Muted);
+        if (pasting) {
+            std::string status;
+            if (editor.pasteFillGaps() && !editor.pasteFloorHeight()) status="AIM AT A FLOOR TOP / LEFT CLICK OR L TO LOCK HEIGHT";
+            else {
+                if (editor.pasteFillGaps()) status="LEVEL Y "+std::to_string(*editor.pasteFloorHeight())+" / ";
+                status+=editor.pastePinned() ? "PINNED" : "FOLLOW AIM";
+                status+=editor.toolPreview() ? " / "+std::to_string(editor.previewBlockChanges().size())+(editor.pasteFillGaps() ? " BLOCKS TO ADD" : " BLOCK CHANGES")
+                    : editor.pasteFillGaps() ? " / AIM TOWARD THE LOCKED FLOOR" : " / AIM AT A SURFACE";
+            }
+            fittedText(out,status,center-264,labelY+20,528,1.0f,Leaf);
+            fittedText(out,"ARROWS NUDGE / PG UP-DOWN HEIGHT / P PIN-FOLLOW",center-264,labelY+38,528,.95f,Cream);
+            fittedText(out,help,center-264,labelY+55,528,.9f,Muted);
+        } else fittedText(out,help,center-264,labelY+20,528,.9f,Muted);
         sectionHotbar(out,hits,editor,center,height-86,false);
         out.centered("G TOOLS / E ITEMS / F8 TEST / F10 ACCEPT / F5 SAVE / F9 LIBRARY",center,height-20,.9f,Cream);
         out.frame(15,97,264,119,Edge);
@@ -786,6 +830,7 @@ void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float
     case SectionEditorScreen::Palette: sectionPaletteMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Accept: sectionAcceptMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Tools: sectionToolsMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::PasteSettings: sectionPasteMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Build:
     case SectionEditorScreen::Test: sectionBuildHud(out,hits,game,width,height); break;
     }

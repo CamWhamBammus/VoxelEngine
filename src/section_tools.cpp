@@ -183,7 +183,8 @@ SectionEditPlan planSectionFill(const World& world, std::span<const HubAsset> as
 
 SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> assets,
                                 const SectionClipboard& clipboard, glm::ivec3 origin,
-                                int quarterTurns, bool includeAir, glm::vec3 cameraPosition)
+                                int quarterTurns, bool includeAir, glm::vec3 cameraPosition,
+                                bool emptyOnly)
 {
     if (!validClipboard(clipboard)) return failed(assets, "COPY A VALID SELECTION FIRST");
     if (!finite(cameraPosition)) return failed(assets, "INVALID CAMERA POSITION");
@@ -194,21 +195,23 @@ SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> a
     const SectionBox destination{origin, origin + size - glm::ivec3(1)};
     if (!validSectionBox(destination)) return failed(assets, "THE PASTE MUST FIT INSIDE THE ROOM");
     SectionEditPlan plan{{}, {assets.begin(), assets.end()}, {}};
-    if (includeAir)
+    if (includeAir && !emptyOnly)
         std::erase_if(plan.assets, [&](const HubAsset& asset) { return anchoredIn(asset, destination); });
     for (int z = 0; z < clipboard.size.z; ++z)
         for (int y = 0; y < clipboard.size.y; ++y)
             for (int x = 0; x < clipboard.size.x; ++x) {
                 const glm::ivec3 local{x, y, z};
                 const Block after = clipboard.blocks.empty() ? Block::Air : clipboard.blocks[index(local, clipboard.size)];
-                if (!includeAir && after == Block::Air) continue;
+                if ((!includeAir || emptyOnly) && after == Block::Air) continue;
                 const auto position = origin + rotateCell(local, clipboard.size, rotation);
                 const auto before = world.get(position);
+                if (emptyOnly && before != Block::Air) continue;
                 if (before == after) continue;
                 if (cameraOverlap(position, after, cameraPosition))
                     return failed(assets, "MOVE OUT OF THE BLOCKS YOU ARE PASTING");
                 plan.blocks.push_back({position, before, after});
             }
+    if (emptyOnly) return plan;
     for (auto asset : clipboard.assets) {
         asset.position = glm::vec3(origin) + rotateOrigin(asset.position, clipboard.size, rotation);
         asset.facing = (asset.facing + rotation) % 4;

@@ -222,6 +222,81 @@ int main()
     const auto freed = planSectionPaste(empty, replacedFull, single, origin, 0, true, camera);
     check(freed.error.empty() && freed.assets.size() == 1,
           "include-air paste applies the model limit after removing replaced destination models");
+
+    // A large floor stencil overlaps an irregular hole without replacing any
+    // surrounding material, even when the normal include-air toggle is on.
+    SectionClipboard floor;
+    floor.size = {5, 1, 4};
+    floor.blocks.resize(20, Block::Path);
+    floor.assets = {{HubAssetKind::Fern, {.5f, 0, .5f}, 0, 9}};
+    World brokenFloor;
+    const glm::ivec3 floorOrigin{-12, 18, -10};
+    const std::array<glm::ivec3, 4> holes{{{1, 0, 1}, {2, 0, 1}, {2, 0, 2}, {3, 0, 2}}};
+    const std::array<Block, 6> materials{Block::Brick, Block::Water, Block::Leaves,
+                                      Block::CopperOre, Block::Bedrock, Block::Planks};
+    for (int z = 0; z < floor.size.z; ++z)
+        for (int x = 0; x < floor.size.x; ++x) {
+            const glm::ivec3 local{x, 0, z};
+            if (std::find(holes.begin(), holes.end(), local) != holes.end()) continue;
+            brokenFloor.set(floorOrigin + local, materials[(x + z * floor.size.x) % materials.size()]);
+        }
+    const std::vector<HubAsset> floorModels{
+        {HubAssetKind::Flowers, glm::vec3(floorOrigin) + glm::vec3(.5f, 0, .5f), 0, 10},
+        existing.back()
+    };
+    const auto gaps = planSectionPaste(brokenFloor, floorModels, floor, floorOrigin, 0, true,
+                                       glm::vec3(floorOrigin) + glm::vec3(.5f), true);
+    check(gaps.error.empty() && gaps.blocks.size() == holes.size() && gaps.assets == floorModels,
+          "fill gaps changes only the smaller hole, preserves all models and ignores include-air");
+    for (const auto hole : holes)
+        check(contains(gaps, floorOrigin + hole, Block::Path), "fill gaps plans every irregular hole cell");
+    check(std::all_of(gaps.blocks.begin(), gaps.blocks.end(), [&](const SectionBlockEdit& edit) {
+        return edit.before == Block::Air && edit.after == Block::Path
+            && std::find(holes.begin(), holes.end(), edit.position - floorOrigin) != holes.end();
+    }), "fill gaps never schedules a write to water, foliage, ore, bedrock or other existing blocks");
+    rejected(planSectionPaste(brokenFloor, floorModels, floor, floorOrigin, 0, false,
+                              glm::vec3(floorOrigin + holes.back()) + glm::vec3(.5f), true), floorModels,
+             "a camera in a real gap rejects the whole repair after earlier holes were planned");
+    apply(brokenFloor, gaps);
+    for (int z = 0; z < floor.size.z; ++z)
+        for (int x = 0; x < floor.size.x; ++x) {
+            const glm::ivec3 local{x, 0, z};
+            const bool hole = std::find(holes.begin(), holes.end(), local) != holes.end();
+            const auto expected = hole ? Block::Path : materials[(x + z * floor.size.x) % materials.size()];
+            check(brokenFloor.get(floorOrigin + local) == expected,
+                  "applied repair merges cleanly with all surrounding materials");
+        }
+    const auto filled = planSectionPaste(brokenFloor, floorModels, floor, floorOrigin, 0, true, camera, true);
+    check(filled.error.empty() && filled.blocks.empty() && filled.assets == floorModels,
+          "a fully overlapped fill-gaps stamp is a no-op");
+
+    for (int rotation = 0; rotation < 4; ++rotation) {
+        World rotatedFloor;
+        rotatedFloor.set(origin + rotatedFirst[rotation], Block::Clay);
+        const auto gapsRotated = planSectionPaste(rotatedFloor, existing, copied, origin,
+                                                  rotation, true, camera, true);
+        check(gapsRotated.error.empty() && gapsRotated.blocks.size() == 2 && gapsRotated.assets == existing
+              && !contains(gapsRotated, origin + rotatedFirst[rotation], Block::RootWood),
+              "all four fill-gaps rotations preserve the existing corner and ignore copied models");
+        const auto reference = planSectionPaste(empty, {}, copied, origin, rotation, false, camera);
+        for (const auto& edit : reference.blocks) {
+            if (edit.position == origin + rotatedFirst[rotation]) continue;
+            check(contains(gapsRotated, edit.position, edit.after),
+                  "fill-gaps rotation places each remaining material at the regular rotated location");
+        }
+    }
+    single.assets.clear();
+    single.blocks = {Block::Air};
+    const auto gapsAir = planSectionPaste(brokenFloor, floorModels, single, floorOrigin, 0, true, camera, true);
+    check(gapsAir.error.empty() && gapsAir.blocks.empty() && gapsAir.assets == floorModels,
+          "an all-air fill-gaps clipboard cannot erase terrain or models");
+    single.blocks.clear();
+    single.assets = {{HubAssetKind::Fern, {.5f, 0, .5f}, 0, 8}};
+    const auto gapsModels = planSectionPaste(empty, full, single, {31, 20, 31}, 0, true, camera, true);
+    check(gapsModels.error.empty() && gapsModels.blocks.empty() && gapsModels.assets == full,
+          "fill gaps ignores copied model geometry and asset limits while retaining existing models");
+    rejected(planSectionPaste(empty, floorModels, floor, {30, 20, 0}, 0, false, camera, true), floorModels,
+             "fill gaps still rejects a stamp extending beyond the protected shell atomically");
     if (failures == 0) std::cout << "Section selection, bulk edits and clipboard tests passed\n";
     return failures ? 1 : 0;
 }

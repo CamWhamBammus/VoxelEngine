@@ -38,6 +38,8 @@ struct InputActions {
     bool devTools = false; // G opens/closes the building tools menu.
     bool devCopy = false, devPaste = false; // Cmd/Ctrl+C/V, once per physical key press.
     bool devCancel = false, devCornerA = false, devCornerB = false; // X cancels; J/K select corners.
+    bool devPastePin = false, devPasteLevel = false; // P pins a preview; L chooses its floor level.
+    glm::ivec3 devPasteNudge{0}; // Arrow keys move sideways/forward; Page Up/Down move vertically.
     std::optional<int> devSlot, devClick;
     int devTabStep = 0;
     glm::ivec2 devMenuStep{0};
@@ -115,6 +117,37 @@ private:
     EditShortcutKeys previous_;
 };
 
+struct PasteShortcutKeys {
+    bool pin = false, level = false;
+    bool left = false, right = false, forward = false, back = false;
+    bool raise = false, lower = false;
+};
+
+struct PasteShortcutActions {
+    bool pin = false, level = false;
+    glm::ivec3 nudge{0};
+};
+
+class PasteShortcuts {
+public:
+    PasteShortcutActions update(PasteShortcutKeys keys, bool enabled)
+    {
+        const auto pressed = [](bool down, bool previous) { return down && !previous; };
+        const PasteShortcutActions actions{
+            pressed(keys.pin, previous_.pin), pressed(keys.level, previous_.level),
+            {int(pressed(keys.right, previous_.right)) - int(pressed(keys.left, previous_.left)),
+             int(pressed(keys.raise, previous_.raise)) - int(pressed(keys.lower, previous_.lower)),
+             int(pressed(keys.back, previous_.back)) - int(pressed(keys.forward, previous_.forward))}};
+        // Track disabled frames too: closing a menu or releasing a modifier must
+        // not turn a held navigation key into a new paste movement.
+        previous_ = keys;
+        return enabled ? actions : PasteShortcutActions{};
+    }
+
+private:
+    PasteShortcutKeys previous_;
+};
+
 class Input {
 public:
     explicit Input(GLFWwindow* window);
@@ -160,6 +193,7 @@ private:
         bool rotate = false, variation = false, backspace = false, selectAll = false;
         bool menuLeft = false, menuRight = false;
         bool devTools = false, devCancel = false, devCornerA = false, devCornerB = false;
+        bool pasteLevel = false, pasteRaise = false, pasteLower = false;
     };
 
     bool keyDown(int key) const;
@@ -167,12 +201,14 @@ private:
     void capture(bool enabled);
     void updateCamera(Camera& camera, float deltaSeconds, bool editingShortcut, bool editorMode);
     void updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons, const Buttons& previous,
-                   bool modal, bool flying, bool typing, bool modifier, EditShortcutActions shortcuts);
+                   bool modal, bool flying, bool typing, bool modifier, EditShortcutActions shortcuts,
+                   PasteShortcutActions pasteShortcuts);
 
     GLFWwindow* window_;
     InputActions actions_;
     Buttons previousButtons_;
     EditShortcuts editShortcuts_;
+    PasteShortcuts pasteShortcuts_;
     bool captured_ = false;
     bool wireframe_ = false;
     bool help_ = false;

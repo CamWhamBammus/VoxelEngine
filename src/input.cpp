@@ -88,6 +88,9 @@ Input::Buttons Input::readButtons() const
         .devCancel = keyDown(GLFW_KEY_X),
         .devCornerA = keyDown(GLFW_KEY_J),
         .devCornerB = keyDown(GLFW_KEY_K),
+        .pasteLevel = keyDown(GLFW_KEY_L),
+        .pasteRaise = keyDown(GLFW_KEY_PAGE_UP),
+        .pasteLower = keyDown(GLFW_KEY_PAGE_DOWN),
     };
 }
 
@@ -123,9 +126,14 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     const EditShortcutKeys editKeys{keyDown(GLFW_KEY_Z), keyDown(GLFW_KEY_Y), modifier, shift,
                                     keyDown(GLFW_KEY_C), keyDown(GLFW_KEY_V)};
     const auto editActions = editShortcuts_.update(editKeys);
+    const bool focused = glfwGetWindowAttrib(window_, GLFW_FOCUSED);
+    const auto pasteActions = pasteShortcuts_.update(
+        {buttons.previousCrossing, buttons.pasteLevel, buttons.menuLeft, buttons.menuRight,
+         buttons.menuPrevious, buttons.menuNext, buttons.pasteRaise, buttons.pasteLower},
+        focused && captured_ && devMode && devFlying && !modal && !modifier);
 
     if (!devMode && keyDown(GLFW_KEY_Q)) glfwSetWindowShouldClose(window_, GLFW_TRUE);
-    if (!glfwGetWindowAttrib(window_, GLFW_FOCUSED)) {
+    if (!focused) {
         if (captured_) capture(false);
         scroll_ = 0;
         hotbarScroll_.reset();
@@ -137,7 +145,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     actions_.levelMenu = !editorMode && pressed(buttons.levelMenu, previous.levelMenu);
     if (devMode) {
         if (wasDevFlying_ != devFlying) suppressDevMouse_ = true;
-        updateDev(camera, deltaSeconds, buttons, previous, modal, devFlying, devTyping, modifier, editActions);
+        updateDev(camera, deltaSeconds, buttons, previous, modal, devFlying, devTyping, modifier, editActions, pasteActions);
         pendingText_.clear();
         wasDevMode_ = true;
         wasDevMenu_ = modal;
@@ -228,7 +236,8 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
 }
 
 void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons, const Buttons& previous,
-                      bool modal, bool flying, bool typing, bool modifier, EditShortcutActions shortcuts)
+                      bool modal, bool flying, bool typing, bool modifier, EditShortcutActions shortcuts,
+                      PasteShortcutActions pasteShortcuts)
 {
     // Menus own an ordinary pointer. Returning to the room recaptures without
     // applying the pointer's menu movement to the camera.
@@ -289,6 +298,9 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
             actions_.devCancel = !modifier && pressed(buttons.devCancel, previous.devCancel);
             actions_.devCornerA = !modifier && pressed(buttons.devCornerA, previous.devCornerA);
             actions_.devCornerB = !modifier && pressed(buttons.devCornerB, previous.devCornerB);
+            actions_.devPastePin = pasteShortcuts.pin;
+            actions_.devPasteLevel = pasteShortcuts.level;
+            actions_.devPasteNudge = pasteShortcuts.nudge;
         }
         actions_.movement = {float(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)), float(keyDown(GLFW_KEY_W) - keyDown(GLFW_KEY_S))};
         actions_.jump = pressed(buttons.jump, previous.jump);

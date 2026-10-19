@@ -814,24 +814,46 @@ void Overlay::drawBuildTools(const SectionEditor& editor, const Camera& camera, 
         const auto color = editor.toolPreviewValid() ? green : glm::vec3(1.0f,0.28f,0.21f);
         const auto origin = glm::vec3(preview->min);
         const auto size = glm::vec3(preview->max-preview->min+1);
+        const bool fillGaps = editor.buildMode() == SectionBuildMode::Paste && editor.pasteFillGaps();
         if (editor.buildMode() == SectionBuildMode::Paste && !editor.clipboard().empty()) {
-            if (clipboardRevision_ != editor.clipboardRevision() || clipboardRotation_ != editor.pasteRotation()) {
-                clipboardMesh_.upload(clipboardPreviewMesh(editor.clipboard(), editor.pasteRotation()));
-                clipboardRevision_ = editor.clipboardRevision();
-                clipboardRotation_ = editor.pasteRotation();
-            }
             shader_.setMat4("transform", projection * glm::translate(glm::mat4(1),origin));
-            shader_.setVec3("color", color * 0.66f);
             glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-            clipboardMesh_.draw();
+            if (fillGaps) {
+                // Match the controller's exact plan: existing terrain, copied air
+                // and decorative models must never look like new additions.
+                if (pasteChangesRevision_ != editor.pastePreviewRevision()) {
+                    SectionClipboard additions;
+                    additions.size = preview->max-preview->min+1;
+                    additions.blocks.resize(static_cast<std::size_t>(additions.size.x)*additions.size.y*additions.size.z,Block::Air);
+                    for (const auto& change : editor.previewBlockChanges()) {
+                        const auto local = change.position-preview->min;
+                        if (glm::any(glm::lessThan(local,glm::ivec3(0))) || glm::any(glm::greaterThanEqual(local,additions.size))) continue;
+                        const auto index = static_cast<std::size_t>(local.x+additions.size.x*(local.y+additions.size.y*local.z));
+                        additions.blocks[index] = change.after;
+                    }
+                    pasteChangesMesh_.upload(clipboardPreviewMesh(additions,0));
+                    pasteChangesRevision_ = editor.pastePreviewRevision();
+                }
+                shader_.setVec3("color",color*0.88f);
+                pasteChangesMesh_.draw();
+            } else {
+                if (clipboardRevision_ != editor.clipboardRevision() || clipboardRotation_ != editor.pasteRotation()) {
+                    clipboardMesh_.upload(clipboardPreviewMesh(editor.clipboard(), editor.pasteRotation()));
+                    clipboardRevision_ = editor.clipboardRevision();
+                    clipboardRotation_ = editor.pasteRotation();
+                }
+                shader_.setVec3("color",color*0.66f);
+                clipboardMesh_.draw();
+            }
         }
-        box(origin - 0.018f, size + 0.036f, color);
+        const auto boundsColor = fillGaps && editor.toolPreviewValid() ? cyan*0.30f : color;
+        box(origin - 0.018f, size + 0.036f, boundsColor);
         // Up to sixteen grid divisions per axis keeps large copies readable.
         const int spacing = std::max(1,static_cast<int>(std::ceil(std::max(size.x,size.z)/16.0f)));
         for (int x = spacing; x < size.x; x += spacing)
-            box(origin+glm::vec3(x,0.025f,0),{0,0,size.z},color*0.57f);
+            box(origin+glm::vec3(x,0.025f,0),{0,0,size.z},boundsColor*0.57f);
         for (int z = spacing; z < size.z; z += spacing)
-            box(origin+glm::vec3(0,0.025f,z),{size.x,0,0},color*0.57f);
+            box(origin+glm::vec3(0,0.025f,z),{size.x,0,0},boundsColor*0.57f);
         box(origin-glm::vec3(0.045f),glm::vec3(0.09f),glm::vec3(1));
         box(origin,{std::min(2.0f,size.x),0,0},{1.0f,0.36f,0.28f});
         box(origin,{0,std::min(2.0f,size.y),0},{0.40f,1.0f,0.48f});
