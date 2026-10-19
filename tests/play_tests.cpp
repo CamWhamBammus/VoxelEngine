@@ -44,7 +44,7 @@ int main()
         { std::ofstream file(options.worldPath); file << "existing editor save"; }
         voxel::Game game(options);
         check(!game.editorMode() && game.world.seed() == 42, "default mode starts the underground hub");
-        check(game.player.grounded() && game.player.feetPosition() == voxel::VillageSpawn,
+        check(game.player.grounded() && glm::distance(game.player.feetPosition(), voxel::VillageSpawn) < .15f,
               "player starts on the village floor, not on the cavern roof");
         check(game.camera.position() == game.player.eyePosition(), "camera follows the player's eyes");
         check(!game.target, "normal play starts without an editor ray target");
@@ -99,11 +99,11 @@ int main()
         actions = {};
         actions.active = actions.respawn = true;
         game.update(actions, 1.0f / 60.0f);
-        check(game.player.feetPosition() == voxel::VillageSpawn && !game.player.inWater() && !game.player.underwater(),
+        check(glm::distance(game.player.feetPosition(), spawn) < .001f && !game.player.inWater() && !game.player.underwater(),
               "returning to the village immediately clears swimming and underwater state");
         actions.respawn = false;
         game.update(actions, .1f);
-        check(game.player.grounded() && game.player.feetPosition() == voxel::VillageSpawn,
+        check(game.player.grounded() && glm::distance(game.player.feetPosition(), spawn) < .001f,
               "a dry return does not retain the previous diving velocity");
 
         for (const bool captured : {false, true}) {

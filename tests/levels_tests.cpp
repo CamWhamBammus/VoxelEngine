@@ -206,6 +206,18 @@ int main()
     changed = definition;
     changed.sections = {forged.lexically_relative(sections)};
     check(fails([&] { validateLevel(changed, sections); }), "untested .vxs files cannot be used in levels");
+    const auto forgeTestedSection = [&] {
+        // Public saves now check tested markers too. Encode the recoverable
+        // draft, then deliberately forge its tested flag and valid checksum to
+        // ensure level validation independently rejects unsafe old documents.
+        auto draftMeta = badMeta;
+        draftMeta.tested = false;
+        saveSection(world, draftMeta, {}, forged, true);
+        auto bytes = readBytes(forged);
+        integer(bytes, 20, 1);
+        fixChecksum(bytes);
+        writeBytes(forged, bytes);
+    };
     badMeta.tested = true;
     badMeta.world = SectionWorld::EmberDepths;
     saveSection(world, badMeta, {}, forged, true);
@@ -216,15 +228,15 @@ int main()
     check(fails([&] { validateLevel(changed, sections); }), "section metadata must match its accepted category folder");
     badMeta.category = SectionCategory::Parkour;
     badMeta.spawn.y = 10;
-    saveSection(world, badMeta, {}, forged, true);
+    forgeTestedSection();
     check(fails([&] { validateLevel(changed, sections); }), "floating Start markers must be rejected");
     badMeta.spawn.y = 9;
     world.set({0, 10, -25}, Block::Stone);
-    saveSection(world, badMeta, {}, forged, true);
+    forgeTestedSection();
     check(fails([&] { validateLevel(changed, sections); }), "blocked End markers must be rejected");
     world.set({0, 10, -25}, Block::Air);
     badMeta.checkpoint = glm::vec3{0.5f, 12.0f, 0.5f};
-    saveSection(world, badMeta, {}, forged, true);
+    forgeTestedSection();
     check(fails([&] { validateLevel(changed, sections); }), "unsafe checkpoints must be rejected");
     std::filesystem::remove(forged);
 

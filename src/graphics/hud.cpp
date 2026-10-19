@@ -614,7 +614,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     if (!items.empty()) {
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
-        const auto hint=item.asset ? std::string(sectionItemGroup(item))+" / NO COLLISION" : item.block && *item.block==Block::Water ? "WATER / NO COLLISION"
+        const auto hint=item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
             : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE"
             : item.block && isLeafBlock(*item.block) ? "LEAF CUTOUTS / SOLID FOR WALKING"

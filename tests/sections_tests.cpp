@@ -1,4 +1,6 @@
 #include "sections.h"
+#include "asset_collision.h"
+#include "player.h"
 
 #include <cmath>
 #include <filesystem>
@@ -222,6 +224,54 @@ int main()
     std::filesystem::create_directory(redirected);
     std::filesystem::create_directory_symlink(temp.path, redirected / "lush-caves");
     check(fails([&] { acceptSection(world, meta, {}, redirected); }), "symlinked world folders cannot redirect library saves");
+
+    // Real model tops are not integer voxel heights. The document stores that
+    // exact standable height and revalidates it against the same model geometry.
+    World parkour;
+    buildBlankSection(parkour);
+    std::vector<HubAsset> platforms{{HubAssetKind::CrateStack, {20, 9, 20}, 1, 1},
+                                    {HubAssetKind::GiantMushroom, {20, 9, 0}, 2, 1}};
+    AssetCollision collision;
+    collision.rebuild(platforms);
+    const auto settle = [&](glm::vec3 feet) {
+        constexpr float half = Player::Width * .5f;
+        feet.y += collision.sweep(feet + glm::vec3(-half, 0, -half),
+                                  feet + glm::vec3(half, Player::Height, half), 1, -6);
+        return feet;
+    };
+    SectionMetadata modelMeta;
+    modelMeta.spawn = settle({20, 15, 20});
+    modelMeta.finish = settle({20, 15, 0});
+    modelMeta.tested = true;
+    check(std::abs(modelMeta.spawn.y - std::round(modelMeta.spawn.y)) > .01f
+          && sectionMarkerSafe(parkour, modelMeta.spawn, &collision),
+          "fractional crate tops support safe section markers");
+    check(sectionMarkerSafe(parkour, modelMeta.finish, &collision),
+          "sloped mushroom caps support markers at the full body's resting height");
+    check(!sectionMarkerSafe(parkour, modelMeta.spawn)
+          && !sectionMarkerSafe(parkour, modelMeta.spawn + glm::vec3(0, .1f, 0), &collision),
+          "model markers need actual contact with their support, not a nearby hovering point");
+    const auto modelFile = acceptSection(parkour, modelMeta, platforms, temp.path / "model-library");
+    const auto modelRestored = loadSection(modelFile);
+    check(modelRestored.meta.spawn == modelMeta.spawn && modelRestored.meta.finish == modelMeta.finish,
+          "accepted model parkour preserves exact fractional start and end positions");
+    auto obstructed = platforms;
+    obstructed.push_back({HubAssetKind::Boulder, modelMeta.spawn, 0, 0});
+    collision.rebuild(obstructed);
+    check(!sectionMarkerSafe(parkour, modelMeta.spawn, &collision), "models cannot occupy marker headroom");
+    check(fails([&] { acceptSection(parkour, modelMeta, obstructed, temp.path / "model-library"); })
+          && fails([&] { saveSection(parkour, modelMeta, obstructed, temp.path / "obstructed.vxs"); }),
+          "tested saves and acceptance reject model-blocked markers");
+    modelMeta.tested = false;
+    const auto repair = temp.path / "repair.vxs";
+    saveSection(parkour, modelMeta, obstructed, repair);
+    check(loadSection(repair).assets.size() == obstructed.size(), "incomplete drafts stay recoverable with blocked markers");
+    auto forged = readBytes(repair);
+    integer(forged, 20, 1);
+    fixChecksum(forged);
+    writeBytes(repair, forged);
+    check(loadSection(repair).assets.size() == obstructed.size(),
+          "old accepted documents remain openable for repair after collision rules change");
 
     if (failures == 0) std::cout << "Section room, catalogs, persistence and library checks passed\n";
     return failures ? EXIT_FAILURE : EXIT_SUCCESS;

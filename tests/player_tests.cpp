@@ -1,4 +1,6 @@
 #include "player.h"
+#include "asset_collision.h"
+#include "hub_assets.h"
 #include "world.h"
 
 #include <algorithm>
@@ -394,6 +396,143 @@ int main()
     player.setFeetPosition(world, start);
     player.update(world, {}, forward, true, false, 1.0f / 60.0f, true);
     check(player.feetPosition().y > start.y, "descend has no effect on ordinary dry jumps");
+
+    // Authored models have their actual fractional surfaces and openings.
+    using voxel::HubAsset;
+    using voxel::HubAssetKind;
+    const glm::vec3 assetBase{0, 1, -45};
+    const auto setAssets = [&](std::initializer_list<HubAsset> assets) {
+        auto collision = std::make_shared<voxel::AssetCollision>();
+        collision->rebuild(std::span<const HubAsset>(assets.begin(), assets.size()));
+        player.setAssetCollision(collision);
+        return collision;
+    };
+    setAssets({{HubAssetKind::CrateStack, assetBase, 0, 1}});
+    check(player.setFeetPosition(world, assetBase + glm::vec3(0, 8, 0)),
+        "player can start above a real crate model");
+    player.move(world, {0,-50,0});
+    check(near(player.feetPosition().y, 1.82f) && player.grounded(),
+        "fast falls land exactly on a fractional crate top");
+    const auto onCrate = player.feetPosition();
+    check(!player.setFeetPosition(world, assetBase + glm::vec3(0,.1f,0))
+        && player.feetPosition() == onCrate, "teleport rejects a body intersecting a model");
+    Player copiedPlayer = player;
+    copiedPlayer.move(world, {0,-10,0});
+    check(copiedPlayer.grounded() && near(copiedPlayer.feetPosition().y, 1.82f),
+        "copied player safely retains its shared scene collider");
+    player.update(world, {}, forward, true, false, 1.0f/60.0f);
+    check(player.feetPosition().y > onCrate.y && !player.grounded(), "jump launches from a model top");
+    for (int frame=0; frame<90; ++frame)
+        player.update(world, {}, forward, false, false, 1.0f/60.0f);
+    check(near(player.feetPosition().y, onCrate.y) && player.grounded(),
+        "jump returns to the same fractional model surface");
+    player.move(world, {3,0,0});
+    check(!player.grounded(), "walking off a model does not retain phantom support");
+    player.update(world, {}, forward, false, false, .1f);
+    check(player.feetPosition().y < onCrate.y, "gravity starts after stepping off a model");
+
+    player.setFeetPosition(world, assetBase + glm::vec3(-2,0,0));
+    player.move(world, {2,0,0});
+    check(near(player.feetPosition().y, 1.82f) && player.grounded()
+        && near(player.feetPosition().x, 0), "grounded movement steps onto a low crate");
+    setAssets({{HubAssetKind::CrateStack, assetBase, 0, 0}});
+    player.setFeetPosition(world, assetBase + glm::vec3(-3,.2f,0));
+    player.move(world, {20,0,1});
+    check(player.feetPosition().x < -.8f && player.feetPosition().z > assetBase.z + .9f,
+        "fast airborne movement stops at a model side and slides along it");
+    setAssets({{HubAssetKind::CrateStack, assetBase + glm::vec3(0,3,0), 0, 1}});
+    player.setFeetPosition(world, assetBase);
+    player.move(world, {0,20,0});
+    check(near(player.feetPosition().y, 2.2f), "upward sweep stops below an asset ceiling");
+
+    setAssets({{HubAssetKind::PathPaving, assetBase + glm::vec3(1,0,0), 0, 0}});
+    world.set({0,3,-46}, Block::Stone);
+    world.set({0,3,-45}, Block::Stone);
+    world.set({1,3,-46}, Block::Stone);
+    world.set({1,3,-45}, Block::Stone);
+    player.setFeetPosition(world, assetBase);
+    player.move(world, {1,0,0});
+    check(near(player.feetPosition().x, 1) && player.feetPosition().y > 1.01f
+        && player.feetPosition().y < 1.05f && player.grounded(),
+        "thin paving needs only its own headroom instead of a whole block");
+    for (const auto cell : {glm::ivec3(0,3,-46), {0,3,-45}, {1,3,-46}, {1,3,-45}})
+        world.set(cell, Block::Air);
+
+    setAssets({{HubAssetKind::PathPaving, {11.5f,2,-44.5f}, 0, 7}});
+    world.set({11,1,-45}, Block::Stone);
+    player.setFeetPosition(world, {10.5f,1,-44.5f});
+    player.move(world, {1,0,0});
+    check(near(player.feetPosition().x,11.5f) && player.feetPosition().y > 2.01f
+        && player.feetPosition().y < 2.05f && player.grounded(),
+        "one-block stair remains climbable with thin model paving fitted over the tread");
+    world.set({11,1,-45}, Block::Air);
+
+    setAssets({{HubAssetKind::GiantMushroom, assetBase, 0, 7}});
+    player.setFeetPosition(world, assetBase + glm::vec3(0,8,0));
+    player.move(world, {0,-20,0});
+    check(player.feetPosition().y > 4.0f && player.feetPosition().y < 4.3f && player.grounded(),
+        "giant mushroom cap is a usable parkour landing");
+    bool followedCap = true;
+    for (int stepIndex=0; stepIndex<12; ++stepIndex) {
+        player.move(world, {.05f,0,0});
+        followedCap &= player.grounded();
+    }
+    check(followedCap && near(player.feetPosition().x, .6f, .001f),
+        "walking over mushroom facets keeps moving and follows the cap surface");
+
+    for (int facing=0; facing<4; ++facing) {
+        setAssets({{HubAssetKind::MossyLog, assetBase, facing, 2}});
+        const glm::vec3 along = facing % 2 == 0 ? glm::vec3(1,0,0) : glm::vec3(0,0,1);
+        const glm::vec3 cross = facing % 2 == 0 ? glm::vec3(0,0,1) : glm::vec3(1,0,0);
+        player.setFeetPosition(world, assetBase + along + glm::vec3(0,6,0));
+        player.move(world, {0,-10,0});
+        check(player.feetPosition().y > 1.68f && player.feetPosition().y < 2.05f && player.grounded(),
+            "all quarter-turn log placements support the visible long axis");
+        player.setFeetPosition(world, assetBase + cross + glm::vec3(0,6,0));
+        player.move(world, {0,-10,0});
+        check(near(player.feetPosition().y, 1), "rotated log has no invisible box beyond its narrow side");
+    }
+    setAssets({{HubAssetKind::RockLedge, assetBase, 0, 5}});
+    player.setFeetPosition(world, assetBase + glm::vec3(-.5f,6,.6f));
+    player.move(world, {0,-10,0});
+    const float ledgeTop = player.feetPosition().y;
+    bool followedLedge = player.grounded();
+    for (int stepIndex=0; stepIndex<20; ++stepIndex) {
+        player.move(world, {.05f,0,0});
+        followedLedge &= player.grounded();
+    }
+    check(followedLedge && ledgeTop > 1.1f && ledgeTop < 1.3f
+        && near(player.feetPosition().x, .5f, .001f),
+        "sloping rock facets support continuous walking across triangle seams");
+
+    for (int facing=0; facing<4; ++facing) {
+        setAssets({{HubAssetKind::RootArch, assetBase, facing, 5}});
+        const glm::vec3 through = facing % 2 == 0 ? glm::vec3(0,0,1) : glm::vec3(1,0,0);
+        const glm::vec3 across = facing % 2 == 0 ? glm::vec3(1,0,0) : glm::vec3(0,0,1);
+        check(player.setFeetPosition(world, assetBase - through*2.0f), "arch approach has body clearance");
+        player.move(world, through*4.0f);
+        check(glm::distance(player.feetPosition(), assetBase + through*2.0f) < .001f,
+            "rotated arch opening stays traversable instead of using one solid bounding box");
+        player.setFeetPosition(world, assetBase + across*3.3f - through*2.0f);
+        player.move(world, through*4.0f);
+        check(glm::dot(player.feetPosition() - assetBase, through) < 0,
+            "the same arch still blocks movement through its solid side");
+    }
+
+    setAssets({{HubAssetKind::RockLedge, {-20,6,-18}, 0, 5}});
+    player.setFeetPosition(world, {-20,5.35f,-15.5f});
+    for (int frame=0; frame<36; ++frame)
+        player.update(world, {0,1}, {0,0,-1}, true, false, 1.0f/60.0f);
+    check(player.feetPosition().z < -16.6f && player.feetPosition().y > 6.0f
+        && player.grounded() && !player.inWater(),
+        "swim up and forward climbs onto a fractional asset landing at the shore");
+    setAssets({{HubAssetKind::PathPaving, {0.5f,1,-44.5f}, 0, 7}});
+    check(player.spawn(world, {0,-45}) && near(player.feetPosition().x,.5f)
+        && near(player.feetPosition().z,-44.5f) && player.feetPosition().y > 1.01f
+        && player.feetPosition().y < 1.05f && player.grounded(),
+        "spawning settles onto fitted paving without moving to another voxel column");
+    player.setAssetCollision(nullptr);
+    check(player.setFeetPosition(world, assetBase), "clearing scene collision restores voxel-only movement");
 
     World terrain(42);
     check(player.spawn(terrain), "generated terrain has a safe spawn");

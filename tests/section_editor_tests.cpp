@@ -294,6 +294,85 @@ int main()
         check(bad.devMode() && bad.sectionEditor().hasSection() && bad.sectionEditor().dirty(),
               "a failed draft save keeps the in-memory section open for recovery");
         check(readFile(blocked) == "existing file", "save failures never replace an unrelated file");
+
+        // Author endpoints on model geometry, then walk-test and publish that
+        // same room. No hand-written integer-height proxy blocks are involved.
+        voxel::World platforms;
+        voxel::buildBlankSection(platforms);
+        const std::vector<voxel::HubAsset> models{
+            {voxel::HubAssetKind::CrateStack, {8.5f, 9, .5f}, 1, 1},
+            {voxel::HubAssetKind::GiantMushroom, {.5f, 9, .5f}, 2, 1}
+        };
+        voxel::Options modelOptions; modelOptions.dev = true;
+        modelOptions.sectionLibrary = (root / "model-sections").string();
+        voxel::saveSectionDraft(platforms, {}, models, modelOptions.sectionLibrary);
+        voxel::Game modelGame(modelOptions);
+        auto& modelEditor = modelGame.sectionEditor();
+        click(modelGame, voxel::SectionUiWorldBase);
+        click(modelGame, voxel::SectionUiLibraryDraftBase);
+        const auto collision = modelEditor.assetCollision();
+        check(!collision->empty() && collision == modelEditor.assetCollision(),
+              "opening a section builds a stable shared model collision cache");
+        const auto marker = [&](int index, glm::vec3 target) {
+            modelGame.camera.setPosition(target + glm::vec3(0, 7, .1f));
+            aim(modelGame.camera, target);
+            press(modelGame, &voxel::InputActions::devPalette);
+            click(modelGame, voxel::SectionUiPaletteTabBase + 2);
+            click(modelGame, voxel::SectionUiPaletteItemBase + index);
+            press(modelGame, &voxel::InputActions::devPalette);
+            press(modelGame, &voxel::InputActions::place);
+        };
+        marker(0, {8.5f, 9.8f, .5f});
+        marker(1, {8.5f, 9.8f, .5f});
+        marker(2, {.5f, 11.6f, .5f});
+        check(modelEditor.meta().spawn.y > 9.5f && modelEditor.meta().finish.y > 11
+              && modelEditor.meta().checkpoint.has_value(),
+              "Start, Checkpoint and End can be placed directly on model top surfaces");
+        check(voxel::sectionMarkerSafe(modelGame.world, modelEditor.meta().spawn, collision.get())
+              && voxel::sectionMarkerSafe(modelGame.world, modelEditor.meta().finish, collision.get()),
+              "model marker placement settles the whole player onto sloped surfaces with clearance");
+        const auto modelStart = modelEditor.meta().spawn;
+        const auto modelFinish = modelEditor.meta().finish;
+        press(modelGame, &voxel::InputActions::devTest);
+        check(modelEditor.screen() == voxel::SectionEditorScreen::Test
+              && modelGame.player.feetPosition() == modelStart && modelGame.player.grounded(),
+              "F8 uses model collision before spawning on a fractional-height asset marker");
+        voxel::InputActions idle; idle.active = true;
+        for (int frame = 0; frame < 12; ++frame) modelGame.update(idle, 1.f / 60.f);
+        check(glm::distance(modelGame.player.feetPosition(), modelStart) < .001f,
+              "a playtest player remains supported by the authored asset");
+        check(modelGame.player.setFeetPosition(modelGame.world, modelFinish), "model finish has player clearance");
+        modelGame.update(idle, 1.f / 60.f);
+        check(modelEditor.testComplete(), "reaching a grounded model endpoint completes the playtest");
+        press(modelGame, &voxel::InputActions::devAccept);
+        click(modelGame, voxel::SectionUiConfirm);
+        check(modelEditor.screen() == voxel::SectionEditorScreen::Library && modelEditor.entries().size() == 1,
+              "a section using model endpoints can be accepted into its world");
+        const auto modelSaved = voxel::loadSection(modelEditor.acceptedPath());
+        check(modelSaved.meta.spawn == modelStart && modelSaved.meta.finish == modelFinish && modelSaved.assets == models,
+              "accepted asset parkour preserves its exact markers and models");
+        click(modelGame, voxel::SectionUiLibraryEntryBase);
+        // Copy the original crate and stamp it across the occupied start.
+        modelGame.camera.setPosition({8.5f, 9.5f, .5f});
+        press(modelGame, &voxel::InputActions::devCornerA);
+        press(modelGame, &voxel::InputActions::devCornerB);
+        modelGame.camera.setPosition({8.5f, 15, 3.5f});
+        press(modelGame, &voxel::InputActions::devCopy);
+        aim(modelGame.camera, {8.5f, 8.5f, .5f});
+        press(modelGame, &voxel::InputActions::devPaste);
+        check(modelEditor.toolPreview().has_value(), "model copy obtains a paste preview");
+        voxel::InputActions lift; lift.active = true; lift.devPasteNudge = {0, 1, 0};
+        modelGame.update(lift);
+        const auto modelCount = modelEditor.assets().size();
+        press(modelGame, &voxel::InputActions::placePressed);
+        check(modelEditor.assets().size() == modelCount && !modelEditor.toolPreviewValid(),
+              "pasting a model across marker headroom is rejected without changing the section");
+        press(modelGame, &voxel::InputActions::devCancel);
+        // Replacing the section clears the cache instead of leaving invisible
+        // collision from the previous room's platforms.
+        press(modelGame, &voxel::InputActions::devLibrary);
+        click(modelGame, voxel::SectionUiLibraryNew);
+        check(modelEditor.assetCollision()->empty(), "new sections discard previous model collision");
     } catch (const std::exception& error) {
         std::cerr << "unexpected exception: " << error.what() << '\n'; ++failures;
     }

@@ -10,6 +10,7 @@
 #include <vector>
 
 namespace voxel {
+class AssetCollision;
 
 // These IDs are stored in .vxs files. Append entries without renumbering.
 enum class SectionWorld { LushCaves, CrystalHollows, EmberDepths };
@@ -56,7 +57,7 @@ struct SectionMetadata {
 struct SectionDocument {
     World world;
     SectionMetadata meta;
-    // Decorative models have no collision. Build walkable surfaces from blocks.
+    // Solid model surfaces use the same collision shapes in tests and expeditions.
     std::vector<HubAsset> assets;
 };
 struct SectionEntry {
@@ -68,7 +69,7 @@ struct SectionEntry {
 // The shell is outside the editable interior and is protected by the editor.
 void buildBlankSection(World& world);
 // A marker needs full player clearance and support under the player's footprint.
-bool sectionMarkerSafe(const World& world, glm::vec3 feet);
+bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision* assets = nullptr);
 
 // Versioned .vxs documents contain metadata, placed models, and an entire voxel
 // snapshot. Writes are atomic. Without overwrite, existing files are preserved.

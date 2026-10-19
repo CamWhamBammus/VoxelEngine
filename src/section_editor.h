@@ -3,10 +3,12 @@
 #include "editing.h"
 #include "sections.h"
 #include "section_tools.h"
+#include "asset_collision.h"
 
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -73,6 +75,7 @@ public:
     std::uint32_t variation() const { return variation_; }
     const SectionMetadata& meta() const { return meta_; }
     const std::vector<HubAsset>& assets() const { return assets_; }
+    std::shared_ptr<const AssetCollision> assetCollision() const;
     const std::vector<SectionEntry>& entries() const { return entries_; }
     const std::vector<SectionEntry>& draftEntries() const { return drafts_; }
     const std::string& message() const { return message_; }
@@ -140,6 +143,7 @@ private:
     void beginPaste();
     void fillSelection(Game& game, SectionFillMode mode);
     void applyPlan(Game& game, SectionEditPlan plan, std::string_view label);
+    void validateAssetEdit(const World& world, SectionEditPlan& plan) const;
 
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
@@ -152,6 +156,9 @@ private:
     int selection_ = 0, paletteTab_ = 0, paletteSelection_ = 0, selectedSlot_ = 0, facing_ = 0;
     std::uint32_t variation_ = 0;
     std::uint64_t revision_ = 0;
+    std::uint64_t assetRevision_ = 0;
+    mutable std::uint64_t collisionRevision_ = ~std::uint64_t(0);
+    mutable std::shared_ptr<AssetCollision> assetCollision_;
     bool nameSelected_ = false;
     bool hasSection_ = false, dirty_ = false, testComplete_ = false, checkpointReached_ = false;
     float testElapsed_ = 0.0f, autosaveElapsed_ = 0.0f;
@@ -162,6 +169,7 @@ private:
     std::vector<AssetBounds> assetBounds_;
     std::uint64_t boundsRevision_ = ~std::uint64_t(0);
     std::optional<std::size_t> targetAsset_;
+    std::optional<AssetSurfaceHit> targetSurface_;
     std::optional<HubAsset> preview_;
     std::deque<Edit> undo_, redo_;
     std::string message_;

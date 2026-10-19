@@ -1,4 +1,5 @@
 #include "levels.h"
+#include "asset_collision.h"
 
 #include <algorithm>
 #include <array>
@@ -98,8 +99,10 @@ SectionDocument readReference(const LevelDefinition& definition, const std::file
         throw std::runtime_error("Level section does not match its world or category folder");
     }
     if (!section.meta.tested) throw std::runtime_error("A level can only use tested, accepted sections");
-    if (!sectionMarkerSafe(section.world, section.meta.spawn) || !sectionMarkerSafe(section.world, section.meta.finish)
-        || (section.meta.checkpoint && !sectionMarkerSafe(section.world, *section.meta.checkpoint))) {
+    AssetCollision collision;
+    collision.rebuild(section.assets);
+    if (!sectionMarkerSafe(section.world, section.meta.spawn, &collision) || !sectionMarkerSafe(section.world, section.meta.finish, &collision)
+        || (section.meta.checkpoint && !sectionMarkerSafe(section.world, *section.meta.checkpoint, &collision))) {
         throw std::runtime_error("Level section Start, End and checkpoint need solid footing and clear headroom");
     }
     return section;

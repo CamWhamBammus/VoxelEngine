@@ -113,6 +113,7 @@ private:
     friend class LevelController;
     void enterLevelMode(bool creator);
     void leaveLevelMode();
+    void buildVillage();
     bool returnToVillage();
     void enterDevMode();
     void leaveDevMode();

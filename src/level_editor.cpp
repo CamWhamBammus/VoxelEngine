@@ -2,6 +2,7 @@
 
 #include "game.h"
 #include "input.h"
+#include "asset_collision.h"
 
 #include <algorithm>
 #include <charconv>
@@ -165,7 +166,10 @@ bool LevelController::loadSectionAt(Game& game, std::size_t index)
         // Resolve and check the new player against a temporary document before
         // replacing the displayed world. Missing files never destroy the old room.
         auto document = resolveLevelSection(definition_, index, sectionRoot_);
+        auto collision = std::make_shared<AssetCollision>();
+        collision->rebuild(document.assets);
         Player candidate;
+        candidate.setAssetCollision(std::move(collision));
         if (!candidate.setFeetPosition(document.world, document.meta.spawn) || !candidate.grounded())
             throw std::runtime_error("Section start does not have a safe supported landing");
         game.world = std::move(document.world);

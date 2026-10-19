@@ -28,6 +28,7 @@ add_library(VoxelCore
     src/level_editor.cpp
     src/hub_buildings.cpp
     src/hub_assets.cpp
+    src/asset_collision.cpp
     src/hub_landscape.cpp
     src/hub_lush.cpp
     src/player.cpp
@@ -82,7 +83,7 @@ if(BUILD_TESTING)
     foreach(test_name IN ITEMS
         chunk mesh terrain camera world raycast editor options equipment world_codec
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
-        root_crossings root_crossing_game
+        root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools
         levels levels_game
         lush_hub

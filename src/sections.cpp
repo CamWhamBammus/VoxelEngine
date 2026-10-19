@@ -1,4 +1,5 @@
 #include "sections.h"
+#include "asset_collision.h"
 #include "player.h"
 #include "save.h"
 
@@ -124,7 +125,7 @@ void validate(const SectionMetadata& meta, std::span<const HubAsset> assets)
         throw std::runtime_error("Section markers must be finite and inside the building room");
     }
     if (assets.size() > SectionMaxAssets) {
-        throw std::runtime_error("Section has too many decorative assets");
+        throw std::runtime_error("Section has too many assets");
     }
     for (const auto& asset : assets) {
         if (static_cast<unsigned>(asset.kind) >= Assets.size() || asset.facing < 0 || asset.facing > 3
@@ -181,6 +182,13 @@ struct Reader {
 std::string encode(const World& world, const SectionMetadata& meta, std::span<const HubAsset> assets)
 {
     validate(meta, assets);
+    if (meta.tested) {
+        AssetCollision collision;
+        collision.rebuild(assets);
+        if (!sectionMarkerSafe(world, meta.spawn, &collision) || !sectionMarkerSafe(world, meta.finish, &collision)
+            || (meta.checkpoint && !sectionMarkerSafe(world, *meta.checkpoint, &collision)))
+            throw std::runtime_error("Start, checkpoint and finish need solid footing and clear headroom");
+    }
     std::string bytes(Magic.data(), Magic.size());
     append(bytes, Version);
     append(bytes, static_cast<std::uint32_t>(meta.world));
@@ -400,23 +408,38 @@ void buildBlankSection(World& world)
     }
 }
 
-bool sectionMarkerSafe(const World& world, glm::vec3 feet)
+bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision* assets)
 {
     constexpr float half = Player::Width * 0.5f;
     if (!inside(feet) || feet.x - half < SectionInteriorMin.x || feet.x + half > SectionInteriorMax.x
         || feet.z - half < SectionInteriorMin.z || feet.z + half > SectionInteriorMax.z
         || feet.y + Player::Height > SectionInteriorMax.y) return false;
     Player player;
-    if (!player.setFeetPosition(world, feet)) return false;
+    // This alias is used only by the local player while the caller owns the cache.
+    if (assets) player.setAssetCollision(std::shared_ptr<const AssetCollision>(assets, [](const AssetCollision*) {}));
+    if (!player.setFeetPosition(world, feet) || !player.grounded()) return false;
+    // A sloped model supports the upright body at its highest contact. Nearby
+    // footprint samples may sit below that height; require a surface under all
+    // four corners, without forcing fractional model tops onto the voxel grid.
+    const float depth = assets && !assets->empty() ? Player::Width + .02f : .02f;
     const int y = static_cast<int>(std::floor(feet.y - 0.01f));
     for (float dx : {-half + 0.01f, half - 0.01f}) {
         for (float dz : {-half + 0.01f, half - 0.01f}) {
-            if (!isSolid(world.get({static_cast<int>(std::floor(feet.x + dx)), y,
-                                    static_cast<int>(std::floor(feet.z + dz))}))) return false;
+            const glm::vec3 point = feet + glm::vec3(dx, .01f, dz);
+            bool supported = false;
+            for (int below = y; below >= static_cast<int>(std::floor(feet.y - depth)); --below) {
+                if (below + 1.f > feet.y + .01f || feet.y - (below + 1.f) > depth) continue;
+                if (isSolid(world.get({static_cast<int>(std::floor(point.x)), below,
+                                      static_cast<int>(std::floor(point.z))}))) { supported = true; break; }
+            }
+            if (!supported && assets) {
+                const auto surface = assets->raycast(point, {0, -1, 0}, depth + .01f);
+                supported = surface && surface->normal.y > .2f;
+            }
+            if (!supported) return false;
         }
     }
-    // Feet must lie on the support's top, not hover somewhere in its next cell.
-    return std::abs(feet.y - static_cast<float>(y + 1)) < 0.02f;
+    return true;
 }
 
 void saveSection(const World& world, const SectionMetadata& meta, std::span<const HubAsset> assets,
@@ -431,6 +454,9 @@ SectionDocument loadSection(const std::filesystem::path& path)
     auto parsed = read(path);
     std::istringstream snapshot(parsed.worldData, std::ios::binary);
     auto world = decodeWorld(snapshot);
+    // Loading also serves the creative editor: old sections must stay openable
+    // for repair when newly collidable scenery obstructs a former spawn point.
+    // Test mode and level loading validate support before positioning a player.
     return {std::move(world), std::move(parsed.meta), std::move(parsed.assets)};
 }
 
@@ -447,8 +473,10 @@ std::filesystem::path acceptSection(const World& world, const SectionMetadata& m
 {
     validate(meta, assets);
     if (!meta.tested) throw std::runtime_error("Reach the finish in Test mode before accepting this section");
-    if (!sectionMarkerSafe(world, meta.spawn) || !sectionMarkerSafe(world, meta.finish)
-        || (meta.checkpoint && !sectionMarkerSafe(world, *meta.checkpoint))) {
+    AssetCollision collision;
+    collision.rebuild(assets);
+    if (!sectionMarkerSafe(world, meta.spawn, &collision) || !sectionMarkerSafe(world, meta.finish, &collision)
+        || (meta.checkpoint && !sectionMarkerSafe(world, *meta.checkpoint, &collision))) {
         throw std::runtime_error("Start, checkpoint and finish need solid footing and clear headroom");
     }
     const std::array parts{Worlds[static_cast<unsigned>(meta.world)].folder,

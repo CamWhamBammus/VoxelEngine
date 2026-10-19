@@ -248,10 +248,11 @@ int main()
         request.active = request.returnToHub = true;
         game.update(request);
         check(!game.rootCrossingActive() && game.rootCrossingIndex() == -1 && !game.menuOpen()
-              && game.player.feetPosition() == voxel::VillageSpawn && game.player.grounded()
+              && glm::distance(game.player.feetPosition(), voxel::VillageSpawn) < .15f && game.player.grounded()
               && game.compassTarget() == voxel::HeartTreeCenter && game.equipment == carriedEquipment,
               "B rebuilds the village, safely spawns, restores the compass target and retains all equipment");
-        check(game.player.setFeetPosition(game.world, voxel::ExpeditionDeparture), "expedition gate approach fits");
+        check(game.player.setFeetPosition(game.world, voxel::ExpeditionDeparture + glm::vec3(0,.15f,0)), "expedition gate approach fits");
+        game.player.move(game.world, {0,-.15f,0});
         check(game.nearExpeditionGate(), "the northern departure area offers expeditions");
         request = {};
         request.active = request.interact = true;

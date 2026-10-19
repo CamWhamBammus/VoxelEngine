@@ -196,6 +196,9 @@ int main()
         const auto sourceAsset = editor.assets().front();
         press(game, &InputActions::devPalette); click(game, SectionUiPaletteTabBase + 2);
         click(game, SectionUiPaletteItemBase + 1); press(game, &InputActions::devPalette);
+        // Keep the checkpoint beside the fern: its leaves now have collision,
+        // so the former point through the model no longer has player headroom.
+        game.camera.setPosition({6.5f,14,16.5f}); aim(game.camera,{6.5f,9.5f,13.5f});
         press(game, &InputActions::place);
         check(editor.meta().checkpoint.has_value(), "source region contains an authored checkpoint to exclude from copying");
         const auto checkpoint = editor.meta().checkpoint;

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <memory>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
 namespace voxel {
 class World;
+class AssetCollision;
 
 // Position is the center of the player's feet; the body stays upright.
 class Player {
@@ -19,6 +21,9 @@ public:
     bool inWater() const { return inWater_; }
     bool underwater() const { return underwater_; }
     bool overlapsBlock(glm::ivec3 position) const;
+
+    // Share the current scene collider; editor flight does not use Player.
+    void setAssetCollision(std::shared_ptr<const AssetCollision> collision);
 
     // Teleport only when the entire body fits. Y may be outside the voxel world.
     bool setFeetPosition(const World& world, glm::vec3 position);
@@ -37,6 +42,7 @@ private:
     void refreshWater(const World& world);
     bool climbShore(const World& world, glm::vec3 remainingMovement);
 
+    std::shared_ptr<const AssetCollision> assetCollision_;
     glm::vec3 feet_{0.5f, 16.0f, 0.5f};
     bool grounded_ = false;
     float verticalVelocity_ = 0.0f;

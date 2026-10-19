@@ -67,6 +67,15 @@ bool SectionEditor::menuOpen() const
 {
     return screen_ != SectionEditorScreen::Build && screen_ != SectionEditorScreen::Test;
 }
+std::shared_ptr<const AssetCollision> SectionEditor::assetCollision() const
+{
+    if (!assetCollision_) assetCollision_ = std::make_shared<AssetCollision>();
+    if (collisionRevision_ != assetRevision_) {
+        assetCollision_->rebuild(assets_);
+        collisionRevision_ = assetRevision_;
+    }
+    return assetCollision_;
+}
 void SectionEditor::enter(Game& game)
 {
     screen_ = SectionEditorScreen::Worlds;
@@ -80,7 +89,7 @@ bool SectionEditor::leave(Game& game)
     preview_.reset(); targetAsset_.reset();
     resetBuildTools();
     hasSection_ = dirty_ = testComplete_ = checkpointReached_ = false;
-    assets_.clear(); ++revision_;
+    assets_.clear(); ++revision_; ++assetRevision_;
     meta_.tested = false;
     return true;
 }
@@ -97,7 +106,7 @@ void SectionEditor::newSection(Game& game)
     buildBlankSection(game.world);
     meta_ = {};
     meta_.world = selectedWorld_;
-    assets_.clear();
+    assets_.clear(); ++assetRevision_;
     draftPath_.clear();
     acceptedPath_.clear();
     undo_.clear(); redo_.clear();
@@ -120,7 +129,11 @@ void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draf
     auto document = loadSection(entry.path); // A failed load leaves the current room intact.
     game.world = std::move(document.world);
     meta_ = std::move(document.meta);
-    assets_ = std::move(document.assets);
+    assets_ = std::move(document.assets); ++assetRevision_;
+    const auto collision = assetCollision();
+    const bool markersNeedRepair = !sectionMarkerSafe(game.world, meta_.spawn, collision.get())
+        || !sectionMarkerSafe(game.world, meta_.finish, collision.get())
+        || (meta_.checkpoint && !sectionMarkerSafe(game.world, *meta_.checkpoint, collision.get()));
     draftPath_ = draft ? entry.path : std::filesystem::path{};
     acceptedPath_ = draft ? std::filesystem::path{} : entry.path;
     // Reopened accepted sections must be walked again before publishing another revision.
@@ -133,7 +146,8 @@ void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draf
     screen_ = SectionEditorScreen::Build;
     game.camera.setPosition(meta_.spawn + glm::vec3(0, 4, 1));
     pointCamera(game.camera, meta_.finish - meta_.spawn + glm::vec3(0, -8, 0));
-    message_ = "OPENED " + meta_.name + " | F8 TEST | F10 ACCEPT A NEW COPY";
+    message_ = markersNeedRepair ? "OPENED " + meta_.name + " | MOVE BLOCKED / UNSUPPORTED MARKERS BEFORE F8 TEST"
+                                : "OPENED " + meta_.name + " | F8 TEST | F10 ACCEPT A NEW COPY";
 }
 void SectionEditor::selectLibrary(Game& game)
 {
@@ -168,6 +182,7 @@ void SectionEditor::invalidateTest()
 }
 void SectionEditor::changed(Edit edit)
 {
+    if (edit.beforeAssets != assets_) ++assetRevision_;
     invalidateTest();
     edit.afterMeta = meta_; edit.afterAssets = assets_;
     undo_.push_back(std::move(edit));
@@ -191,7 +206,9 @@ void SectionEditor::undo(Game& game, bool redo)
     if (edit.position) game.world.set(*edit.position, redo ? edit.after : edit.before);
     for (const auto& block : edit.blocks) game.world.set(block.position, redo ? block.after : block.before);
     meta_ = redo ? edit.afterMeta : edit.beforeMeta;
-    assets_ = redo ? edit.afterAssets : edit.beforeAssets;
+    const auto& restoredAssets = redo ? edit.afterAssets : edit.beforeAssets;
+    if (assets_ != restoredAssets) ++assetRevision_;
+    assets_ = restoredAssets;
     destination.push_back(std::move(edit));
     invalidateTest(); dirty_ = true; ++revision_;
     message_ = redo ? "REDID EDIT | TEST AGAIN BEFORE ACCEPTING" : "UNDID EDIT | TEST AGAIN BEFORE ACCEPTING";
@@ -322,6 +339,9 @@ void SectionEditor::refreshTarget(Game& game)
     game.target = raycast(game.camera.position(), game.camera.forward(), BuildReach,
                          [&](glm::ivec3 cell) { return game.world.get(cell); });
     targetAsset_.reset();
+    targetSurface_ = assetCollision()->raycast(game.camera.position(), game.camera.forward(), BuildReach);
+    if (targetSurface_ && game.target && targetSurface_->distance > game.target->distance + .01f)
+        targetSurface_.reset();
     float nearest = game.target ? game.target->distance + .01f : BuildReach;
     if (boundsRevision_ != revision_) {
         assetBounds_.clear();
@@ -402,6 +422,37 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
     if (!actions.remove && !actions.place && !actions.pick) return;
     Edit edit;
     edit.beforeMeta = meta_; edit.beforeAssets = assets_;
+    const auto& item = hotbar_[selectedSlot_];
+    if (item.marker != SectionMarker::None && (actions.place || actions.remove)) {
+        if (actions.remove) {
+            if (item.marker == SectionMarker::Checkpoint && meta_.checkpoint) {
+                meta_.checkpoint.reset(); changed(std::move(edit)); message_ = "CHECKPOINT REMOVED";
+            } else message_ = "START AND END ARE REQUIRED | RIGHT CLICK A TOP SURFACE TO MOVE A MARKER";
+            return;
+        }
+        const auto collision = assetCollision();
+        std::optional<glm::vec3> feet;
+        if (targetSurface_ && targetSurface_->normal.y > .2f) {
+            // Settle the whole body, not just the ray point: a wide player stands
+            // at the uphill contact of a sloped rock or mushroom cap.
+            const auto above = targetSurface_->point + glm::vec3(0, Player::Width + .02f, 0);
+            constexpr float half = Player::Width * .5f;
+            const float drop = collision->sweep(above + glm::vec3(-half, 0, -half),
+                                                above + glm::vec3(half, Player::Height, half),
+                                                1, -2 * (Player::Width + .02f));
+            feet = above + glm::vec3(0, drop, 0);
+        } else if (!targetSurface_ && game.target && game.target->normal.y == 1) {
+            feet = glm::vec3(game.target->position + glm::ivec3(0, 1, 0)) + glm::vec3(.5f, 0, .5f);
+        }
+        if (!feet || !sectionMarkerSafe(game.world, *feet, collision.get())) {
+            message_ = "MARKERS NEED A CLEAR, SUPPORTED TOP SURFACE WITH HEADROOM"; return;
+        }
+        if (item.marker == SectionMarker::Start) meta_.spawn = *feet;
+        else if (item.marker == SectionMarker::End) meta_.finish = *feet;
+        else meta_.checkpoint = *feet;
+        changed(std::move(edit)); message_ = "MOVED " + item.name + " | ONE OF EACH PER SECTION";
+        refreshTarget(game); return;
+    }
     if (targetAsset_ && (actions.remove || actions.pick)) {
         const auto index = *targetAsset_;
         if (actions.pick) {
@@ -410,7 +461,11 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
             facing_ = assets_[index].facing; variation_ = assets_[index].variation;
             message_ = "PICKED " + hotbar_[selectedSlot_].name;
         } else {
-            assets_.erase(assets_.begin() + static_cast<std::ptrdiff_t>(index));
+            SectionEditPlan plan{{}, assets_, {}};
+            plan.assets.erase(plan.assets.begin() + static_cast<std::ptrdiff_t>(index));
+            validateAssetEdit(game.world, plan);
+            if (!plan.error.empty()) { message_ = plan.error; return; }
+            assets_ = std::move(plan.assets);
             changed(std::move(edit)); message_ = "REMOVED ASSET";
         }
         refreshTarget(game); return;
@@ -422,14 +477,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         if (block != Block::Bedrock) hotbar_[selectedSlot_] = {std::string(blockName(block)), block, {}, SectionMarker::None};
         message_ = "PICKED " + hotbar_[selectedSlot_].name; return;
     }
-    const auto& item = hotbar_[selectedSlot_];
     if (actions.remove) {
-        if (item.marker != SectionMarker::None) {
-            if (item.marker == SectionMarker::Checkpoint && meta_.checkpoint) {
-                meta_.checkpoint.reset(); changed(std::move(edit)); message_ = "CHECKPOINT REMOVED";
-            } else message_ = "START AND END ARE REQUIRED | RIGHT CLICK A TOP FACE TO MOVE A MARKER";
-            return;
-        }
         if (!sectionInterior(hit.position)) { message_ = "THE ROOM SHELL IS PROTECTED"; return; }
         edit.position = hit.position; edit.before = game.world.get(hit.position); edit.after = Block::Air;
         if (game.world.set(hit.position, Block::Air)) { changed(std::move(edit)); message_ = "REMOVED BLOCK"; }
@@ -447,18 +495,12 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
             return asset.kind == preview_->kind && asset.position == preview_->position && asset.facing == preview_->facing;
         });
         if (duplicate != assets_.end()) { message_ = "THIS ASSET IS ALREADY HERE"; return; }
-        assets_.push_back(*preview_); changed(std::move(edit));
-        message_ = "PLACED " + item.name + " | DECORATIVE: BUILD WALKABLE SURFACES WITH BLOCKS";
-    } else if (item.marker != SectionMarker::None) {
-        const auto cell = hit.position + glm::ivec3(0, 1, 0);
-        const auto feet = glm::vec3(cell) + glm::vec3(.5f, 0, .5f);
-        if (hit.normal.y != 1 || !sectionInterior(cell) || !sectionMarkerSafe(game.world, feet)) {
-            message_ = "MARKERS NEED A CLEAR, SUPPORTED TOP FACE WITH HEADROOM"; return;
-        }
-        if (item.marker == SectionMarker::Start) meta_.spawn = feet;
-        else if (item.marker == SectionMarker::End) meta_.finish = feet;
-        else meta_.checkpoint = feet;
-        changed(std::move(edit)); message_ = "MOVED " + item.name + " | ONE OF EACH PER SECTION";
+        SectionEditPlan plan{{}, assets_, {}};
+        plan.assets.push_back(*preview_);
+        validateAssetEdit(game.world, plan);
+        if (!plan.error.empty()) { message_ = plan.error; return; }
+        assets_ = std::move(plan.assets); changed(std::move(edit));
+        message_ = "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
     }
     refreshTarget(game);
 }
@@ -483,6 +525,7 @@ void SectionEditor::resetBuildTools()
 
 void SectionEditor::applyPlan(Game& game, SectionEditPlan plan, std::string_view label)
 {
+    validateAssetEdit(game.world, plan);
     if (!plan.error.empty()) { message_ = plan.error; return; }
     if (plan.blocks.empty() && plan.assets == assets_) { message_ = "NO CHANGES | " + std::string(label); return; }
     Edit edit;
@@ -493,6 +536,27 @@ void SectionEditor::applyPlan(Game& game, SectionEditPlan plan, std::string_view
     const auto count = edit.blocks.size();
     changed(std::move(edit));
     message_ = std::string(label) + " | " + std::to_string(count) + " BLOCKS | CTRL/CMD+Z UNDO";
+}
+
+void SectionEditor::validateAssetEdit(const World& world, SectionEditPlan& plan) const
+{
+    if (!plan.error.empty() || plan.assets == assets_) return;
+    const auto before = assetCollision();
+    AssetCollision after;
+    after.rebuild(plan.assets);
+    // Pasted blocks and models are one edit. Check their combined destination,
+    // so replacing a supporting model with a solid block remains possible.
+    std::optional<World> destination;
+    if (!plan.blocks.empty()) {
+        destination = world;
+        for (const auto& block : plan.blocks) destination->set(block.position, block.after);
+    }
+    const World& result = destination ? *destination : world;
+    const auto preserved = [&](glm::vec3 marker) {
+        return !sectionMarkerSafe(world, marker, before.get()) || sectionMarkerSafe(result, marker, &after);
+    };
+    if (!preserved(meta_.spawn) || !preserved(meta_.finish) || (meta_.checkpoint && !preserved(*meta_.checkpoint)))
+        plan.error = "MOVE START / CHECKPOINT / END BEFORE CHANGING THEIR SUPPORT OR HEADROOM";
 }
 
 void SectionEditor::copySelection(Game& game)
@@ -639,6 +703,7 @@ void SectionEditor::refreshToolPreview(Game& game)
         || previewCameraCell_ != cameraCell || previewRotation_ != pasteRotation_ || previewAir_ != pasteIncludesAir_
         || previewFillGaps_ != pasteFillGaps_) {
         previewPlan_ = planSectionPaste(game.world, assets_, clipboard_, origin, pasteRotation_, pasteIncludesAir_, game.camera.position(), pasteFillGaps_);
+        validateAssetEdit(game.world, previewPlan_);
         previewOrigin_ = origin; previewRevision_ = revision_; previewCameraCell_ = cameraCell;
         previewRotation_ = pasteRotation_; previewAir_ = pasteIncludesAir_;
         previewFillGaps_ = pasteFillGaps_; ++pastePreviewRevision_;
@@ -757,6 +822,7 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
 
 void SectionEditor::faceMarker(Game& game, glm::vec3 position)
 {
+    game.player.setAssetCollision(assetCollision());
     if (!game.player.setFeetPosition(game.world, position) || !game.player.grounded())
         throw std::runtime_error("Marker has no supported space for the player");
     game.camera.setPosition(game.player.eyePosition());
@@ -767,8 +833,9 @@ void SectionEditor::faceMarker(Game& game, glm::vec3 position)
 }
 void SectionEditor::startTest(Game& game)
 {
-    if (!sectionMarkerSafe(game.world, meta_.spawn) || !sectionMarkerSafe(game.world, meta_.finish)
-        || (meta_.checkpoint && !sectionMarkerSafe(game.world, *meta_.checkpoint))) {
+    const auto collision = assetCollision();
+    if (!sectionMarkerSafe(game.world, meta_.spawn, collision.get()) || !sectionMarkerSafe(game.world, meta_.finish, collision.get())
+        || (meta_.checkpoint && !sectionMarkerSafe(game.world, *meta_.checkpoint, collision.get()))) {
         message_ = "FIX START / CHECKPOINT / END: EACH NEEDS SOLID SUPPORT AND CLEAR HEADROOM"; return;
     }
     if (glm::distance(meta_.spawn, meta_.finish) < 3) { message_ = "PLACE THE END AT LEAST THREE BLOCKS FROM THE START"; return; }

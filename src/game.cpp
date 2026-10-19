@@ -2,6 +2,7 @@
 #include "input.h"
 #include "save.h"
 #include "scene.h"
+#include "asset_collision.h"
 
 #include <algorithm>
 #include <charconv>
@@ -117,7 +118,7 @@ Game::Game(const Options& options)
     if (!editorMode_) {
         if (options.rootCrossing >= 0) startRootCrossing(options.rootCrossing);
         else {
-            buildUndergroundScene(world);
+            buildVillage();
             if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
             status = "F6 ROOT CROSSING TESTS | BLACKSMITH SOUTHWEST | 12 STARTER COPPER";
         }
@@ -152,7 +153,7 @@ void Game::leaveDevMode()
 {
     if (!sectionEditor_.leave(*this)) { status = sectionEditor_.message(); return; }
     devMode_ = false;
-    buildUndergroundScene(world);
+    buildVillage();
     if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
     status = "DRAFT SAVED | F7 SECTION BUILDER | F6 ROOT CROSSING TESTS";
     target.reset();
@@ -166,7 +167,7 @@ void Game::enterLevelMode(bool creator)
     }
     if (levelController_.open() && !levelController_.leave(*this)) { status = levelController_.message(); return; }
     // The menu always sits over the village, never over an abandoned test room.
-    buildUndergroundScene(world);
+    buildVillage();
     if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
     rootCrossingIndex_ = -1;
     smithOpen_ = crossingMenuOpen_ = false;
@@ -176,7 +177,7 @@ void Game::enterLevelMode(bool creator)
 void Game::leaveLevelMode()
 {
     if (!levelController_.leave(*this)) { status = levelController_.message(); return; }
-    buildUndergroundScene(world);
+    buildVillage();
     if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
     status = "RETURNED TO GLOWROOT HAVEN | F4 LEVELS | F11 LEVEL CREATOR";
     target.reset();
@@ -234,6 +235,14 @@ void Game::update(const InputActions& actions, float deltaSeconds)
     editTarget(actions);
 }
 
+void Game::buildVillage()
+{
+    buildUndergroundScene(world);
+    auto collision = std::make_shared<AssetCollision>();
+    collision->rebuild(planHubAssets(world));
+    player.setAssetCollision(std::move(collision));
+}
+
 bool Game::returnToVillage()
 {
     smithOpen_ = false;
@@ -247,11 +256,16 @@ bool Game::returnToVillage()
              x <= static_cast<int>(std::floor(VillageSpawn.x)) + 6; ++x) {
             for (int y = 1; y < World::MaxExclusive.y - Player::Height; ++y) {
                 const glm::vec3 feet(x + 0.5f, static_cast<float>(y), z + 0.5f);
-                const auto offset = feet - VillageSpawn;
-                const float distance = glm::dot(offset, offset);
-                if (distance >= nearest) continue;
+                const auto horizontal = glm::vec2(feet.x - VillageSpawn.x, feet.z - VillageSpawn.z);
+                if (glm::dot(horizontal, horizontal) >= nearest) continue;
                 Player candidate = player;
-                if (candidate.setFeetPosition(world, feet) && candidate.grounded()) {
+                // Paving and other models sit slightly above the voxel floor.
+                // Settle onto their real top instead of spawning inside them.
+                if (!candidate.setFeetPosition(world, feet + glm::vec3(0, 1, 0))) continue;
+                candidate.move(world, {0, -1, 0});
+                const auto offset = candidate.feetPosition() - VillageSpawn;
+                const float distance = glm::dot(offset, offset);
+                if (candidate.grounded() && distance < nearest) {
                     destination = candidate;
                     nearest = distance;
                 }
@@ -371,6 +385,7 @@ void Game::startRootCrossing(int index)
 {
     if (index < 0 || index >= RootCrossingCount) return;
     crossingCourse_ = buildRootCrossing(world, index);
+    player.setAssetCollision(nullptr);
     rootCrossingIndex_ = crossingMenuSelection_ = index;
     smithOpen_ = crossingMenuOpen_ = false;
     crossingCompleted_ = crossingCheckpointReached_ = false;
@@ -383,7 +398,7 @@ void Game::startRootCrossing(int index)
 
 void Game::leaveRootCrossing()
 {
-    buildUndergroundScene(world);
+    buildVillage();
     rootCrossingIndex_ = -1;
     crossingCompleted_ = crossingCheckpointReached_ = crossingMenuOpen_ = false;
     crossingElapsed_ = 0.0f;
