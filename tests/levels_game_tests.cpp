@@ -72,6 +72,12 @@ int main()
         }
         voxel::World world(123);
         voxel::buildBlankSection(world);
+        // Store water in the accepted section itself so level loading, not a
+        // runtime patch, supplies the pool used by the swimming checks below.
+        for (int z = 18; z <= 24; ++z)
+            for (int x = 18; x <= 24; ++x)
+                for (int y = 9; y <= 18; ++y)
+                    world.set({x, y, z}, voxel::Block::Water);
         voxel::SectionMetadata first;
         first.name = "Root entry"; first.tested = true;
         first.spawn = {.5f, 9, 4.5f}; first.finish = {.5f, 9, -.5f}; first.checkpoint = {.5f, 9, 2.5f};
@@ -144,6 +150,37 @@ int main()
         const float elapsed = controller.elapsed();
         game.update(idle, 100);
         check(controller.elapsed() == elapsed, "paused gameplay never advances the level timer");
+        const glm::vec3 swimStart{21.5f, 13, 21.5f};
+        check(game.world.get({21, 13, 21}) == voxel::Block::Water
+              && game.player.setFeetPosition(game.world, swimStart),
+              "published sections retain their authored swimming water when loaded into a level");
+        game.camera.setPosition(game.player.eyePosition());
+        voxel::InputActions swim;
+        swim.active = swim.jump = true;
+        for (int frame = 0; frame < 45; ++frame) game.update(swim, 1.0f / 60.0f);
+        check(game.player.inWater() && game.player.feetPosition().y > swimStart.y + .5f
+              && game.camera.position() == game.player.eyePosition(),
+              "authored expedition play supports held Space swimming with the physical camera");
+        const auto pausedSwim = game.player.feetPosition();
+        const auto pausedElapsed = controller.elapsed();
+        swim.active = false;
+        swim.descend = true;
+        game.update(swim, .1f);
+        check(game.player.feetPosition() == pausedSwim && controller.elapsed() == pausedElapsed,
+              "paused expedition play freezes swimming and its run timer");
+        check(game.player.setFeetPosition(game.world, swimStart), "level dive fixture resets in the pool");
+        swim = {};
+        swim.active = swim.descend = true;
+        for (int frame = 0; frame < 30; ++frame) game.update(swim, 1.0f / 60.0f);
+        check(game.player.underwater() && game.player.feetPosition().y < swimStart.y - .5f,
+              "authored expedition play forwards the descend control to water movement");
+        press(game, &voxel::InputActions::respawn);
+        check(game.player.feetPosition() == first.spawn && !game.player.inWater() && !game.player.underwater(),
+              "resetting underwater returns to the current section Start with dry player state");
+        voxel::InputActions settle; settle.active = true;
+        game.update(settle, .1f);
+        check(game.player.grounded() && game.player.feetPosition() == first.spawn,
+              "level reset clears diving momentum before the normal route continues");
         voxel::InputActions tools; tools.active = true; tools.selectedTool = 2;
         game.update(tools);
         check(game.equipment.selectedSlot == 2 && game.compassTarget() == first.finish,

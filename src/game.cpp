@@ -332,7 +332,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
         smithOpen_ = true;
         return;
     }
-    player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+    player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     camera.setPosition(player.eyePosition());
     if (rootCrossingActive()) updateRootCrossing(deltaSeconds);
 }
@@ -598,6 +598,7 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
     text << "\nH CONTROLS | F4 LEVELS | F7 SECTION BUILDER | F11 LEVEL CREATOR";
     if (showHelp) {
         text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
+             << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
              << "\nSCROLL / [ ] CHANGE TOOL | TAB RESUME"
              << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS"
              << "\nF6 ROOT CROSSING TESTS | F4 EXPEDITIONS | F11 LEVEL CREATOR";
@@ -625,16 +626,22 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
         std::ostringstream text;
         text << (levelCreatorActive() ? "LEVEL CREATOR" : "EXPEDITIONS") << " | " << levelController_.message();
         if (!captured && !levelMenuOpen()) text << "\nPAUSED | TAB TO RESUME";
-        if (showHelp) text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | R CHECKPOINT | SHIFT+R RESTART LEVEL | B HUB";
+        if (showHelp) text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | R CHECKPOINT | SHIFT+R RESTART LEVEL | B HUB"
+            << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER";
         return text.str();
     }
     if (devMode_) {
         std::ostringstream text;
         text << "SECTION BUILDER | " << sectionEditor_.message();
         if (!captured && !devMenuOpen()) text << "\nPAUSED | TAB TO RESUME";
-        if (showHelp) text << "\nE PALETTE | F8 WALK TEST | F10 ACCEPT | F5 DRAFT | F9 LIBRARY"
-            << "\n1-9 HOTBAR | LEFT REMOVE | RIGHT PLACE | MIDDLE PICK | T ROTATE | Y VARIANT"
-            << "\nWASD FLY | SPACE UP | CTRL DOWN | SHIFT BOOST | CTRL/CMD Z UNDO | B HUB";
+        if (showHelp) {
+            if (sectionEditor_.screen() == SectionEditorScreen::Test) text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | F8 RETURN TO BUILD"
+                << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
+                << "\nR CHECKPOINT | SHIFT+R RESTART TEST | B HUB";
+            else text << "\nE PALETTE | F8 WALK TEST | F10 ACCEPT | F5 DRAFT | F9 LIBRARY"
+                << "\n1-9 HOTBAR | LEFT REMOVE | RIGHT PLACE | MIDDLE PICK | T ROTATE | Y VARIANT"
+                << "\nWASD FLY | SPACE UP | CTRL DOWN | SHIFT BOOST | CTRL/CMD Z UNDO | B HUB";
+        }
         return text.str();
     }
     if (!editorMode_) return playStatusText(captured, showHelp);

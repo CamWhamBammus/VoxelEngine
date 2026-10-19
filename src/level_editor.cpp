@@ -370,7 +370,7 @@ void LevelController::updatePlay(Game& game, const InputActions& actions, float 
         game.equipment.selectedSlot = *actions.selectedTool;
     else if (actions.toolStep) game.equipment.selectedSlot = ((game.equipment.selectedSlot
         + actions.toolStep % ToolCount) % ToolCount + ToolCount) % ToolCount;
-    game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+    game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     game.camera.setPosition(game.player.eyePosition());
     elapsed_ += stepTime(deltaSeconds);
     if (game.player.feetPosition().y < SectionInteriorMin.y - 2.0f) { ++falls_; reset(game, false); return; }

@@ -196,6 +196,12 @@ int main()
         press(game, &voxel::InputActions::remove);
         check(editor.meta().spawn == originalStart, "the required Start cannot be removed");
 
+        // A pool beside the walking route verifies that F8 tests use the same
+        // swimming controls as ordinary play, without moving required markers.
+        for (int z = 18; z <= 24; ++z)
+            for (int x = 18; x <= 24; ++x)
+                for (int y = 9; y <= 21; ++y)
+                    game.world.set({x, y, z}, y <= 18 ? voxel::Block::Water : voxel::Block::Air);
         press(game, &voxel::InputActions::devTest);
         check(editor.screen() == voxel::SectionEditorScreen::Test && !game.devFlying()
               && game.player.grounded() && game.player.feetPosition() == editor.meta().spawn,
@@ -204,6 +210,35 @@ int main()
         voxel::InputActions paused; paused.movement = {0, 1}; game.update(paused, .1f);
         check(game.player.feetPosition() == pausedPosition && editor.testElapsed() == 0,
               "paused test input cannot move the player or advance its clock");
+        const glm::vec3 swimStart{21.5f, 13, 21.5f};
+        check(game.player.setFeetPosition(game.world, swimStart), "F8 test pool fits the physical player");
+        game.camera.setPosition(game.player.eyePosition());
+        voxel::InputActions swim;
+        swim.active = swim.jump = true;
+        for (int frame = 0; frame < 45; ++frame) game.update(swim, 1.0f / 60.0f);
+        check(game.player.inWater() && game.player.feetPosition().y > swimStart.y + .5f
+              && game.camera.position() == game.player.eyePosition(),
+              "F8 section tests allow continuous Space swimming and keep the camera attached");
+        const auto pausedSwim = game.player.feetPosition();
+        const auto pausedElapsed = editor.testElapsed();
+        swim.active = false;
+        swim.descend = true;
+        game.update(swim, .1f);
+        check(game.player.feetPosition() == pausedSwim && editor.testElapsed() == pausedElapsed,
+              "pausing an underwater section test freezes swimming and the test clock");
+        check(game.player.setFeetPosition(game.world, swimStart), "F8 dive fixture resets in water");
+        swim = {};
+        swim.active = swim.descend = true;
+        for (int frame = 0; frame < 30; ++frame) game.update(swim, 1.0f / 60.0f);
+        check(game.player.underwater() && game.player.feetPosition().y < swimStart.y - .5f,
+              "F8 section tests forward the descend control to swimming physics");
+        press(game, &voxel::InputActions::respawn);
+        check(game.player.feetPosition() == editor.meta().spawn && !game.player.inWater() && !game.player.underwater(),
+              "resetting an underwater section test returns to the dry authored Start");
+        voxel::InputActions settle; settle.active = true;
+        game.update(settle, .1f);
+        check(game.player.grounded() && game.player.feetPosition() == editor.meta().spawn,
+              "section reset clears diving momentum before walking resumes");
         action.movement = {0, 1};
         for (int frame = 0; frame < 1000 && !editor.testComplete(); ++frame) game.update(action, 1.0f / 60.0f);
         check(editor.testComplete() && editor.meta().tested && editor.testElapsed() > 1,

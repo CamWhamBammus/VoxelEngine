@@ -190,8 +190,9 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         static_cast<float>(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)),
         static_cast<float>(keyDown(GLFW_KEY_W) - keyDown(GLFW_KEY_S)),
     };
-    actions_.jump = pressed(buttons.jump, previous.jump);
-    actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT);
+    actions_.jump = buttons.jump;
+    actions_.descend = keyDown(GLFW_KEY_LEFT_CONTROL) || keyDown(GLFW_KEY_RIGHT_CONTROL);
+    actions_.sprint = shift;
     actions_.respawn = resetCamera;
     if (editorMode) {
         actions_.remove = pressed(buttons.remove, previous.remove);
@@ -303,8 +304,9 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
             actions_.devPasteNudge = pasteShortcuts.nudge;
         }
         actions_.movement = {float(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)), float(keyDown(GLFW_KEY_W) - keyDown(GLFW_KEY_S))};
-        actions_.jump = pressed(buttons.jump, previous.jump);
-        actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT);
+        actions_.jump = buttons.jump;
+        actions_.descend = keyDown(GLFW_KEY_LEFT_CONTROL) || keyDown(GLFW_KEY_RIGHT_CONTROL);
+        actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT) || keyDown(GLFW_KEY_RIGHT_SHIFT);
         actions_.respawn = pressed(buttons.resetCamera, previous.resetCamera);
         actions_.restartCrossing = actions_.respawn && actions_.sprint;
         actions_.devRotate = !modifier && pressed(buttons.rotate, previous.rotate);

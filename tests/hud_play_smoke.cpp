@@ -120,6 +120,18 @@ void verifyPlayHud(int width, int height)
         require(difference(small,draw(640,360,std::numeric_limits<float>::quiet_NaN()))==0,
                 "Invalid HUD scale did not fall back to the normal layout");
 
+        const auto dryFeet=game.player.feetPosition();
+        const auto dryHud=draw(width,height);
+        for (int z=80;z<=83;++z) for (int y=40;y<=44;++y) for (int x=80;x<=83;++x)
+            game.world.set({x,y,z},Block::Water);
+        require(game.player.setFeetPosition(game.world,{81.5f,41.0f,81.5f}) && game.player.inWater(),
+                "HUD fixture cannot enter water");
+        require(difference(dryHud,draw(width,height))>150,"Entering water did not show swim controls");
+        draw(640,360,2);
+        require(game.player.setFeetPosition(game.world,dryFeet) && !game.player.inWater(),
+                "HUD fixture cannot leave water");
+        require(difference(dryHud,draw(width,height))==0,"Swim controls remain after leaving water");
+
         require(game.player.setFeetPosition(game.world,sceneBlacksmithApproach()),"HUD fixture cannot reach the blacksmith");
         game.camera.setPosition(game.player.eyePosition());
         InputActions open; open.active=true; open.interact=true;
@@ -146,7 +158,7 @@ void verifyPlayHud(int width, int height)
         cleanup(); throw;
     }
     cleanup();
-    std::cout << "Play HUD passed: tool selection, compass, forge states, feedback, DPI and GL state\n";
+    std::cout << "Play HUD passed: tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
 }
 
 } // namespace voxel

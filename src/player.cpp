@@ -100,6 +100,7 @@ bool Player::setFeetPosition(const World& world, glm::vec3 position)
     grounded_ = supported(world, feet_);
     verticalVelocity_ = 0.0f;
     jumpHeld_ = false;
+    refreshWater(world);
     return true;
 }
 
@@ -129,6 +130,61 @@ void Player::move(const World& world, glm::vec3 displacement)
     }
     moveAxis(world, 1, displacement.y);
     grounded_ = supported(world, feet_);
+    refreshWater(world);
+}
+
+void Player::refreshWater(const World& world)
+{
+    inWater_ = false;
+    underwater_ = false;
+    waterSurface_ = feet_.y;
+    const Bounds body = bodyBounds(feet_);
+    glm::ivec3 first, last;
+    for (int axis = 0; axis < 3; ++axis) {
+        const double low = std::max(body.minimum[axis] + ContactTolerance, double(World::Min[axis]));
+        const double high = std::min(body.maximum[axis] - ContactTolerance, double(World::MaxExclusive[axis]));
+        if (low >= high) return;
+        first[axis] = static_cast<int>(std::floor(low));
+        last[axis] = static_cast<int>(std::ceil(high)) - 1;
+    }
+    for (int y = first.y; y <= last.y; ++y)
+        for (int z = first.z; z <= last.z; ++z)
+            for (int x = first.x; x <= last.x; ++x) {
+                if (world.get({x, y, z}) != Block::Water) continue;
+                inWater_ = true;
+                waterSurface_ = std::max(waterSurface_, float(y + 1));
+            }
+    const glm::vec3 eye = eyePosition();
+    if (eye.y >= World::Min.y && eye.y < World::MaxExclusive.y)
+        underwater_ = world.get(glm::ivec3(std::floor(eye.x), std::floor(eye.y), std::floor(eye.z))) == Block::Water;
+}
+
+bool Player::climbShore(const World& world, glm::vec3 remainingMovement)
+{
+    // Swimming up against a bank can step onto a real landing at the surface
+    // or one block above it. Every leg is swept, and unsupported ledges fail.
+    if (!inWater_ || waterSurface_ - feet_.y > 0.8f) return false;
+    for (const int axis : {0, 2}) {
+        if (std::abs(remainingMovement[axis]) <= ContactTolerance) continue;
+        for (float top = std::floor(feet_.y) + 1.0f; top <= waterSurface_ + 1.0f; top += 1.0f) {
+            const float lift = top - feet_.y;
+            Player raised = *this;
+            raised.moveAxis(world, 1, lift);
+            if (raised.feet_.y - feet_.y < lift - ContactTolerance) break;
+            raised.moveAxis(world, axis, remainingMovement[axis]);
+            const float progress = (raised.feet_[axis] - feet_[axis])
+                * (remainingMovement[axis] > 0.0f ? 1.0f : -1.0f);
+            if (progress <= ContactTolerance) continue;
+            raised.moveAxis(world, 1, -lift);
+            if (raised.feet_.y <= feet_.y + ContactTolerance || !supported(world, raised.feet_)) continue;
+            feet_ = raised.feet_;
+            grounded_ = true;
+            verticalVelocity_ = 0.0f;
+            refreshWater(world);
+            return true;
+        }
+    }
+    return false;
 }
 
 void Player::moveAxis(const World& world, int axis, float distance)
@@ -160,8 +216,9 @@ void Player::moveAxis(const World& world, int axis, float distance)
 }
 
 void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
-                    bool jump, bool sprint, float deltaSeconds)
+                    bool jump, bool sprint, float deltaSeconds, bool descend)
 {
+    refreshWater(world);
     if (!std::isfinite(deltaSeconds) || deltaSeconds <= 0.0f
         || !std::isfinite(movement.x) || !std::isfinite(movement.y) || !finite(forward)) return;
 
@@ -172,12 +229,12 @@ void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
     const glm::vec3 right{-facing.z, 0, facing.x};
     const double inputLength = std::hypot(double(movement.x), double(movement.y));
     if (inputLength > 1.0) movement = glm::vec2(movement.x / inputLength, movement.y / inputLength);
-    const float speed = sprint ? 7.0f : 4.5f;
-    const glm::vec3 horizontalVelocity = (right * movement.x + facing * movement.y) * speed;
+    const glm::vec3 direction = right * movement.x + facing * movement.y;
 
     // Refresh support before jumping, including when the floor was just mined.
     grounded_ = supported(world, feet_);
-    if (jump && !jumpHeld_ && grounded_) verticalVelocity_ = 8.0f;
+    const bool wading = inWater_ && waterSurface_ - feet_.y < 0.45f && grounded_;
+    if (jump && !jumpHeld_ && grounded_ && (!inWater_ || wading)) verticalVelocity_ = 8.0f;
     jumpHeld_ = jump;
 
     // Small physics steps keep jumps and wall sliding consistent during a slow frame.
@@ -185,11 +242,37 @@ void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
     float remaining = std::min(deltaSeconds, 0.1f);
     while (remaining > 0.0f) {
         const float step = std::min(remaining, 1.0f / 120.0f);
-        const float verticalDistance = verticalVelocity_ * step - 0.5f * gravity * step * step;
-        const float previousY = feet_.y;
-        move(world, horizontalVelocity * step + glm::vec3(0, verticalDistance, 0));
-        verticalVelocity_ -= gravity * step;
-        if (std::abs((feet_.y - previousY) - verticalDistance) > ContactTolerance
+        refreshWater(world);
+        const bool swimming = inWater_ && (!grounded_ || waterSurface_ - feet_.y >= 0.45f);
+        const float speed = inWater_ ? (sprint ? 4.0f : 2.5f) : (sprint ? 7.0f : 4.5f);
+        const glm::vec3 horizontalDistance = direction * (speed * step);
+        float verticalDistance;
+        if (swimming) {
+            // Water quickly absorbs falls. Integrating drag analytically keeps
+            // swimming consistent across frame rates, including gentle sinking.
+            constexpr float drag = 5.0f;
+            const float target = descend ? -2.8f : jump ? 3.0f : -0.55f;
+            const float velocity = std::clamp(verticalVelocity_, -3.5f, 3.5f);
+            const float decay = std::exp(-drag * step);
+            verticalDistance = target * step + (velocity - target) * (1.0f - decay) / drag;
+            verticalVelocity_ = target + (velocity - target) * decay;
+            if (jump && !descend && verticalDistance > 0.0f) {
+                // Hold Space to tread at the surface with the head above water.
+                const float surfaceDistance = std::max(0.0f, waterSurface_ - 0.65f - feet_.y);
+                if (verticalDistance > surfaceDistance) {
+                    verticalDistance = surfaceDistance;
+                    verticalVelocity_ = 0.0f;
+                }
+            }
+        } else {
+            verticalDistance = verticalVelocity_ * step - 0.5f * gravity * step * step;
+            verticalVelocity_ -= gravity * step;
+        }
+        const glm::vec3 previous = feet_;
+        move(world, horizontalDistance + glm::vec3(0, verticalDistance, 0));
+        if (swimming && jump && !descend)
+            climbShore(world, horizontalDistance - glm::vec3(feet_.x - previous.x, 0, feet_.z - previous.z));
+        if (std::abs((feet_.y - previous.y) - verticalDistance) > ContactTolerance
             || (grounded_ && verticalVelocity_ < 0.0f)) {
             verticalVelocity_ = 0.0f;
         }

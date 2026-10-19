@@ -776,7 +776,8 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             out.centered("F10 - NAME AND ACCEPT / F8 - KEEP BUILDING",center,178,1,Cream);
         }
         out.frame(center-255,height-66,510,49,Edge);
-        out.centered("WASD MOVE / SPACE JUMP / SHIFT SPRINT",center,height-54,1,Cream);
+        out.centered(game.player.inWater() ? "WASD SWIM / SPACE RISE / CTRL DIVE / SHIFT FASTER"
+                     : "WASD MOVE / SPACE JUMP / SHIFT SPRINT",center,height-54,1,Cream);
         out.centered("R - RESET / F8 - BUILD / F10 - ACCEPT / B - VILLAGE",center,height-35,0.9f,Muted);
     } else {
         const auto& item=editor.hotbar()[editor.selectedSlot()];
@@ -1284,6 +1285,14 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     drawing.quad(center-labelWidth*0.5f,barTop-38,labelWidth,33,{0.015f,0.035f,0.045f,0.82f});
     drawing.centered(title,center,barTop-33,1.5f,Cream);
     drawing.centered(hint,center,barTop-16,1,Muted);
+
+    if (game.player.inWater() && !game.menuOpen() && !game.devMode()) {
+        constexpr float swimWidth=420;
+        const float swimPixel=std::max(1.0f,1.0f/scale);
+        drawing.frame(center-swimWidth*.5f,height-210,swimWidth,35,Edge);
+        drawing.centered(game.player.underwater() ? "UNDERWATER" : "SWIMMING",center,height-202,swimPixel,Leaf);
+        drawing.centered("SPACE RISE / CTRL DIVE / SHIFT SWIM FASTER",center,height-189,swimPixel,Cream);
+    }
 
     if (game.rootCrossingActive() && !game.crossingMenuOpen())
         crossingProgress(drawing,game,width,height);

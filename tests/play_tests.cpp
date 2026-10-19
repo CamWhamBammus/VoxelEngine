@@ -68,6 +68,44 @@ int main()
         check(game.player.feetPosition() != spawn, "WASD drives the physical player");
         check(!game.target, "moving and looking do not enable editor targeting");
 
+        // Use a deep pool away from the village spawn and services so this
+        // exercises normal Game input dispatch, rather than Player directly.
+        for (int z = 36; z <= 44; ++z)
+            for (int x = 36; x <= 44; ++x)
+                for (int y = 12; y <= 25; ++y)
+                    game.world.set({x, y, z}, y == 12 ? voxel::Block::Stone
+                        : y <= 20 ? voxel::Block::Water : voxel::Block::Air);
+        const glm::vec3 poolStart{40.5f, 16, 40.5f};
+        check(game.player.setFeetPosition(game.world, poolStart), "hub pool has room for the player");
+        game.camera.setPosition(game.player.eyePosition());
+        actions = {};
+        actions.active = actions.jump = true;
+        for (int frame = 0; frame < 45; ++frame) game.update(actions, 1.0f / 60.0f);
+        check(game.player.inWater() && game.player.feetPosition().y > poolStart.y + .5f,
+              "held Space swims upward during ordinary hub play");
+        check(game.camera.position() == game.player.eyePosition(), "the camera follows swimming without detaching from the player");
+        const auto pausedSwim = game.player.feetPosition();
+        actions.active = false;
+        actions.descend = true;
+        actions.movement = {1, 1};
+        game.update(actions, .1f);
+        check(game.player.feetPosition() == pausedSwim, "paused hub input cannot swim or sink");
+        check(game.player.setFeetPosition(game.world, poolStart), "hub dive fixture resets inside the pool");
+        actions = {};
+        actions.active = actions.descend = true;
+        for (int frame = 0; frame < 30; ++frame) game.update(actions, 1.0f / 60.0f);
+        check(game.player.underwater() && game.player.feetPosition().y < poolStart.y - .5f,
+              "held descend dives through the ordinary hub input path");
+        actions = {};
+        actions.active = actions.respawn = true;
+        game.update(actions, 1.0f / 60.0f);
+        check(game.player.feetPosition() == voxel::VillageSpawn && !game.player.inWater() && !game.player.underwater(),
+              "returning to the village immediately clears swimming and underwater state");
+        actions.respawn = false;
+        game.update(actions, .1f);
+        check(game.player.grounded() && game.player.feetPosition() == voxel::VillageSpawn,
+              "a dry return does not retain the previous diving velocity");
+
         for (const bool captured : {false, true}) {
             const auto hud = game.statusText(0, 0, 0, 0, captured, true);
             for (const auto prompt : {"WASD WALK", "SPACE JUMP", "SHIFT SPRINT", "MOUSE LOOK", "R RETURN"})

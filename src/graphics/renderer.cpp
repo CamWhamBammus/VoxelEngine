@@ -53,6 +53,7 @@ flat in int materialId;
 uniform vec3 cameraPosition;
 uniform vec3 cameraForward;
 uniform int underground;
+uniform int cameraInWater;
 uniform int decorative;
 uniform float timeSeconds;
 uniform int carriedLantern;
@@ -205,6 +206,16 @@ void main() {
         lit = max(lit, color * surface.emission * (materialId == 10 ? 2.0 : 1.0));
         if (materialId == 10) lit = min(lit, color);
         fragmentColor = vec4(mix(lit, fogColor, fog), 1.0);
+    }
+    // Opaque lakebeds and walls have no water face between them and a swimmer.
+    // Shade those surfaces here; looking out through a water face is handled
+    // by shadeWater(), so dry scenery beyond the surface is not tinted twice.
+    if (cameraInWater != 0 && materialId != 16
+        && waterCell(ivec3(floor(worldPosition + surfaceNormal * 0.04)))) {
+        vec3 transmission = exp(-vec3(0.22, 0.075, 0.05) * min(cameraDistance, 36.0));
+        fragmentColor.rgb = fragmentColor.rgb * transmission
+            + vec3(0.012, 0.095, 0.105) * (1.0 - transmission);
+        if (underground != 0) fragmentColor.a *= transmission.g;
     }
 }
 )glsl";
@@ -412,8 +423,13 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     glEnable(GL_CULL_FACE);
     glDisable(GL_BLEND);
     glCullFace(GL_BACK);
-    glClearColor(underground ? 0.025f : 0.48f, underground ? 0.026f : 0.70f,
-                 underground ? 0.065f : 0.90f, underground ? 0.0f : 1.0f);
+    const auto eye = camera.position();
+    const bool cameraInWater = glm::all(glm::greaterThanEqual(eye, glm::vec3(World::Min)))
+        && glm::all(glm::lessThan(eye, glm::vec3(World::MaxExclusive)))
+        && world.get(glm::ivec3(glm::floor(eye))) == Block::Water;
+    const auto background = cameraInWater ? glm::vec3(0.012f, 0.095f, 0.105f)
+        : underground ? glm::vec3(0.025f, 0.026f, 0.065f) : glm::vec3(0.48f, 0.70f, 0.90f);
+    glClearColor(background.r, background.g, background.b, underground ? 0.0f : 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
     shader_.use();
@@ -430,6 +446,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setVec3("cameraPosition", camera.position());
     shader_.setVec3("cameraForward", camera.forward());
     shader_.setInt("underground", underground);
+    shader_.setInt("cameraInWater", cameraInWater);
     shader_.setInt("carriedLantern", carriedLantern);
     shader_.setInt("decorative", 0);
     shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);

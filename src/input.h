@@ -18,7 +18,8 @@ class Camera;
 struct InputActions {
     bool active = false; // Focused with the mouse captured; otherwise the game pauses.
     glm::vec2 movement{0.0f}; // Right/left and forward/back, independent of camera pitch.
-    bool jump = false;
+    bool jump = false; // Held: jump on land, rise continuously in water.
+    bool descend = false; // Held Ctrl: dive in water; ignored on land.
     bool sprint = false;
     bool respawn = false;
     std::optional<int> selectedTool; // Play hotbar, numbered 1–3 on the keyboard.

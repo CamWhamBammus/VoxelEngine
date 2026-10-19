@@ -263,6 +263,138 @@ int main()
     for (int x = 40; x <= 45; ++x)
         for (int y = 1; y <= x - 39; ++y) world.set({x,y,40}, Block::Air);
 
+    // A five-block-deep pool gives swimming room without touching the floor.
+    for (int y = 1; y <= 5; ++y)
+        for (int z = -30; z <= -11; ++z)
+            for (int x = -30; x <= -11; ++x) world.set({x,y,z}, Block::Water);
+    const glm::vec3 poolStart{-20.5f, 3.0f, -20.5f};
+    check(player.setFeetPosition(world, poolStart) && player.inWater() && player.underwater()
+        && !player.grounded(), "teleport immediately detects both body and eyes underwater");
+    check(player.setFeetPosition(world, {-20.5f, 5.35f, -20.5f}) && player.inWater()
+        && !player.underwater(), "surface swimmer has a wet body and dry eyes");
+    player.move(world, {0, 1, 0});
+    check(!player.inWater() && !player.underwater(), "moving clear of the surface immediately clears water state");
+    player.move(world, {0, -3, 0});
+    check(player.inWater() && player.underwater(), "direct movement refreshes submerged state");
+    player.setFeetPosition(world, start);
+    check(!player.inWater() && !player.underwater(), "dry teleport clears both water states");
+
+    player.setFeetPosition(world, poolStart);
+    for (int frame = 0; frame < 60; ++frame)
+        player.update(world, {0,1}, forward, false, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().z, poolStart.z - 2.5f, 0.001f),
+        "swimming moves 2.5 blocks per second");
+    check(player.feetPosition().y < poolStart.y - 0.3f
+        && player.feetPosition().y > poolStart.y - 0.6f && !player.grounded(),
+        "idle swimmer sinks gently instead of falling at land gravity");
+    player.setFeetPosition(world, poolStart);
+    for (int frame = 0; frame < 60; ++frame)
+        player.update(world, {1,1}, {0,-100,-1}, false, true, 1.0f / 60.0f);
+    const auto swimDistance = player.feetPosition() - poolStart;
+    check(near(std::hypot(swimDistance.x, swimDistance.z), 4.0f, 0.001f),
+        "sprint swimming is four blocks per second with normalized diagonal input and no pitch boost");
+
+    player.setFeetPosition(world, poolStart);
+    for (int frame = 0; frame < 180; ++frame)
+        player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().y, 5.35f, 0.001f) && player.inWater() && !player.underwater(),
+        "holding swim continuously rises and treads at the surface with the head above water");
+    for (int frame = 0; frame < 60; ++frame)
+        player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().y, 5.35f, 0.001f),
+        "held swim does not bounce or launch repeatedly out of open water");
+    for (int frame = 0; frame < 36; ++frame)
+        player.update(world, {}, forward, true, false, 1.0f / 60.0f, true);
+    check(player.feetPosition().y < 4.5f && player.underwater(),
+        "held descend dives below the surface and takes priority over swim up");
+    for (int frame = 0; frame < 180; ++frame)
+        player.update(world, {}, forward, false, false, 1.0f / 60.0f, true);
+    check(near(player.feetPosition().y, 1.0f) && player.grounded() && player.inWater(),
+        "continuous diving stops safely on the pool floor");
+    for (int frame = 0; frame < 30; ++frame)
+        player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+    check(player.feetPosition().y > 1.8f && !player.grounded(), "held swim lifts from the lakebed");
+
+    world.set({-25,5,-25}, Block::Stone);
+    player.setFeetPosition(world, {-24.5f, 2.0f, -24.5f});
+    for (int frame = 0; frame < 120; ++frame)
+        player.update(world, {}, forward, true, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().y, 3.2f, 0.001f) && !player.overlapsBlock({-25,5,-25}),
+        "swimming into an underwater ceiling respects full body clearance");
+    world.set({-25,5,-25}, Block::Water);
+
+    for (int y = 1; y <= 9; ++y)
+        for (int z = -30; z <= -11; ++z) world.set({-31,y,z}, Block::Stone);
+    player.setFeetPosition(world, {-29.5f, 4.0f, -20.5f});
+    for (int frame = 0; frame < 120; ++frame)
+        player.update(world, {0,1}, {-1,0,0}, true, true, 1.0f / 60.0f);
+    check(near(player.feetPosition().x, -29.7f, 0.001f) && near(player.feetPosition().y, 5.35f, 0.001f),
+        "swim up against a tall wall cannot tunnel through or climb it");
+
+    // A bank one voxel above the water is reachable only with a clear landing.
+    for (int y = 1; y <= 6; ++y)
+        for (int z = -30; z <= -11; ++z) world.set({-10,y,z}, Block::Stone);
+    player.setFeetPosition(world, {-11.5f, 5.35f, -20.5f});
+    for (int frame = 0; frame < 60; ++frame)
+        player.update(world, {0,1}, {1,0,0}, false, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().x, -10.3f, 0.001f) && player.feetPosition().y < 5.35f,
+        "swimming against a bank without holding up does not climb it");
+    player.setFeetPosition(world, {-11.5f, 5.35f, -20.5f});
+    for (int frame = 0; frame < 36; ++frame)
+        player.update(world, {0,1}, {1,0,0}, true, false, 1.0f / 60.0f);
+    check(player.feetPosition().x > -10.3f && near(player.feetPosition().y, 7.0f)
+        && player.grounded() && !player.inWater(),
+        "Space and forward climb a one-block-high shoreline with real support");
+    player.setFeetPosition(world, {-11.5f, 5.35f, -20.5f});
+    world.set({-10,8,-21}, Block::Stone);
+    for (int frame = 0; frame < 90; ++frame)
+        player.update(world, {0,1}, {1,0,0}, true, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().x, -10.3f, 0.001f) && near(player.feetPosition().y, 5.35f, 0.001f)
+        && !player.overlapsBlock({-10,8,-21}), "low headroom prevents a shoreline exit");
+    world.set({-10,8,-21}, Block::Air);
+    for (int z = -30; z <= -11; ++z) world.set({-10,6,z}, Block::Air);
+    player.setFeetPosition(world, {-11.5f, 5.35f, -20.5f});
+    for (int frame = 0; frame < 36; ++frame)
+        player.update(world, {0,1}, {1,0,0}, true, false, 1.0f / 60.0f);
+    check(player.feetPosition().x > -10.3f && near(player.feetPosition().y, 6.0f)
+        && player.grounded() && !player.inWater(),
+        "swimming can also exit onto a bank exactly level with the water surface");
+
+    player.setFeetPosition(world, {-29.5f, 5.35f, -15.5f});
+    for (int frame = 0; frame < 30; ++frame)
+        player.update(world, {0,1}, {0,0,1}, true, false, 1.0f / 60.0f);
+    check(near(player.feetPosition().y, 5.35f, 0.001f) && !player.grounded(),
+        "water movement without an obstructing supported bank never creates an air stair");
+
+    Player slowFrames, fastFrames;
+    slowFrames.setFeetPosition(world, poolStart);
+    fastFrames.setFeetPosition(world, poolStart);
+    for (int frame = 0; frame < 10; ++frame)
+        slowFrames.update(world, {0,1}, forward, false, false, 0.1f, true);
+    for (int frame = 0; frame < 120; ++frame)
+        fastFrames.update(world, {0,1}, forward, false, false, 1.0f / 120.0f, true);
+    check(glm::distance(slowFrames.feetPosition(), fastFrames.feetPosition()) < 0.001f,
+        "swimming drag and movement agree at ten and 120 frames per second");
+    slowFrames.setFeetPosition(world, poolStart);
+    fastFrames.setFeetPosition(world, poolStart);
+    slowFrames.update(world, {1,1}, forward, true, true, 1000.0f);
+    fastFrames.update(world, {1,1}, forward, true, true, 0.1f);
+    check(slowFrames.feetPosition() == fastFrames.feetPosition(), "water physics caps extreme frame times");
+
+    player.setFeetPosition(world, {-20.5f, 12.0f, -20.5f});
+    for (int frame = 0; frame < 54; ++frame)
+        player.update(world, {}, forward, false, false, 1.0f / 60.0f);
+    check(player.inWater() && player.feetPosition().y > 2.5f && !player.grounded(),
+        "falling into the pool loses speed before striking the lakebed");
+    // Water changes around a stationary player are sampled on the next update.
+    player.setFeetPosition(world, {-25.5f, 2.0f, -25.5f});
+    for (int y = 1; y <= 5; ++y) world.set({-26,y,-26}, Block::Air);
+    player.update(world, {}, forward, false, false, 1.0f / 120.0f);
+    check(!player.inWater() && !player.underwater(), "draining water refreshes contact without teleporting");
+    player.setFeetPosition(world, start);
+    player.update(world, {}, forward, true, false, 1.0f / 60.0f, true);
+    check(player.feetPosition().y > start.y, "descend has no effect on ordinary dry jumps");
+
     World terrain(42);
     check(player.spawn(terrain), "generated terrain has a safe spawn");
     check(near(player.feetPosition().x, 0.5f) && near(player.feetPosition().z, 0.5f)

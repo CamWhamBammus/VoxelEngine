@@ -795,7 +795,7 @@ void SectionEditor::resetTest(Game& game, bool restart)
 void SectionEditor::updateTest(Game& game, const InputActions& actions, float deltaSeconds)
 {
     if (actions.respawn) { resetTest(game, actions.restartCrossing); return; }
-    game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds);
+    game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     game.camera.setPosition(game.player.eyePosition());
     if (!testComplete_ && std::isfinite(deltaSeconds) && deltaSeconds > 0) testElapsed_ += std::min(deltaSeconds, .1f);
     const auto feet = game.player.feetPosition();

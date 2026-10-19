@@ -199,6 +199,25 @@ void verifyWaterRendering(int width, int height)
     const double depthChange = difference(brick, sample(basin, camera));
     require(depthChange > 2.0, "water ignored the lakebed depth (change " + std::to_string(depthChange) + ")");
 
+    // A swimmer sees the solid lakebed directly: no water surface is drawn
+    // between this camera and the bed. It still needs underwater absorption.
+    const auto aboveBeforeDive = sample(basin, camera);
+    const auto swimmer = lookAt({0.5f, 4.7f, 5.5f}, {0.5f, 3.0f, -1.0f});
+    const auto submergedBrick = sample(basin, swimmer);
+    World drained = basin;
+    for (int y = 3; y <= 5; ++y) layer(drained, y, Block::Air);
+    const auto dryBed = sample(drained, swimmer);
+    const double submergedChange = difference(submergedBrick, dryBed);
+    require(submergedChange > 2.0 && changedFraction(submergedBrick, dryBed) > 0.25,
+            "submerged opaque bed has no underwater haze (change " + std::to_string(submergedChange) + ")");
+    layer(basin, 2, Block::Sand);
+    require(difference(submergedBrick, sample(basin, swimmer)) > 2.0,
+            "underwater haze hides nearby lakebed material detail");
+    layer(basin, 2, Block::Brick);
+    sample(basin, swimmer);
+    require(difference(aboveBeforeDive, sample(basin, camera)) < 0.15,
+            "underwater tint remains after the camera leaves water");
+
     // Looking up just beneath the surface sees a distant ceiling through only
     // a short water path. Air above the surface must not be counted as water.
     const auto nearSurface = lookAt({0.5f, 5.7f, 0.5f}, {0.5f, 10.0f, -1.0f});
@@ -215,7 +234,8 @@ void verifyWaterRendering(int width, int height)
             + std::to_string(nearChange) + "/" + std::to_string(deepChange) + ")");
     std::cout << "Water rendering passed: visible bed " << bedChange << ", animation " << motion
               << ", depth " << depthChange << ", underwater near/deep " << nearChange << '/' << deepChange
-              << "; opaque occlusion, fixed time, resize, world/renderer switches and texture bindings\n";
+              << ", swimmer bed haze " << submergedChange
+              << "; immediate water exit, opaque occlusion, fixed time, resize, world/renderer switches and texture bindings\n";
 }
 
 } // namespace voxel

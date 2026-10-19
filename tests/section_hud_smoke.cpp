@@ -321,6 +321,21 @@ void verifySectionHud(int width,int height)
         require(game.sectionEditor().screen()==SectionEditorScreen::Test,"Section playtest did not start");
         const auto test=draw(width,height);
         require(difference(build,test)>1000,"Playtest did not replace creative HUD");
+        const auto dryFeet=game.player.feetPosition();
+        std::vector<std::pair<glm::ivec3,Block>> poolCells;
+        for (int z=19;z<=21;++z) for (int y=20;y<=23;++y) for (int x=19;x<=21;++x) {
+            const glm::ivec3 cell{x,y,z};
+            poolCells.emplace_back(cell,game.world.get(cell));
+            game.world.set(cell,Block::Water);
+        }
+        require(game.player.setFeetPosition(game.world,{20.5f,20.5f,20.5f}) && game.player.inWater(),
+                "Section HUD fixture cannot enter water");
+        require(difference(test,draw(width,height))>100,"Wet playtest did not show swim controls");
+        draw(640,360,2);
+        for (const auto& [cell,block]:poolCells) game.world.set(cell,block);
+        require(game.player.setFeetPosition(game.world,dryFeet) && !game.player.inWater(),
+                "Section HUD fixture cannot leave water");
+        require(difference(test,draw(width,height))==0,"Playtest swim controls remain on land");
         require(game.player.setFeetPosition(game.world,game.sectionEditor().meta().finish),"Section HUD fixture cannot reach exit");
         InputActions active; active.active=true; game.update(active,.1f);
         require(game.sectionEditor().testComplete(),"Section HUD fixture did not finish playtest");
