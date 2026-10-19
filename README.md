@@ -2,7 +2,7 @@
 
 A small C++20 voxel game for macOS and Linux using OpenGL 4.1, GLFW, GLEW, and GLM. The direction is an **entirely underground expedition game**: leave a starting village, find resources, return, and upgrade the settlement.
 
-This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. A **creative section builder** lets you author, test, and accept rooms into world libraries. The ten Root Crossing prototypes remain available as movement tests. Full expeditions, other building services, village upgrades, and villagers are not implemented yet.
+This version is an explorable **240×96×240 underground hub** with 38 buildings, a giant central tree, lakes, bridges, cascading waterfalls, and an expedition departure hall. The southwest arrival workshop is a working blacksmith for pickaxe upgrades. A **creative section builder** lets you author, test, and accept rooms into world libraries. A **level creator** joins accepted sections into playable, numbered expeditions for each world. The ten Root Crossing prototypes remain available as movement tests. Expedition rewards, other building services, village upgrades, and villagers are not implemented yet.
 
 ## Explore the underground hub
 
@@ -43,10 +43,10 @@ The hub follows a fixed architectural plan, with seeded variations in rock, ore,
 Run **`./build/VoxelEngine --dev`**, or press **F7** in the game. On a Mac keyboard you may need **Fn** with the function keys.
 
 1. Choose a world, then **New empty section**. The room has a protected stone shell around a **64 × 48 × 64** editable interior. Lush Caves is the current world; Crystal Hollows and Ember Depths are library destinations for future themes.
-2. Press **E** for the creative inventory. Choose a hotbar slot, then click a block, asset, or marker to equip it. The tabs contain all **19 building materials**, **38 decorative models**, and start/checkpoint/exit markers. Asset icons show the actual models. Use the page arrows to see the rest of the assets; **Escape** or **E** closes the inventory.
+2. Press **E** for the creative inventory. Choose a hotbar slot, then click a block, asset, or marker to equip it. The tabs contain all **19 building materials**, **38 decorative models**, and **Start**, **End**, and optional **Checkpoint** markers. Asset icons show the actual models. Use the page arrows to see the rest of the assets; **Escape** or **E** closes the inventory.
 3. Fly and build. **Left click** removes, **right click** places, and **middle click** picks the targeted item. Holding a button repeats block edits. **1–9** or the wheel selects a hotbar slot; **T** rotates models and **Y** changes their variant. The green model preview shows where an asset will go.
-4. Equip markers from the inventory and right click a clear, solid top face. **Green** is the start, **cyan** is an optional checkpoint, and **gold** is the exit. Keep headroom above each marker. Decorative models have no collision: use terrain blocks for walkable roots, rocks, platforms, and floors.
-5. Press **F8** to test with normal walking, jumping, gravity, and collision. Reach the gold exit to pass. **R** returns to the start or checkpoint; **Shift+R** restarts the attempt. **F8** returns to your previous build view. Any geometry or marker edit, including undo/redo, requires another test before acceptance.
+4. Equip markers from the inventory and right click a clear, solid top face. **Green Start** sets the spawn, **gold End** advances to the next section, and **cyan** is an optional checkpoint. Every section has exactly one Start and one End: placing either moves the existing marker, and undo restores its previous position. Their labeled frames have no collision. Keep headroom above each marker. Decorative models have no collision: use terrain blocks for walkable roots, rocks, platforms, and floors.
+5. Press **F8** to test with normal walking, jumping, gravity, and collision. Reach the gold End to pass. **R** returns to the start or checkpoint; **Shift+R** restarts the attempt. **F8** returns to your previous build view. Any geometry or marker edit, including undo/redo, requires another test before acceptance.
 6. Press **F10** after passing, type a name, and choose **Parkour, Puzzle, Exploration, Mining, or Treasure**. Press **Enter** or click **Accept section**. It appears in that world's library immediately. **F9** opens the library to continue a draft or edit a copy of an accepted section.
 
 **WASD** flies, **Space** rises, **Left Ctrl** descends, **Shift** speeds up, and **Alt/Option** slows down for precision. **Ctrl/Cmd+Z** undoes; **Ctrl/Cmd+Y** or **Ctrl/Cmd+Shift+Z** redoes blocks, models, and markers. **Escape** pauses; **Tab** resumes. The inventory also supports arrows, **Tab** to switch tabs, and **Enter** to equip. In the acceptance form, typing replaces the initially selected name; **Ctrl/Cmd+A** selects it again.
@@ -60,11 +60,33 @@ sections/
   lush-caves/puzzle/another-section-001.vxs
 ```
 
-Each `.vxs` contains the blocks, placed models, markers, name, world, category, and successful-test flag. Keep or copy this directory to preserve your creations; these local files are ignored by Git. Accepted rooms are available to reopen and test from the library. Automatic expedition assembly and puzzle/treasure/mining mechanics are future work; categories organize the authored sections now. Dev mode preserves your equipment and does not award or spend resources.
+Each `.vxs` contains the blocks, placed models, markers, name, world, category, and successful-test flag. Keep or copy this directory to preserve your creations; these local files are ignored by Git. Accepted rooms are available to reopen and test from the library. Use the level creator below to arrange accepted sections into expeditions. Procedural assembly and puzzle/treasure/mining mechanics are future work; categories organize the authored sections now. Dev mode preserves your equipment and does not award or spend resources.
+
+## Assemble and play levels
+
+Press **F11**, click **Level creator** in the section builder, or launch **`./build/VoxelEngine --level-creator`**. Use **Fn** with the function keys if macOS reserves them.
+
+1. Choose the world, then **New level**. Only accepted, successfully tested sections from that world appear in the catalog.
+2. Click sections on the left to append them to the route on the right. You can repeat a section. Select a route entry and use **Up**, **Down**, or **Remove** to change the order; arrows below either list change pages. A level holds **1–64 sections**.
+3. Click the name and level number fields to edit them. Choose **1–999**: for example, number **5** places it at **Lush Caves — Level 5**. Typing replaces the selected text; **Ctrl/Cmd+A** selects it again. **Tab** cycles the fields and **Enter** finishes typing.
+4. Click **Publish** to add it to the game's world list. If that number is occupied, the creator asks before replacing the existing level. **Play** tests the current route, including unpublished changes. **Back** returns to the library, where published levels can be reopened and edited and the latest draft can be resumed.
+
+Play published levels with **F4**, or approach the north expedition gate and press **E**. Choose a world and a level. You spawn at the first section's green Start. Walking into the gold End shows a brief transition, loads the next section, and places you at its Start. The final End shows a completion screen with **Replay** and **Return to hub**. The compass points toward the current End. **R** resets to the current checkpoint or Start; **Shift+R** restarts the entire level; **B** returns to the village. Pausing or opening a menu pauses the run timer.
+
+Composition changes save a draft automatically. Invalid fields or a failed save keep the composition open so you can correct them. Publishing preserves the original accepted section files. Each level stores their paths in order, so keep **both `sections/` and `levels/`** when moving or backing up your creations. Existing section files remain compatible with the Start/End markers.
+
+```text
+levels/
+  drafts/lush-caves.vlevel
+  lush-caves/level-001.vlevel
+  lush-caves/level-005.vlevel
+```
+
+These local files are ignored by Git. Each world has its own numbered slots and builder draft. A missing section reports an error; if a file disappears during a run, the current room is retained and you can retry or return to the hub. Levels currently provide traversal and section transitions; they do not award loot or change equipment.
 
 ## Test the Root Crossings
 
-Press **F6** during play to open the ten-course picker, or approach the north expedition gate and press **E**. Use **Up / Down** or **1–9 / 0** to select a course, then **Enter** to start. **Escape** closes the picker. You can also launch a particular course directly:
+Press **F6** during play to open the ten-course prototype picker. Use **Up / Down** or **1–9 / 0** to select a course, then **Enter** to start. **Escape** closes the picker. You can also launch a particular course directly:
 
 ```sh
 ./build/VoxelEngine --root-crossing 1
@@ -87,7 +109,7 @@ The number accepts **1 through 10**. Each course is an enclosed lush grotto with
 
 **N / P** switches to the next or previous course. **R** returns to the active checkpoint; **Shift+R** starts a fresh attempt at the entrance. **F6** reopens the picker, and **B** returns to the village. The HUD tracks time, falls, checkpoint activation, and the best time for each course during the current session. The compass points toward the course exit. Pausing or opening a menu pauses the timer.
 
-These are individual movement tests: finishing grants no resources and does not change your saved equipment. Session best times reset when you quit. Ore mining, treasure rewards, and chaining sections into complete expeditions come later. Terrain editing is disabled during these tests; use F7 for the section builder. `--root-crossing` cannot be combined with `--dev`, `--editor`, or `--world`.
+These are individual movement tests: finishing grants no resources and does not change your saved equipment. Session best times reset when you quit. Ore mining and treasure rewards come later. Use the section builder and level creator to make your own connected routes. Terrain editing is disabled during these tests; use F7 for the section builder. `--root-crossing` cannot be combined with `--dev`, `--editor`, or `--world`.
 
 ## Planned expedition loop
 
@@ -111,6 +133,8 @@ src/
   root_crossings.h/.cpp Ten lush crossing layouts, shared landings, and cave construction
   sections.h/.cpp   Room template, world/category catalogs, and .vxs file library
   section_editor.h/.cpp Creative building, palette, markers, tests, and acceptance
+  levels.h/.cpp     Ordered section references, numbered world slots, and .vlevel files
+  level_editor.h/.cpp Level composition, publishing, playback, and section transitions
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles
   hub_assets.h/.cpp Plan hub decorations and batch their meshes by chunk
   hub_landscape.cpp Attach large rocks and roots to supporting terrain
@@ -176,6 +200,8 @@ Use this map when changing something:
 | Ferns, flowers, mushrooms, reeds, lily pads, vines, or shrubs | [graphics/hub_foliage.cpp](src/graphics/hub_foliage.cpp) |
 | Editor starting camera position and view direction | [camera.h](src/camera.h) |
 | Village spawn and return behavior | [scene.h](src/scene.h) and [game.cpp](src/game.cpp) |
+| Section library, room bounds, and Start/End validation | [sections.cpp](src/sections.cpp) |
+| Level ordering, world slots, transitions, and checkpoints | [level_editor.cpp](src/level_editor.cpp) and [levels.cpp](src/levels.cpp) |
 | Root Crossing paths, jumps, checkpoints, and environment | [root_crossings.cpp](src/root_crossings.cpp) |
 | Zoom limits | [camera.cpp](src/camera.cpp) |
 | Block colors and names | [world.h](src/world.h) |

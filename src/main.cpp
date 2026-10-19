@@ -48,9 +48,9 @@ int main(int argc, char** argv)
         // 3. Each frame: read input, update the world, then draw it.
         while (true) {
             if (window.shouldClose()) {
-                if (game.devMode() && !game.sectionEditor().saveDraft(game)) {
+                if (!game.saveAuthoringDraft()) {
                     // Keep the document alive so a failed save can be corrected.
-                    std::cerr << game.sectionEditor().message() << '\n';
+                    std::cerr << (game.devMode() ? game.sectionEditor().message() : game.levelController().message()) << '\n';
                     glfwSetWindowShouldClose(window.handle(), GLFW_FALSE);
                 } else break;
             }
@@ -60,16 +60,20 @@ int main(int argc, char** argv)
             previousTime = now;
 
             input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen(),
-                         game.devMode(), game.devFlying(),
-                         game.devMode() && game.sectionEditor().screen() == voxel::SectionEditorScreen::Accept);
+                         game.devMode() || game.levelMenuOpen(), game.devFlying(),
+                         (game.devMode() && game.sectionEditor().screen() == voxel::SectionEditorScreen::Accept)
+                             || game.levelController().typing());
             auto actions = input.actions();
-            if (game.devMenuOpen() && actions.devPointerPressed) {
+            if ((game.devMenuOpen() || game.levelMenuOpen()) && actions.devPointerPressed) {
                 int menuWidth, menuHeight;
                 float menuScaleX, menuScaleY;
                 window.framebufferSize(menuWidth, menuHeight);
                 glfwGetWindowContentScale(window.handle(), &menuScaleX, &menuScaleY);
-                actions.devClick = voxel::Hud::sectionClick(game, menuWidth, menuHeight, menuScaleY,
-                    actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight);
+                actions.devClick = game.levelMenuOpen()
+                    ? voxel::Hud::levelClick(game, menuWidth, menuHeight, menuScaleY,
+                        actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight)
+                    : voxel::Hud::sectionClick(game, menuWidth, menuHeight, menuScaleY,
+                        actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight);
             }
             game.update(actions, deltaSeconds);
 
@@ -82,8 +86,9 @@ int main(int argc, char** argv)
             renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
                             static_cast<float>(now), !game.editorMode()
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
-                            !game.rootCrossingActive() && !game.devMode(),
+                            !game.rootCrossingActive() && !game.devMode() && !game.levelActive(),
                             game.devMode() ? std::span<const voxel::HubAsset>(game.sectionEditor().assets())
+                                : game.levelActive() ? std::span<const voxel::HubAsset>(game.levelController().assets())
                                            : std::span<const voxel::HubAsset>{});
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
@@ -94,6 +99,8 @@ int main(int argc, char** argv)
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
                                       game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
                                       game.camera, width, height);
+            if (game.levelActive() && !game.levelMenuOpen())
+                selection.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height);
 
             // Refresh text four times per second; draw the cached text every frame.
             ++sampleFrames;
@@ -102,7 +109,9 @@ int main(int argc, char** argv)
                 const double fps = sampleSeconds >= 0.25 ? sampleFrames / sampleSeconds : 0.0;
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
-                const char* title = game.devMode() ? "Section Builder"
+                const char* title = game.levelCreatorActive() ? "Level Creator"
+                    : game.levelController().open() ? "Expeditions"
+                    : game.devMode() ? "Section Builder"
                     : game.editorMode()
                     ? (game.hasUnsavedChanges() ? "Voxel Editor *" : "Voxel Editor")
                     : game.rootCrossingActive() ? "Root Crossing Playtest" : "Underground Village";
@@ -112,11 +121,13 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
-            if (!game.devMode() && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
+            if (!game.devMode() && !game.levelController().open()
+                && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
                 hud.draw(statusText, width, height, scaleY);
             if (game.devMode()) hud.drawSection(game, width, height, scaleY);
-            else if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
-            if (game.devMode() && !game.devMenuOpen() && !input.captured())
+            else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
+            if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
+            if ((game.devMode() || game.levelActive()) && !game.menuOpen() && !input.captured())
                 hud.draw("PAUSED | TAB TO RESUME", width, height, scaleY);
             window.present();
         }

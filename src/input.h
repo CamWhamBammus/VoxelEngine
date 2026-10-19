@@ -30,6 +30,7 @@ struct InputActions {
     int crossingStep = 0;
     bool returnToHub = false;
     bool restartCrossing = false;
+    bool levelCreator = false, levelMenu = false; // F11 authoring / F4 expeditions.
     bool devToggle = false, devPalette = false, devTest = false, devAccept = false, devLibrary = false;
     bool devRotate = false, devVariation = false, devBackspace = false, devSelectAll = false;
     std::optional<int> devSlot, devClick;
@@ -120,6 +121,7 @@ private:
         bool nextCrossing = false;
         bool returnToHub = false;
         bool devToggle = false, devTest = false, devAccept = false;
+        bool levelCreator = false, levelMenu = false;
         bool rotate = false, variation = false, backspace = false, selectAll = false;
         bool menuLeft = false, menuRight = false;
     };

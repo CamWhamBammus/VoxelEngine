@@ -3,6 +3,7 @@
 #include "equipment.h"
 #include "root_crossings.h"
 #include "section_editor.h"
+#include "level_editor.h"
 
 #include <algorithm>
 #include <array>
@@ -534,6 +535,7 @@ void sectionWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     out.text("BUILD / WALK YOUR ROUTE / NAME AND ACCEPT",x+24,y+319,1,Leaf);
     out.text("64 X 48 X 64 BLOCK BUILDING ROOM",x+24,y+339,1,Muted);
     sectionButton(out,hits,x+22,y+365,158,28,"B - VILLAGE",SectionUiBack);
+    sectionButton(out,hits,x+192,y+365,176,28,"F11 LEVEL CREATOR",SectionUiLevelCreator);
     sectionButton(out,hits,x+w-242,y+365,220,28,"ENTER - CHOOSE WORLD",SectionUiConfirm,true);
 }
 
@@ -570,7 +572,8 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     out.centered(std::to_string(count)+" SAVED / PAGE "+std::to_string(page+1)+" OF "+std::to_string(std::max(1,(count+5)/6)),width*0.5f,y+367,1,Muted);
     sectionButton(out,hits,x+w-122,y+358,100,26,"NEXT >",SectionUiLibraryNext,false,(page+1)*6<count);
     sectionFeedback(out,editor,x+24,y+396,w-48);
-    sectionButton(out,hits,x+22,y+h-46,158,29,"ESC - BACK",SectionUiBack);
+    sectionButton(out,hits,x+22,y+h-46,138,29,"ESC - BACK",SectionUiBack);
+    sectionButton(out,hits,x+172,y+h-46,256,29,"F11 - LEVEL CREATOR",SectionUiLevelCreator);
     sectionButton(out,hits,x+w-230,y+h-46,208,29,"ENTER - OPEN",SectionUiConfirm,true);
 }
 
@@ -611,6 +614,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
         const auto hint=item.asset ? std::string(sectionItemGroup(item))+" / NO COLLISION" : item.block && *item.block==Block::Water ? "WATER / NO COLLISION"
+            : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
             : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE" : "BUILD WALKABLE SURFACES WITH BLOCKS";
         fittedText(out,hint,x+23,y+359,405,0.9f,Muted);
     }
@@ -668,7 +672,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         out.frame(center-243,90,486,31,Edge);
         out.text("TIME "+crossingTime(editor.testElapsed()),center-228,101,1,Cream);
         out.text("FALLS "+std::to_string(editor.testFalls()),center-85,101,1,Muted);
-        out.text(editor.testComplete() ? "EXIT REACHED" : editor.checkpointReached() ? "CHECKPOINT SAVED" : "REACH THE GOLD EXIT",center+49,101,1,Leaf);
+        out.text(editor.testComplete() ? "END REACHED" : editor.checkpointReached() ? "CHECKPOINT SAVED" : "REACH THE GOLD END",center+49,101,1,Leaf);
         if (editor.testComplete()) {
             out.frame(center-239,136,478,67,Leaf);
             out.centered("SECTION TEST COMPLETE",center,149,1.8f,Leaf);
@@ -704,6 +708,233 @@ void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float
     case SectionEditorScreen::Accept: sectionAcceptMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Build:
     case SectionEditorScreen::Test: sectionBuildHud(out,hits,game,width,height); break;
+    }
+}
+
+
+// All level menus and their pointer targets use this one logical canvas.
+SectionCanvas levelCanvas(int width,int height,float contentScale)
+{
+    if (!std::isfinite(contentScale) || contentScale<=0) contentScale=1;
+    const float scale=std::min({std::clamp(contentScale,.5f,4.0f),width/776.0f,height/550.0f});
+    return {scale,width/scale,height/scale};
+}
+
+void levelFeedback(Drawing& out,const LevelController& level,float x,float y,float width)
+{
+    std::string text=level.message();
+    std::replace(text.begin(),text.end(),'\n',' ');
+    fittedText(out,text,x,y,width,1,Leaf);
+}
+
+void levelWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
+{
+    constexpr float w=620,h=410;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,level.creator() ? "LEVEL CREATOR" : "EXPEDITIONS",
+                 level.creator() ? "CHOOSE THE WORLD FOR YOUR LEVEL" : "CHOOSE A WORLD TO EXPLORE");
+    const auto worlds=sectionWorldCatalog();
+    for (int index=0;index<static_cast<int>(worlds.size());++index) {
+        const float top=y+72+index*78;
+        const bool selected=index==level.selection();
+        const auto color=index==0 ? Leaf : index==1 ? glm::vec4(.36f,.79f,.94f,1) : glm::vec4(.98f,.53f,.25f,1);
+        out.frame(x+22,top,w-44,68,selected ? Gold : Edge,selected ? glm::vec4(.09f,.18f,.16f,1) : Panel);
+        out.quad(x+30,top+10,4,48,color);
+        out.text("0"+std::to_string(index+1),x+48,top+24,2,color);
+        fittedText(out,worlds[index].name,x+94,top+13,w-130,1.8f,Cream);
+        fittedText(out,worlds[index].description,x+95,top+42,w-133,1,Muted);
+        hits.push_back({x+22,top,w-44,68,LevelUiWorldBase+index});
+    }
+    fittedText(out,level.creator() ? "ACCEPTED SECTIONS BECOME AN ORDERED ADVENTURE" : "YOUR PUBLISHED LEVELS ARE READY TO PLAY HERE",x+24,y+319,w-48,1,Leaf);
+    levelFeedback(out,level,x+24,y+339,w-48);
+    sectionButton(out,hits,x+22,y+365,158,28,"ESC - BACK",LevelUiBack);
+    sectionButton(out,hits,x+w-242,y+365,220,28,"ENTER - CHOOSE WORLD",LevelUiPlay,true);
+}
+
+void levelLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
+{
+    constexpr float w=700,h=478;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,level.creator() ? "LEVEL CREATOR / LIBRARY" : "CHOOSE YOUR LEVEL",
+                 sectionWorldName(level.selectedWorld())+" / "+(level.creator() ? "COMPOSE AND PUBLISH" : "PUBLISHED EXPEDITIONS"));
+    if (level.creator()) {
+        sectionButton(out,hits,x+22,y+65,318,32,"+ NEW LEVEL",LevelUiNew,level.selection()<0);
+        sectionButton(out,hits,x+352,y+65,326,32,"RESUME SAVED COMPOSITION",LevelUiResume,false,level.draft().has_value());
+    } else {
+        fittedText(out,"REACH EACH END MARKER TO CONTINUE TO THE NEXT SECTION",x+24,y+75,w-48,1,Leaf);
+    }
+    const auto& entries=level.entries();
+    for (int row=0;row<LevelLibraryPageSize;++row) {
+        const int index=level.libraryPage()*LevelLibraryPageSize+row;
+        if (index>=static_cast<int>(entries.size())) break;
+        const auto& entry=entries[index].definition;
+        const float top=y+108+row*39;
+        const bool selected=index==level.selection();
+        out.frame(x+22,top,w-44,34,selected ? Gold : Edge,selected ? glm::vec4(.09f,.19f,.16f,1) : Panel);
+        fittedText(out,"LEVEL "+std::to_string(entry.number),x+35,top+10,98,1.1f,selected ? Gold : Leaf);
+        fittedText(out,entry.name,x+145,top+7,388,1.25f,Cream);
+        fittedText(out,std::to_string(entry.sections.size())+" SECTIONS",x+w-134,top+11,100,1,Muted);
+        hits.push_back({x+22,top,w-44,34,LevelUiEntryBase+index});
+    }
+    if (entries.empty()) {
+        out.centered("NO LEVELS HERE YET",width*.5f,y+211,1.6f,Cream);
+        fittedText(out,level.creator() ? "CREATE A LEVEL FROM YOUR ACCEPTED SECTIONS." : "USE F11 TO CREATE AND PUBLISH THIS WORLD'S FIRST LEVEL.",x+70,y+241,w-140,1,Muted);
+    }
+    sectionButton(out,hits,x+22,y+388,100,26,"< PREVIOUS",LevelUiLibraryPrevious,false,level.libraryPage()>0);
+    out.centered("PAGE "+std::to_string(level.libraryPage()+1)+" / "+std::to_string(std::max(1,(static_cast<int>(entries.size())+LevelLibraryPageSize-1)/LevelLibraryPageSize)),width*.5f,y+397,1,Muted);
+    sectionButton(out,hits,x+w-122,y+388,100,26,"NEXT >",LevelUiLibraryNext,false,(level.libraryPage()+1)*LevelLibraryPageSize<static_cast<int>(entries.size()));
+    levelFeedback(out,level,x+24,y+426,w-48);
+    sectionButton(out,hits,x+22,y+h-38,158,27,"ESC - WORLDS",LevelUiBack);
+    sectionButton(out,hits,x+w-262,y+h-38,240,27,level.creator() ? "ENTER - EDIT LEVEL" : "ENTER - START LEVEL",LevelUiPlay,true,!entries.empty());
+}
+
+void levelField(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,
+                float x,float y,float width,std::string_view value,LevelTextField field,int action)
+{
+    const bool active=level.textField()==field;
+    out.frame(x,y,width,31,active ? Gold : Edge,{.065f,.12f,.13f,1});
+    if (active && level.textSelected()) out.quad(x+7,y+6,width-14,19,{.23f,.37f,.32f,1});
+    fittedText(out,std::string(value)+(active && !level.textSelected() ? "_" : ""),x+10,y+10,width-20,1.35f,Cream);
+    hits.push_back({x,y,width,31,action});
+}
+
+void levelComposeMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
+{
+    constexpr float w=740,h=510,column=334;
+    const float x=(width-w)*.5f,y=(height-h)*.5f,left=x+22,right=x+384;
+    const auto& definition=level.definition();
+    sectionPanel(out,width,height,x,y,w,h,"COMPOSE A LEVEL",sectionWorldName(definition.world)+" / CONNECT EACH END TO THE NEXT START");
+    out.text("LEVEL NAME",left,y+66,1,Muted);
+    out.text("WORLD POSITION / 1-999",x+486,y+66,1,Muted);
+    levelField(out,hits,level,left,y+80,450,definition.name,LevelTextField::Name,LevelUiName);
+    levelField(out,hits,level,x+486,y+80,232,level.numberText(),LevelTextField::Number,LevelUiNumber);
+    out.text("ACCEPTED SECTIONS / CLICK TO ADD",left,y+126,1,Leaf);
+    fittedText(out,"PLAY ORDER / "+std::to_string(definition.sections.size())+" OF "+std::to_string(LevelMaxSections),right,y+126,column,1,Gold);
+    for (int row=0;row<LevelSectionPageSize;++row) {
+        const int index=level.sectionPage()*LevelSectionPageSize+row;
+        if (index>=static_cast<int>(level.sections().size())) break;
+        const auto& section=level.sections()[index];
+        const float top=y+146+row*34;
+        const bool selected=index==level.selection();
+        out.frame(left,top,column,30,selected ? Gold : Edge,selected ? glm::vec4(.09f,.19f,.16f,1) : Panel);
+        out.text("+",left+10,top+9,1.3f,Leaf);
+        fittedText(out,section.meta.name,left+29,top+5,column-42,1,Cream);
+        fittedText(out,sectionCategoryName(section.meta.category),left+29,top+18,column-42,.8f,Muted);
+        if (definition.sections.size()<LevelMaxSections)
+            hits.push_back({left,top,column,30,LevelUiSectionBase+index});
+    }
+    for (int row=0;row<LevelQueuePageSize;++row) {
+        const int index=level.queuePage()*LevelQueuePageSize+row;
+        if (index>=static_cast<int>(definition.sections.size())) break;
+        const float top=y+146+row*34;
+        const bool selected=index==level.selectedQueue();
+        out.frame(right,top,column,30,selected ? Gold : Edge,selected ? glm::vec4(.12f,.20f,.15f,1) : Panel);
+        out.quad(right+5,top+4,29,22,selected ? Gold : glm::vec4(.17f,.27f,.25f,1));
+        out.centered(std::to_string(index+1),right+19.5f,top+11,1,selected ? Panel : Cream);
+        fittedText(out,level.sectionName(definition.sections[index]),right+43,top+10,column-57,1.15f,Cream);
+        hits.push_back({right,top,column,30,LevelUiQueueBase+index});
+    }
+    if (level.sections().empty()) {
+        fittedText(out,"NO ACCEPTED SECTIONS IN THIS WORLD",left+10,y+197,column-20,1,Cream);
+        fittedText(out,"F7 OPENS THE SECTION WORKSHOP.",left+10,y+222,column-20,1,Muted);
+        fittedText(out,"BUILD, TEST, AND ACCEPT A SECTION FIRST.",left+10,y+245,column-20,1,Muted);
+    }
+    if (definition.sections.empty()) {
+        fittedText(out,"YOUR ROUTE STARTS HERE",right+16,y+197,column-32,1.5f,Cream);
+        fittedText(out,"ADD A SECTION FROM THE LEFT.",right+16,y+227,column-32,1,Muted);
+        fittedText(out,"YOU CAN USE A SECTION MORE THAN ONCE.",right+16,y+250,column-32,1,Muted);
+    }
+    const auto pages=[&](float columnX,int page,int count,int size,int previous,int next) {
+        sectionButton(out,hits,columnX,y+388,64,25,"<",previous,false,page>0);
+        out.centered("PAGE "+std::to_string(page+1)+" / "+std::to_string(std::max(1,(count+size-1)/size)),columnX+column*.5f,y+397,1,Muted);
+        sectionButton(out,hits,columnX+column-64,y+388,64,25,">",next,false,(page+1)*size<count);
+    };
+    pages(left,level.sectionPage(),static_cast<int>(level.sections().size()),LevelSectionPageSize,LevelUiSectionPrevious,LevelUiSectionNext);
+    pages(right,level.queuePage(),static_cast<int>(definition.sections.size()),LevelQueuePageSize,LevelUiQueuePrevious,LevelUiQueueNext);
+    fittedText(out,"TAB FOCUS / ARROWS / ENTER ADD",left,y+425,column,.9f,Muted);
+    const int selected=level.selectedQueue();
+    sectionButton(out,hits,right,y+420,105,25,"MOVE UP",LevelUiMoveUp,false,selected>0);
+    sectionButton(out,hits,right+113,y+420,105,25,"MOVE DOWN",LevelUiMoveDown,false,selected>=0 && selected+1<static_cast<int>(definition.sections.size()));
+    sectionButton(out,hits,right+226,y+420,108,25,"REMOVE",LevelUiRemove,false,selected>=0);
+    levelFeedback(out,level,left,y+453,w-44);
+    sectionButton(out,hits,left,y+474,130,27,"ESC - LIBRARY",LevelUiBack);
+    sectionButton(out,hits,x+164,y+474,242,27,"PLAY THIS COMPOSITION",LevelUiPlay,false,!definition.sections.empty());
+    sectionButton(out,hits,x+418,y+474,300,27,"SAVE AND PUBLISH LEVEL",LevelUiPublish,true,!definition.sections.empty());
+}
+
+void levelReplaceMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
+{
+    constexpr float w=570,h=258;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,"REPLACE THIS WORLD'S LEVEL?",sectionWorldName(level.definition().world)+" / LEVEL "+std::to_string(level.definition().number));
+    fittedText(out,"THAT LEVEL NUMBER IS ALREADY PUBLISHED.",x+24,y+84,w-48,1.4f,Gold);
+    fittedText(out,"REPLACING IT CHANGES THE ROUTE PLAYERS WILL FIND THERE.",x+24,y+116,w-48,1,Muted);
+    fittedText(out,"THE ACCEPTED SECTIONS THEMSELVES ARE KEPT.",x+24,y+139,w-48,1,Muted);
+    fittedText(out,level.definition().name,x+24,y+172,w-48,1.5f,Cream);
+    sectionButton(out,hits,x+22,y+h-49,246,30,"ESC - KEEP EDITING",LevelUiCancel);
+    sectionButton(out,hits,x+280,y+h-49,268,30,"REPLACE LEVEL",LevelUiReplace,true);
+}
+
+void levelRunHud(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
+{
+    constexpr float w=580;
+    const float center=width*.5f,x=center-w*.5f;
+    const auto& definition=level.definition();
+    out.frame(x,15,w,93,Edge);
+    out.quad(x+2,17,3,89,Leaf);
+    fittedText(out,sectionWorldName(definition.world)+" / LEVEL "+std::to_string(definition.number),x+17,27,w-34,1,Leaf);
+    fittedText(out,definition.name,x+17,45,w-34,1.7f,Cream);
+    fittedText(out,"SECTION "+std::to_string(level.sectionIndex()+1)+" / "+std::to_string(definition.sections.size())+" - "+level.meta().name,x+17,69,w-34,1,Gold);
+    out.text("TIME "+crossingTime(level.elapsed()),x+17,90,1,Cream);
+    out.text("FALLS "+std::to_string(level.falls()),x+170,90,1,Muted);
+    fittedText(out,level.screen()==LevelScreen::Complete ? "LEVEL COMPLETE"
+        : level.screen()==LevelScreen::Transition ? "END REACHED"
+        : level.checkpointReached() ? "CHECKPOINT SAVED" : "FOLLOW THE GOLD END MARKER",x+285,90,w-300,1,Muted);
+    if (level.screen()==LevelScreen::Play) {
+        out.frame(x,height-171,w,35,Edge);
+        fittedText(out,"R CHECKPOINT / SHIFT+R RESTART LEVEL / B VILLAGE / F4 LEVELS",x+14,height-159,w-28,1,Cream);
+    } else if (level.screen()==LevelScreen::Transition) {
+        out.quad(0,0,width,height,{.005f,.02f,.025f,.78f});
+        out.frame(center-244,height*.5f-56,488,112,Leaf);
+        out.centered("SECTION COMPLETE",center,height*.5f-35,1.8f,Leaf);
+        out.centered("TRAVELING TO THE NEXT START",center,height*.5f-5,1.15f,Cream);
+        out.centered("SECTION "+std::to_string(level.sectionIndex()+2)+" / "+std::to_string(definition.sections.size()),center,height*.5f+23,1,Muted);
+    } else if (level.screen()==LevelScreen::Complete) {
+        const float top=height*.5f-78;
+        out.quad(0,0,width,height,{.005f,.02f,.025f,.6f});
+        out.frame(center-280,top,560,167,Leaf);
+        out.centered("LEVEL COMPLETE",center,top+22,2,Leaf);
+        out.centered("ALL "+std::to_string(definition.sections.size())+" SECTIONS FINISHED",center,top+54,1.3f,Cream);
+        out.centered("TIME "+crossingTime(level.elapsed())+" / FALLS "+std::to_string(level.falls()),center,top+79,1,Muted);
+        sectionButton(out,hits,center-257,top+119,247,30,"REPLAY LEVEL",LevelUiReplay);
+        sectionButton(out,hits,center+10,top+119,247,30,"RETURN TO VILLAGE",LevelUiHub,true);
+    }
+}
+
+void levelErrorMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
+{
+    constexpr float w=620,h=250;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,"THIS SECTION COULD NOT LOAD","YOUR LEVEL DEFINITION AND ACCEPTED SECTIONS HAVE BEEN KEPT");
+    wrappedDescription(out,level.message(),x+24,y+89,static_cast<std::size_t>((w-48)/(6*out.fontPixel(1))));
+    fittedText(out,"RESTORE THE MISSING SECTION AND RETRY, OR RETURN TO THE HUB.",x+24,y+147,w-48,1,Muted);
+    sectionButton(out,hits,x+22,y+h-49,278,30,"RETURN TO VILLAGE",LevelUiHub);
+    sectionButton(out,hits,x+312,y+h-49,286,30,"RETRY LOADING",LevelUiRetry,true);
+}
+
+void levelUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
+{
+    const auto& level=game.levelController();
+    switch (level.screen()) {
+    case LevelScreen::Worlds: levelWorldMenu(out,hits,level,width,height); break;
+    case LevelScreen::Library: levelLibraryMenu(out,hits,level,width,height); break;
+    case LevelScreen::Compose: levelComposeMenu(out,hits,level,width,height); break;
+    case LevelScreen::Replace: levelReplaceMenu(out,hits,level,width,height); break;
+    case LevelScreen::Play:
+    case LevelScreen::Transition:
+    case LevelScreen::Complete: levelRunHud(out,hits,level,width,height); break;
+    case LevelScreen::Error: levelErrorMenu(out,hits,level,width,height); break;
+    case LevelScreen::Closed: break;
     }
 }
 
@@ -913,13 +1144,13 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     std::string hint;
     if (selected == Tool::Pickaxe) {
         title += " - TIER " + std::to_string(equipment.pickaxeTier);
-        hint = game.rootCrossingActive() ? "MINING COMING LATER" : "UPGRADE AT THE BLACKSMITH";
+        hint = game.rootCrossingActive() || game.levelController().active() ? "MINING COMING LATER" : "UPGRADE AT THE BLACKSMITH";
     } else if (selected == Tool::Lantern) {
         hint = "WARM LIGHT WHILE EQUIPPED";
     } else {
         const int distance = static_cast<int>(std::round(glm::length(target)));
         const int bearing = static_cast<int>(std::round(glm::degrees(std::atan2(needle.x,-needle.y))));
-        hint = std::string(game.rootCrossingActive() ? "EXIT " : "HEART TREE ")
+        hint = std::string(game.levelController().active() ? "END " : game.rootCrossingActive() ? "EXIT " : "HEART TREE ")
             + std::to_string(distance) + "M";
         if (distance > 1)
             hint += "  " + std::to_string(std::abs(bearing)) + " DEG " + (bearing < 0 ? "LEFT" : "RIGHT");
@@ -940,7 +1171,7 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (game.nearExpeditionGate() && !game.menuOpen()) {
         constexpr float promptWidth=234;
         drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Leaf);
-        drawing.centered("E - ROOT CROSSING TESTS",center,height*0.5f+43,1.25f,Leaf);
+        drawing.centered("E - EXPEDITIONS",center,height*0.5f+43,1.25f,Leaf);
     }
     if (game.smithOpen()) {
         drawing.quad(0,0,width,height,{0.01f,0.025f,0.035f,0.55f});
@@ -1006,6 +1237,31 @@ std::optional<int> Hud::sectionClick(const Game& game,int framebufferWidth,int f
     Drawing drawing(canvas.width,canvas.height,canvas.scale);
     std::vector<SectionHit> hits;
     sectionUi(drawing,hits,game,canvas.width,canvas.height);
+    x/=canvas.scale; y/=canvas.scale;
+    for (const auto& hit:hits)
+        if (x>=hit.x && x<hit.x+hit.width && y>=hit.y && y<hit.y+hit.height) return hit.action;
+    return std::nullopt;
+}
+
+void Hud::drawLevels(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    if (!game.levelController().open() || framebufferWidth<=0 || framebufferHeight<=0) return;
+    const auto canvas=levelCanvas(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(canvas.width,canvas.height,canvas.scale);
+    std::vector<SectionHit> hits;
+    levelUi(drawing,hits,game,canvas.width,canvas.height);
+    render(drawing,shader_,vao_,buffer_);
+}
+
+std::optional<int> Hud::levelClick(const Game& game,int framebufferWidth,int framebufferHeight,
+                                   float contentScale,float x,float y)
+{
+    if (!game.levelController().menuOpen() || framebufferWidth<=0 || framebufferHeight<=0
+        || !std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
+    const auto canvas=levelCanvas(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(canvas.width,canvas.height,canvas.scale);
+    std::vector<SectionHit> hits;
+    levelUi(drawing,hits,game,canvas.width,canvas.height);
     x/=canvas.scale; y/=canvas.scale;
     for (const auto& hit:hits)
         if (x>=hit.x && x<hit.x+hit.width && y>=hit.y && y<hit.y+hit.height) return hit.action;

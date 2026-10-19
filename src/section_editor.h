@@ -15,7 +15,7 @@ class Game;
 struct InputActions;
 
 enum class SectionEditorScreen { Worlds, Library, Build, Palette, Test, Accept };
-enum class SectionMarker { None, Start, Checkpoint, Exit };
+enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
     std::string name;
     std::optional<Block> block;
@@ -37,6 +37,7 @@ inline constexpr int SectionUiTest = 3202, SectionUiAccept = 3203;
 inline constexpr int SectionUiSave = 3204, SectionUiLibrary = 3205;
 inline constexpr int SectionUiPalettePrevious = 3206, SectionUiPaletteNext = 3207;
 inline constexpr int SectionUiLibraryPrevious = 3208, SectionUiLibraryNext = 3209;
+inline constexpr int SectionUiLevelCreator = 3210;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.

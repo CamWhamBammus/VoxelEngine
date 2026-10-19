@@ -45,7 +45,8 @@ struct SectionMetadata {
     SectionWorld world = SectionWorld::LushCaves;
     SectionCategory category = SectionCategory::Parkour;
     std::string name = "Untitled section";
-    // Positions are the center of the player's feet, matching Player.
+    // Exactly one Start and one End, at the center of the player's feet.
+    // Their original field names are retained for existing .vxs documents.
     glm::vec3 spawn{0.5f, 9.0f, 24.5f};
     glm::vec3 finish{0.5f, 9.0f, -24.5f};
     std::optional<glm::vec3> checkpoint;

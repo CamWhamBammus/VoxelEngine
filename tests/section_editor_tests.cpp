@@ -128,6 +128,35 @@ int main()
         press(game, &voxel::InputActions::undo);
         check(!editor.meta().checkpoint, "marker placements are undoable");
 
+        // Start and End are unique objects: placing again moves the existing
+        // endpoint instead of leaving a second trigger in the section.
+        const auto originalStart = editor.meta().spawn;
+        const auto originalEnd = editor.meta().finish;
+        press(game, &voxel::InputActions::devPalette);
+        check(editor.paletteItems().size() == 3 && editor.paletteItems()[0].name == "Start"
+              && editor.paletteItems()[2].name == "End", "marker inventory exposes one Start and one End tool");
+        click(game, voxel::SectionUiPaletteItemBase + 2);
+        press(game, &voxel::InputActions::devPalette);
+        press(game, &voxel::InputActions::place);
+        const auto firstEnd = editor.meta().finish;
+        check(firstEnd != originalEnd && editor.meta().spawn == originalStart, "placing End moves only the unique end state");
+        game.camera.setPosition({9.5f, 13, 18.5f}); aim(game.camera, {9.5f, 8.5f, 14.5f});
+        press(game, &voxel::InputActions::place);
+        check(editor.meta().finish != firstEnd && editor.assets().empty(), "a second End placement replaces its location without a duplicate asset");
+        press(game, &voxel::InputActions::undo);
+        check(editor.meta().finish == firstEnd, "undo restores the previous unique End location");
+        press(game, &voxel::InputActions::undo);
+        check(editor.meta().finish == originalEnd, "undo retains the original End marker");
+        press(game, &voxel::InputActions::devPalette);
+        click(game, voxel::SectionUiPaletteItemBase);
+        press(game, &voxel::InputActions::devPalette);
+        press(game, &voxel::InputActions::place);
+        check(editor.meta().spawn != originalStart && editor.meta().finish == originalEnd,
+              "placing Start moves only the unique spawn state");
+        press(game, &voxel::InputActions::undo);
+        press(game, &voxel::InputActions::remove);
+        check(editor.meta().spawn == originalStart, "the required Start cannot be removed");
+
         press(game, &voxel::InputActions::devTest);
         check(editor.screen() == voxel::SectionEditorScreen::Test && !game.devFlying()
               && game.player.grounded() && game.player.feetPosition() == editor.meta().spawn,

@@ -30,6 +30,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
         if (argument == "--help" || argument == "-h") options.help = true;
         else if (argument == "--editor") options.editor = true;
         else if (argument == "--dev") options.dev = true;
+        else if (argument == "--level-creator") options.levelCreator = true;
         else if (argument == "--smoke-test") options.smokeTest = true;
         else if (argument == "--seed") {
             options.seedExplicit = true;
@@ -64,6 +65,9 @@ Options parseOptions(std::span<const std::string_view> arguments)
             throw std::invalid_argument("Unknown option: " + std::string(argument));
         }
     }
+    if (options.levelCreator && (options.dev || options.editor || options.rootCrossing >= 0 || options.worldExplicit) && !options.help) {
+        throw std::invalid_argument("Level creator cannot be combined with --dev, --editor, --world or --root-crossing");
+    }
     if (options.dev && (options.editor || options.rootCrossing >= 0 || options.worldExplicit) && !options.help) {
         throw std::invalid_argument("Section dev mode cannot be combined with --editor, --world or --root-crossing");
     }
@@ -79,9 +83,12 @@ Options parseOptions(std::span<const std::string_view> arguments)
 
 // An explicit --seed starts fresh unless an explicit existing world file was requested.
 Game::Game(const Options& options)
-    : world(options.seed), sectionEditor_(options.sectionLibrary), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach),
+    : world(options.seed), sectionEditor_(options.sectionLibrary), levelController_(options.sectionLibrary, options.levelLibrary), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach),
       editorMode_(options.editor), progressPath_(options.smokeTest || options.editor ? "" : options.progressPath)
 {
+    if (options.levelCreator && (options.dev || options.editor || options.rootCrossing >= 0 || options.worldExplicit)) {
+        throw std::invalid_argument("Level creator cannot be combined with --dev, --editor, --world or --root-crossing");
+    }
     if (options.dev && (options.editor || options.rootCrossing >= 0 || options.worldExplicit)) {
         throw std::invalid_argument("Section dev mode cannot be combined with --editor, --world or --root-crossing");
     }
@@ -129,10 +136,12 @@ Game::Game(const Options& options)
     }
     if (editorMode_) findTarget();
     if (options.dev) enterDevMode();
+    if (options.levelCreator) enterLevelMode(true);
 }
 
 void Game::enterDevMode()
 {
+    if (levelController_.open() && !levelController_.leave(*this)) { status = levelController_.message(); return; }
     smithOpen_ = crossingMenuOpen_ = false;
     rootCrossingIndex_ = -1;
     devMode_ = true;
@@ -149,11 +158,53 @@ void Game::leaveDevMode()
     target.reset();
 }
 
+void Game::enterLevelMode(bool creator)
+{
+    if (devMode_) {
+        if (!sectionEditor_.leave(*this)) { status = sectionEditor_.message(); return; }
+        devMode_ = false;
+    }
+    if (levelController_.open() && !levelController_.leave(*this)) { status = levelController_.message(); return; }
+    // The menu always sits over the village, never over an abandoned test room.
+    buildUndergroundScene(world);
+    if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
+    rootCrossingIndex_ = -1;
+    smithOpen_ = crossingMenuOpen_ = false;
+    levelController_.enter(*this, creator);
+}
+
+void Game::leaveLevelMode()
+{
+    if (!levelController_.leave(*this)) { status = levelController_.message(); return; }
+    buildUndergroundScene(world);
+    if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
+    status = "RETURNED TO GLOWROOT HAVEN | F4 LEVELS | F11 LEVEL CREATOR";
+    target.reset();
+}
+
+bool Game::saveAuthoringDraft()
+{
+    if (devMode_) return !sectionEditor_.dirty() || sectionEditor_.saveDraft(*this);
+    return !levelController_.dirty() || levelController_.saveDraft();
+}
+
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
+    if (!editorMode_ && actions.active && (actions.levelCreator || actions.levelMenu
+        || (actions.devClick && *actions.devClick == SectionUiLevelCreator))) {
+        if (actions.levelMenu && !levelController_.creator()
+            && (levelController_.screen() == LevelScreen::Worlds || levelController_.screen() == LevelScreen::Library)) leaveLevelMode();
+        else if (actions.levelCreator && levelCreatorActive()) leaveLevelMode();
+        else enterLevelMode(!actions.levelMenu);
+        return;
+    }
     if (!editorMode_ && actions.active && actions.devToggle) {
         if (devMode_) leaveDevMode();
         else enterDevMode();
+        return;
+    }
+    if (levelController_.open()) {
+        levelController_.update(*this, actions, deltaSeconds);
         return;
     }
     if (devMode_) {
@@ -274,7 +325,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     else if (actions.toolStep != 0)
         equipment.selectedSlot = (equipment.selectedSlot + (actions.toolStep > 0 ? 1 : ToolCount - 1)) % ToolCount;
     if (actions.interact && nearExpeditionGate()) {
-        openCrossingMenu();
+        enterLevelMode(false);
         return;
     }
     if (actions.interact && nearBlacksmith()) {
@@ -393,19 +444,20 @@ float Game::crossingBestTime() const
 
 bool Game::nearExpeditionGate() const
 {
-    return !editorMode_ && !devMode_ && !rootCrossingActive()
+    return !editorMode_ && !devMode_ && !levelController_.open() && !rootCrossingActive()
         && glm::distance(player.feetPosition(), ExpeditionDeparture) <= 8.0f;
 }
 
 glm::vec3 Game::compassTarget() const
 {
     if (devMode_ && sectionEditor_.hasSection()) return sectionEditor_.meta().finish;
+    if (levelActive()) return levelController_.meta().finish;
     return rootCrossingActive() ? crossingCourse_.finish : HeartTreeCenter;
 }
 
 bool Game::nearBlacksmith() const
 {
-    if (editorMode_ || devMode_ || rootCrossingActive()) return false;
+    if (editorMode_ || devMode_ || levelController_.open() || rootCrossingActive()) return false;
     const auto station = sceneBlacksmithStation();
     const auto support = glm::ivec3(glm::floor(station)) - glm::ivec3(0, 1, 0);
     if (!isSolid(world.get(support)) || !isSolid(world.get(support - glm::ivec3(0, 1, 0)))) return false;
@@ -530,7 +582,8 @@ void Game::editTarget(const InputActions& actions)
 bool Game::hasUnsavedChanges() const
 {
     // Compare contents, not history size: undo can return exactly to the last save.
-    return devMode_ ? sectionEditor_.dirty() : editorMode_ && !world.sameContents(savedWorld_);
+    return devMode_ ? sectionEditor_.dirty() : levelController_.open() ? levelController_.dirty()
+        : editorMode_ && !world.sameContents(savedWorld_);
 }
 
 std::string Game::playStatusText(bool captured, bool showHelp) const
@@ -542,11 +595,12 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
     } else text << "GLOWROOT HAVEN | VILLAGE HUB";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
     if (!crossingMenuOpen_) text << "\n" << status;
-    text << "\nH CONTROLS | F7 SECTION BUILDER | F6 ROOT CROSSING TESTS";
+    text << "\nH CONTROLS | F4 LEVELS | F7 SECTION BUILDER | F11 LEVEL CREATOR";
     if (showHelp) {
         text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
              << "\nSCROLL / [ ] CHANGE TOOL | TAB RESUME"
-             << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS";
+             << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS"
+             << "\nF6 ROOT CROSSING TESTS | F4 EXPEDITIONS | F11 LEVEL CREATOR";
         if (rootCrossingActive()) {
             text << "\nN NEXT TEST | P PREVIOUS | B RETURN TO HUB"
                  << "\nR CHECKPOINT | SHIFT+R RESTART ATTEMPT"
@@ -567,6 +621,13 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
                              std::size_t totalTriangles, double fps,
                              bool captured, bool showHelp) const
 {
+    if (levelController_.open()) {
+        std::ostringstream text;
+        text << (levelCreatorActive() ? "LEVEL CREATOR" : "EXPEDITIONS") << " | " << levelController_.message();
+        if (!captured && !levelMenuOpen()) text << "\nPAUSED | TAB TO RESUME";
+        if (showHelp) text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | R CHECKPOINT | SHIFT+R RESTART LEVEL | B HUB";
+        return text.str();
+    }
     if (devMode_) {
         std::ostringstream text;
         text << "SECTION BUILDER | " << sectionEditor_.message();

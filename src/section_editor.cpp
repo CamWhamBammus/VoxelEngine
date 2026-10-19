@@ -46,7 +46,7 @@ SectionEditor::SectionEditor(std::filesystem::path libraryRoot) : libraryRoot_(s
         palette_[1].push_back({std::string(asset.name), std::nullopt, asset.kind, SectionMarker::None});
     palette_[2] = {{"Start", {}, {}, SectionMarker::Start},
                    {"Checkpoint", {}, {}, SectionMarker::Checkpoint},
-                   {"Exit", {}, {}, SectionMarker::Exit}};
+                   {"End", {}, {}, SectionMarker::End}};
     const std::array blocks{Block::Stone, Block::Grass, Block::Timber, Block::Planks,
         Block::Water, Block::Leaves, Block::Lantern, Block::Crystal, Block::Path};
     for (std::size_t i = 0; i < hotbar_.size(); ++i)
@@ -394,7 +394,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         if (item.marker != SectionMarker::None) {
             if (item.marker == SectionMarker::Checkpoint && meta_.checkpoint) {
                 meta_.checkpoint.reset(); changed(std::move(edit)); message_ = "CHECKPOINT REMOVED";
-            } else message_ = "START AND EXIT ARE REQUIRED | RIGHT CLICK A TOP FACE TO MOVE A MARKER";
+            } else message_ = "START AND END ARE REQUIRED | RIGHT CLICK A TOP FACE TO MOVE A MARKER";
             return;
         }
         if (!sectionInterior(hit.position)) { message_ = "THE ROOM SHELL IS PROTECTED"; return; }
@@ -423,9 +423,9 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
             message_ = "MARKERS NEED A CLEAR, SUPPORTED TOP FACE WITH HEADROOM"; return;
         }
         if (item.marker == SectionMarker::Start) meta_.spawn = feet;
-        else if (item.marker == SectionMarker::Exit) meta_.finish = feet;
+        else if (item.marker == SectionMarker::End) meta_.finish = feet;
         else meta_.checkpoint = feet;
-        changed(std::move(edit)); message_ = "MOVED " + item.name;
+        changed(std::move(edit)); message_ = "MOVED " + item.name + " | ONE OF EACH PER SECTION";
     }
     refreshTarget(game);
 }
@@ -444,15 +444,15 @@ void SectionEditor::startTest(Game& game)
 {
     if (!sectionMarkerSafe(game.world, meta_.spawn) || !sectionMarkerSafe(game.world, meta_.finish)
         || (meta_.checkpoint && !sectionMarkerSafe(game.world, *meta_.checkpoint))) {
-        message_ = "FIX START / CHECKPOINT / EXIT: EACH NEEDS SOLID SUPPORT AND CLEAR HEADROOM"; return;
+        message_ = "FIX START / CHECKPOINT / END: EACH NEEDS SOLID SUPPORT AND CLEAR HEADROOM"; return;
     }
-    if (glm::distance(meta_.spawn, meta_.finish) < 3) { message_ = "PLACE THE EXIT AT LEAST THREE BLOCKS FROM THE START"; return; }
+    if (glm::distance(meta_.spawn, meta_.finish) < 3) { message_ = "PLACE THE END AT LEAST THREE BLOCKS FROM THE START"; return; }
     if (dirty_ && !saveDraft(game)) return;
     buildPosition_ = game.camera.position(); buildDirection_ = game.camera.forward();
     checkpointReached_ = testComplete_ = false; testElapsed_ = 0; testFalls_ = 0;
     faceMarker(game, meta_.spawn);
     screen_ = SectionEditorScreen::Test; game.target.reset(); preview_.reset();
-    message_ = "WALK TO THE GOLD EXIT | R RESET | F8 RETURN TO BUILD";
+    message_ = "WALK TO THE GOLD END | R RESET | F8 RETURN TO BUILD";
 }
 void SectionEditor::stopTest(Game& game)
 {

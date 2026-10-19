@@ -66,6 +66,7 @@ private:
     GLuint vao_ = 0;
     GLuint buffer_ = 0;
     GpuMesh previewMesh_;
+    GpuMesh markerCube_, startLabel_, endLabel_;
     std::optional<HubAsset> previewAsset_;
 };
 

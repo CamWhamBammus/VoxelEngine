@@ -76,6 +76,8 @@ Input::Buttons Input::readButtons() const
         .devToggle = keyDown(GLFW_KEY_F7),
         .devTest = keyDown(GLFW_KEY_F8),
         .devAccept = keyDown(GLFW_KEY_F10),
+        .levelCreator = keyDown(GLFW_KEY_F11),
+        .levelMenu = keyDown(GLFW_KEY_F4),
         .rotate = keyDown(GLFW_KEY_T),
         .variation = keyDown(GLFW_KEY_Y),
         .backspace = keyDown(GLFW_KEY_BACKSPACE),
@@ -116,6 +118,8 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         return;
     }
     actions_.devToggle = !editorMode && pressed(buttons.devToggle, previous.devToggle);
+    actions_.levelCreator = !editorMode && pressed(buttons.levelCreator, previous.levelCreator);
+    actions_.levelMenu = !editorMode && pressed(buttons.levelMenu, previous.levelMenu);
     if (devMode) {
         if (wasDevFlying_ != devFlying) suppressDevMouse_ = true;
         updateDev(camera, deltaSeconds, buttons, previous, modal, devFlying, devTyping, modifier, editActions);

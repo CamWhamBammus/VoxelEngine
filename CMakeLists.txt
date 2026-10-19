@@ -23,6 +23,8 @@ add_library(VoxelCore
     src/root_crossings.cpp
     src/sections.cpp
     src/section_editor.cpp
+    src/levels.cpp
+    src/level_editor.cpp
     src/hub_buildings.cpp
     src/hub_assets.cpp
     src/hub_landscape.cpp
@@ -64,6 +66,7 @@ if(VOXEL_BUILD_APP)
         tests/hud_play_smoke.cpp
         tests/root_crossing_hud_smoke.cpp
         tests/section_hud_smoke.cpp
+        tests/level_hud_smoke.cpp
     )
     target_include_directories(VoxelEngine PRIVATE tests)
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
@@ -77,6 +80,7 @@ if(BUILD_TESTING)
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
         root_crossings root_crossing_game
         sections section_editor
+        levels levels_game
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

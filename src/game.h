@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "editing.h"
 #include "equipment.h"
+#include "level_editor.h"
 #include "player.h"
 #include "root_crossings.h"
 #include "section_editor.h"
@@ -20,6 +21,8 @@ namespace voxel {
 struct Options {
     bool editor = false;
     bool dev = false;
+    bool levelCreator = false;
+    std::string levelLibrary = "levels";
     std::string sectionLibrary = "sections";
     int rootCrossing = -1; // -1 starts the hub; otherwise a zero-based test course.
     std::uint32_t seed = 1337;
@@ -36,6 +39,7 @@ struct Options {
 inline constexpr const char* Usage =
     "Usage: VoxelEngine [options]\n\n"
     "  --dev              Open the section builder and world library.\n"
+    "  --level-creator    Assemble accepted sections into playable numbered levels.\n"
     "  --editor           Open the flying terrain editor instead of the cave sample.\n"
     "  --root-crossing N  Start Root Crossing test 1 to 10 directly.\n"
     "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
@@ -72,6 +76,12 @@ public:
     SectionEditor& sectionEditor() { return sectionEditor_; }
     const SectionEditor& sectionEditor() const { return sectionEditor_; }
     bool hasUnsavedChanges() const;
+    bool saveAuthoringDraft();
+    bool levelCreatorActive() const { return levelController_.open() && levelController_.creator(); }
+    bool levelMenuOpen() const { return levelController_.menuOpen(); }
+    bool levelActive() const { return levelController_.active(); }
+    LevelController& levelController() { return levelController_; }
+    const LevelController& levelController() const { return levelController_; }
     bool smithOpen() const { return smithOpen_; }
     bool nearBlacksmith() const;
     bool crossingMenuOpen() const { return crossingMenuOpen_; }
@@ -85,7 +95,7 @@ public:
     int crossingFalls() const { return crossingFalls_; }
     bool nearExpeditionGate() const;
     glm::vec3 compassTarget() const;
-    bool menuOpen() const { return smithOpen_ || crossingMenuOpen_ || devMenuOpen(); }
+    bool menuOpen() const { return smithOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
                            bool captured, bool showHelp) const;
@@ -100,6 +110,9 @@ public:
     std::string status;
 
 private:
+    friend class LevelController;
+    void enterLevelMode(bool creator);
+    void leaveLevelMode();
     bool returnToVillage();
     void enterDevMode();
     void leaveDevMode();
@@ -118,6 +131,7 @@ private:
     void editTarget(const InputActions& actions);
 
     SectionEditor sectionEditor_;
+    LevelController levelController_;
     bool devMode_ = false;
     World savedWorld_;
     std::string savePath_;

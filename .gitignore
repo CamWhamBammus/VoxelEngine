@@ -4,6 +4,7 @@ build-*/
 *.vxl
 *.vxp
 *.vxs
+*.vlevel
 .voxel-progress-*
 cmake-build-*/
 

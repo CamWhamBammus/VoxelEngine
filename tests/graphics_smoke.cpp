@@ -3,6 +3,7 @@
 #include "hud_play_smoke.h"
 #include "root_crossing_hud_smoke.h"
 #include "section_hud_smoke.h"
+#include "level_hud_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -1187,6 +1188,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyRootCrossingRendering(width, height);
     verifySectionHud(width, height);
     verifySectionAssets(width, height);
+    verifyLevelHud(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
@@ -1203,16 +1205,21 @@ int runGraphicsSmokeTest(const Options& options)
         }
         renderer.render(game.world, game.camera, width, height, false, !game.editorMode(), 0.0f,
                         game.devMode() || game.equipment.selectedTool() == Tool::Lantern,
-                        !game.rootCrossingActive() && !game.devMode(),
-                        game.devMode() ? std::span<const HubAsset>(game.sectionEditor().assets()) : std::span<const HubAsset>{});
+                        !game.rootCrossingActive() && !game.devMode() && !game.levelActive(),
+                        game.devMode() ? std::span<const HubAsset>(game.sectionEditor().assets())
+                            : game.levelActive() ? std::span<const HubAsset>(game.levelController().assets())
+                                                 : std::span<const HubAsset>{});
         float scaleX, scaleY;
         glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
         overlay.draw(game.target, game.camera, width, height, scaleY);
-        if (!game.rootCrossingActive() && !game.devMode())
+        if (game.levelActive() && !game.levelMenuOpen())
+            overlay.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height);
+        if (!game.rootCrossingActive() && !game.devMode() && !game.levelController().open())
             hud.draw(game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                                      renderer.triangleCount(), 0.0, true, false), width, height, scaleY);
         if (game.devMode()) hud.drawSection(game, width, height, scaleY);
-        else if (!game.editorMode()) hud.drawPlay(game, width, height, scaleY);
+        else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
+        if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
         if (frame == 2) {
             verifyFrame(width, height, options.screenshot);
             frameVerified = true;

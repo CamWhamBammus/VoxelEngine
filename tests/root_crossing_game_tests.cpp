@@ -252,11 +252,18 @@ int main()
               && game.compassTarget() == voxel::HeartTreeCenter && game.equipment == carriedEquipment,
               "B rebuilds the village, safely spawns, restores the compass target and retains all equipment");
         check(game.player.setFeetPosition(game.world, voxel::ExpeditionDeparture), "expedition gate approach fits");
-        check(game.nearExpeditionGate(), "the northern departure area offers the test picker");
+        check(game.nearExpeditionGate(), "the northern departure area offers expeditions");
         request = {};
         request.active = request.interact = true;
         game.update(request);
-        check(game.crossingMenuOpen() && !game.smithOpen(), "E at the expedition gate opens the course picker");
+        check(game.levelMenuOpen() && !game.smithOpen(), "E at the expedition gate opens published levels");
+        request = {};
+        request.active = request.levelMenu = true;
+        game.update(request);
+        request = {};
+        request.active = request.crossingMenu = true;
+        game.update(request);
+        check(game.crossingMenuOpen(), "F6 still opens the prototype course picker");
         request = {};
         request.active = true;
         request.selectedCrossing = 0;

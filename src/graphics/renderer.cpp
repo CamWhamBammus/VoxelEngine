@@ -6,6 +6,7 @@
 #include "graphics/water.h"
 #include "hub_assets.h"
 #include "sections.h"
+#include "graphics/asset_builder.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -515,6 +516,33 @@ uniform vec3 color;
 out vec4 fragmentColor;
 void main() { fragmentColor = vec4(color, 1.0); }
 )glsl";
+
+MeshData markerLabel(std::string_view word)
+{
+    MeshData mesh;
+    const HubAsset origin{HubAssetKind::LanternCap,{0,0,0}};
+    AssetBuilder model(mesh, origin);
+    constexpr float pixel = 0.045f;
+    const float left = -(static_cast<float>(word.size()) * 6.0f - 1.0f) * pixel * 0.5f;
+    for (std::size_t i = 0; i < word.size(); ++i) {
+        std::array<unsigned,7> rows{};
+        switch (word[i]) {
+        case 'S': rows={15,16,16,14,1,1,30}; break;
+        case 'T': rows={31,4,4,4,4,4,4}; break;
+        case 'A': rows={14,17,17,31,17,17,17}; break;
+        case 'R': rows={30,17,17,30,20,18,17}; break;
+        case 'E': rows={31,16,16,30,16,16,31}; break;
+        case 'N': rows={17,25,25,21,19,19,17}; break;
+        case 'D': rows={30,17,17,17,17,17,30}; break;
+        }
+        for (int row=0; row<7; ++row) for (int column=0; column<5; ++column) {
+            if ((rows[row] & (1u << (4-column))) == 0) continue;
+            const glm::vec3 low(left + (i*6+column)*pixel, (6-row)*pixel, -0.01f);
+            model.box(low, low+glm::vec3(pixel*0.9f,pixel*0.9f,0.02f), Block::Crystal, glm::vec3(1));
+        }
+    }
+    return mesh;
+}
 } // namespace
 
 Overlay::Overlay() : shader_(overlayVertexShader, overlayFragmentShader)
@@ -546,6 +574,13 @@ Overlay::Overlay() : shader_(overlayVertexShader, overlayFragmentShader)
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices.data(), GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+    glBindVertexArray(static_cast<GLuint>(previousVao));
+    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousBuffer));
+    Chunk cube;
+    cube.set(0,0,0,Block::Stone);
+    markerCube_.upload(buildMesh(cube));
+    startLabel_.upload(markerLabel("START"));
+    endLabel_.upload(markerLabel("END"));
     glBindVertexArray(static_cast<GLuint>(previousVao));
     glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousBuffer));
 }
@@ -633,13 +668,32 @@ void Overlay::drawSection(const SectionMetadata& section, const std::optional<Hu
         shader_.setVec3("color", color);
         glDrawArrays(GL_LINES, 0, 24);
     };
-    const auto marker = [&](glm::vec3 position, glm::vec3 color) {
+    const auto marker = [&](glm::vec3 position, glm::vec3 color, const GpuMesh* label) {
         box(position + glm::vec3(-0.8f, 0.035f, -0.8f), {1.6f,0.06f,1.6f}, color);
-        box(position + glm::vec3(-0.55f, 0.04f, -0.55f), {1.1f,2.0f,1.1f}, color);
+        if (!label) {
+            box(position + glm::vec3(-0.55f, 0.04f, -0.55f), {1.1f,2.0f,1.1f}, color);
+            return;
+        }
+        const auto beam = [&](glm::vec3 minimum, glm::vec3 extent, glm::vec3 tint) {
+            shader_.setMat4("transform", projection * glm::scale(glm::translate(glm::mat4(1), position+minimum), extent));
+            shader_.setVec3("color", tint);
+            markerCube_.draw();
+        };
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        for (float side : {-0.66f,0.54f}) {
+            beam({side,0.04f,-0.1f}, {0.12f,1.96f,0.2f}, color*0.65f);
+            beam({side+0.035f,0.15f,-0.115f}, {0.05f,1.72f,0.23f}, color);
+        }
+        beam({-0.66f,1.94f,-0.1f}, {1.32f,0.12f,0.2f}, color);
+        const auto offset = camera.position() - position;
+        const auto facing = glm::rotate(glm::mat4(1), std::atan2(offset.x,offset.z), glm::vec3(0,1,0));
+        shader_.setMat4("transform", projection * glm::translate(glm::mat4(1),position+glm::vec3(0,2.18f,0)) * facing);
+        shader_.setVec3("color", color);
+        label->draw();
     };
-    marker(section.spawn, {0.40f,1.0f,0.48f});
-    if (section.checkpoint) marker(*section.checkpoint, {0.15f,0.95f,1.0f});
-    marker(section.finish, {1.0f,0.70f,0.16f});
+    marker(section.spawn, {0.40f,1.0f,0.48f}, &startLabel_);
+    if (section.checkpoint) marker(*section.checkpoint, {0.15f,0.95f,1.0f}, nullptr);
+    marker(section.finish, {1.0f,0.70f,0.16f}, &endLabel_);
     if (selectedAsset) {
         const auto mesh = buildHubAsset(*selectedAsset);
         if (!mesh.vertices.empty()) {

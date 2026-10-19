@@ -27,6 +27,11 @@ public:
     static std::optional<int> sectionClick(const Game& game, int framebufferWidth,
                                           int framebufferHeight, float contentScale,
                                           float x, float y);
+    void drawLevels(const Game& game, int framebufferWidth, int framebufferHeight,
+                    float contentScale = 1.0f);
+    static std::optional<int> levelClick(const Game& game, int framebufferWidth,
+                                        int framebufferHeight, float contentScale,
+                                        float x, float y);
 
 private:
     Shader shader_;
