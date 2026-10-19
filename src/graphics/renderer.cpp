@@ -6,6 +6,7 @@
 #include "graphics/water.h"
 #include "hub_assets.h"
 #include "sections.h"
+#include "section_editor.h"
 #include "graphics/asset_builder.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -527,6 +528,52 @@ out vec4 fragmentColor;
 void main() { fragmentColor = vec4(color, 1.0); }
 )glsl";
 
+// The existing greedy mesher makes a recognizable wire preview without drawing
+// every hidden cube. Very complex selections fall back to the exact volume grid.
+MeshData clipboardPreviewMesh(const SectionClipboard& clipboard, int rotation)
+{
+    MeshData mesh;
+    constexpr std::size_t vertexBudget = 180000;
+    const auto sample = [&](glm::ivec3 point) {
+        if (glm::any(glm::lessThan(point, glm::ivec3(0))) || glm::any(glm::greaterThanEqual(point, clipboard.size)))
+            return Block::Air;
+        const auto index = static_cast<std::size_t>(point.x + clipboard.size.x * (point.y + clipboard.size.y * point.z));
+        return index < clipboard.blocks.size() && clipboard.blocks[index] != Block::Air ? Block::Stone : Block::Air;
+    };
+    const auto append = [&](const MeshData& piece) {
+        if (mesh.vertices.size() + piece.vertices.size() > vertexBudget) return false;
+        const auto offset = static_cast<std::uint32_t>(mesh.vertices.size());
+        mesh.vertices.insert(mesh.vertices.end(), piece.vertices.begin(), piece.vertices.end());
+        for (const auto index : piece.indices) mesh.indices.push_back(offset + index);
+        return true;
+    };
+    for (int z = 0; z < clipboard.size.z; z += Chunk::Size)
+        for (int y = 0; y < clipboard.size.y; y += Chunk::Size)
+            for (int x = 0; x < clipboard.size.x; x += Chunk::Size) {
+                Chunk chunk;
+                const glm::ivec3 origin(x,y,z);
+                for (int k = 0; k < Chunk::Size; ++k) for (int j = 0; j < Chunk::Size; ++j)
+                    for (int i = 0; i < Chunk::Size; ++i) chunk.set(i,j,k,sample(origin + glm::ivec3(i,j,k)));
+                if (!append(buildMesh(chunk, origin, sample))) return {};
+            }
+    for (const auto& asset : clipboard.assets)
+        if (!append(buildHubAsset(asset))) return {};
+    const auto turn = [&](glm::vec3 point, bool position) -> glm::vec3 {
+        const auto size = position ? glm::vec3(clipboard.size) : glm::vec3(0);
+        switch (rotation & 3) {
+        case 1: return {point.z, point.y, size.x - point.x};
+        case 2: return {size.x - point.x, point.y, size.z - point.z};
+        case 3: return {size.z - point.z, point.y, point.x};
+        default: return point;
+        }
+    };
+    for (auto& vertex : mesh.vertices) {
+        vertex.position = turn(vertex.position, true);
+        vertex.normal = turn(vertex.normal, false);
+    }
+    return mesh;
+}
+
 MeshData markerLabel(std::string_view word)
 {
     MeshData mesh;
@@ -728,6 +775,72 @@ void Overlay::drawSection(const SectionMetadata& section, const std::optional<Hu
     glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer));
     glUseProgram(static_cast<GLuint>(program));
     if (!depthTest) glDisable(GL_DEPTH_TEST);
+    if (cullFace) glEnable(GL_CULL_FACE);
+    glDepthMask(depthMask);
+    glPolygonMode(GL_FRONT_AND_BACK, polygon[0]);
+}
+
+void Overlay::drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height)
+{
+    if (width <= 0 || height <= 0) return;
+    const auto selection = editor.buildSelection();
+    const auto& preview = editor.toolPreview();
+    if (!selection && !preview && !editor.firstCorner() && !editor.secondCorner()) return;
+    const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST), cullFace = glIsEnabled(GL_CULL_FACE);
+    GLboolean depthMask = GL_TRUE;
+    GLint program = 0, vao = 0, buffer = 0;
+    std::array<GLint,2> polygon{};
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &depthMask);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &buffer);
+    glGetIntegerv(GL_POLYGON_MODE, polygon.data());
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDepthMask(GL_FALSE);
+    shader_.use();
+    const auto projection = camera.projectionMatrix(float(width) / height) * camera.viewMatrix();
+    const auto box = [&](glm::vec3 minimum, glm::vec3 extent, glm::vec3 color) {
+        glBindVertexArray(vao_);
+        shader_.setMat4("transform", projection * glm::scale(glm::translate(glm::mat4(1), minimum), extent));
+        shader_.setVec3("color", color);
+        glDrawArrays(GL_LINES, 0, 24);
+    };
+    const glm::vec3 cyan(0.25f,0.83f,1.0f), green(0.35f,1.0f,0.51f), gold(1.0f,0.78f,0.23f);
+    if (selection) box(glm::vec3(selection->min)-0.01f, glm::vec3(selection->max-selection->min+1)+0.02f, cyan);
+    if (editor.firstCorner()) box(glm::vec3(*editor.firstCorner())-0.025f, glm::vec3(1.05f), green);
+    if (editor.secondCorner()) box(glm::vec3(*editor.secondCorner())-0.035f, glm::vec3(1.07f), gold);
+    if (preview) {
+        const auto color = editor.toolPreviewValid() ? green : glm::vec3(1.0f,0.28f,0.21f);
+        const auto origin = glm::vec3(preview->min);
+        const auto size = glm::vec3(preview->max-preview->min+1);
+        if (editor.buildMode() == SectionBuildMode::Paste && !editor.clipboard().empty()) {
+            if (clipboardRevision_ != editor.clipboardRevision() || clipboardRotation_ != editor.pasteRotation()) {
+                clipboardMesh_.upload(clipboardPreviewMesh(editor.clipboard(), editor.pasteRotation()));
+                clipboardRevision_ = editor.clipboardRevision();
+                clipboardRotation_ = editor.pasteRotation();
+            }
+            shader_.setMat4("transform", projection * glm::translate(glm::mat4(1),origin));
+            shader_.setVec3("color", color * 0.66f);
+            glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+            clipboardMesh_.draw();
+        }
+        box(origin - 0.018f, size + 0.036f, color);
+        // Up to sixteen grid divisions per axis keeps large copies readable.
+        const int spacing = std::max(1,static_cast<int>(std::ceil(std::max(size.x,size.z)/16.0f)));
+        for (int x = spacing; x < size.x; x += spacing)
+            box(origin+glm::vec3(x,0.025f,0),{0,0,size.z},color*0.57f);
+        for (int z = spacing; z < size.z; z += spacing)
+            box(origin+glm::vec3(0,0.025f,z),{size.x,0,0},color*0.57f);
+        box(origin-glm::vec3(0.045f),glm::vec3(0.09f),glm::vec3(1));
+        box(origin,{std::min(2.0f,size.x),0,0},{1.0f,0.36f,0.28f});
+        box(origin,{0,std::min(2.0f,size.y),0},{0.40f,1.0f,0.48f});
+        box(origin,{0,0,std::min(2.0f,size.z)},{0.36f,0.65f,1.0f});
+    }
+    glBindVertexArray(static_cast<GLuint>(vao));
+    glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer));
+    glUseProgram(static_cast<GLuint>(program));
+    if (depthTest) glEnable(GL_DEPTH_TEST);
     if (cullFace) glEnable(GL_CULL_FACE);
     glDepthMask(depthMask);
     glPolygonMode(GL_FRONT_AND_BACK, polygon[0]);

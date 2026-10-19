@@ -323,7 +323,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
         equipment.selectedSlot = *actions.selectedTool;
     else if (actions.toolStep != 0)
-        equipment.selectedSlot = (equipment.selectedSlot + (actions.toolStep > 0 ? 1 : ToolCount - 1)) % ToolCount;
+        equipment.selectedSlot = ((equipment.selectedSlot + actions.toolStep % ToolCount) % ToolCount + ToolCount) % ToolCount;
     if (actions.interact && nearExpeditionGate()) {
         enterLevelMode(false);
         return;

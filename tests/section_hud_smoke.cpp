@@ -1,5 +1,6 @@
 #include "section_hud_smoke.h"
 #include "graphics/hud.h"
+#include "graphics/renderer.h"
 #include "game.h"
 #include "input.h"
 #include "section_editor.h"
@@ -63,6 +64,7 @@ void verifySectionHud(int width,int height)
     Options options; options.smokeTest=true; options.dev=true; options.sectionLibrary=temporary.string();
     Game game(options);
     Hud hud;
+    Overlay overlay;
     Shader caller("#version 410 core\nvoid main(){gl_Position=vec4(0);}",
                   "#version 410 core\nout vec4 color;void main(){color=vec4(1);}");
     GLuint vao=0,buffer=0;
@@ -95,6 +97,30 @@ void verifySectionHud(int width,int height)
         const auto act=[&](int id) {
             InputActions input; input.active=true; input.devClick=id; game.update(input);
         };
+        const auto press=[&](bool InputActions::* key) {
+            InputActions input; input.active=true; input.*key=true; game.update(input);
+        };
+        const auto aim=[&](glm::vec3 target) {
+            const auto direction=glm::normalize(target-game.camera.position()),old=game.camera.forward();
+            game.camera.rotate(glm::degrees(std::atan2(direction.z,direction.x)-std::atan2(old.z,old.x)),
+                               glm::degrees(std::asin(direction.y)-std::asin(old.y)));
+        };
+        const auto drawToolsOverlay=[&] {
+            glBindFramebuffer(GL_FRAMEBUFFER,0); glViewport(0,0,width,height);
+            glDisable(GL_SCISSOR_TEST); glDisable(GL_BLEND); glDepthMask(GL_TRUE);
+            glClearColor(.015f,.025f,.035f,1); glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+            caller.use(); glBindVertexArray(vao); glBindBuffer(GL_ARRAY_BUFFER,buffer);
+            glEnable(GL_DEPTH_TEST); glEnable(GL_CULL_FACE); glCullFace(GL_FRONT);
+            glEnable(GL_SCISSOR_TEST); glScissor(0,0,width,height); glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+            const auto before=state(); overlay.drawBuildTools(game.sectionEditor(),game.camera,width,height);
+            require(state()==before,"Build volume overlay changed caller OpenGL state");
+            overlay.drawBuildTools(game.sectionEditor(),game.camera,0,0);
+            require(state()==before,"Minimized build overlay changed caller OpenGL state");
+            Pixels pixels(static_cast<std::size_t>(width)*height*4);
+            glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+            require(glGetError()==GL_NO_ERROR,"Build volume overlay generated an OpenGL error");
+            return pixels;
+        };
         const auto logicalHit=[&](float x,float y,int w,int h,float dpi) {
             const float scale=std::min({std::clamp(dpi,.5f,4.0f),w/736.0f,h/516.0f});
             return Hud::sectionClick(game,w,h,dpi,x*scale,y*scale);
@@ -120,6 +146,73 @@ void verifySectionHud(int width,int height)
         act(SectionUiLibraryNew);
         require(game.sectionEditor().screen()==SectionEditorScreen::Build,"New section did not open creative mode");
         const auto build=draw(width,height);
+        press(&InputActions::devTools);
+        require(game.sectionEditor().screen()==SectionEditorScreen::Tools,"Building tools menu did not open");
+        require(difference(build,draw(width,height))>10000,"Building tools did not replace the creative HUD");
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.0f : 1.0f;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            require(logicalHit(x+350,y+78,size.x,size.y,dpi)==SectionUiModeBase+1,
+                    "Select-area mode target disagrees with the scaled drawing");
+            require(logicalHit(x+368,y+116,size.x,size.y,dpi)==SectionUiBrushSizeBase+3,
+                    "Brush size target disagrees with the scaled drawing");
+            require(!logicalHit(x+128,y+283,size.x,size.y,dpi),"Fill is clickable without a selection");
+            require(!logicalHit(x+350,y+345,size.x,size.y,dpi),"Paste is clickable with an empty clipboard");
+            draw(size.x,size.y,dpi);
+        }
+        act(SectionUiBrushSizeBase+3);
+        require(game.sectionEditor().brushSize()==9,"Brush-size button did not change the brush");
+        act(SectionUiModeBase+1);
+        require(game.sectionEditor().buildMode()==SectionBuildMode::Select && game.devFlying(),
+                "Select mode did not return to flying");
+        game.camera.setPosition({-3.5f,10.5f,4.5f}); press(&InputActions::devCornerA);
+        game.camera.setPosition({-1.5f,11.5f,5.5f}); press(&InputActions::devCornerB);
+        game.camera.setPosition({2.5f,16,12.5f}); aim({-2.5f,10.5f,4.5f});
+        press(&InputActions::devTools);
+        require(game.sectionEditor().buildSelection().has_value(),"Two air corners did not create a selection");
+        act(SectionUiHeightUp);
+        require(game.sectionEditor().buildSelection()->max.y==12,"Selection height did not grow");
+        act(SectionUiHeightDown);
+        require(game.sectionEditor().buildSelection()->max.y==11,"Selection height did not shrink");
+        act(SectionUiFill); act(SectionUiCopy);
+        require(!game.sectionEditor().clipboard().empty(),"Copy selection did not populate the clipboard");
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.0f : 1.0f;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            const std::array<std::pair<glm::vec2,int>,9> targets{{
+                {{128,283},SectionUiFill},{{350,283},SectionUiShell},{{572,283},SectionUiErase},
+                {{128,345},SectionUiCopy},{{350,345},SectionUiPaste},{{572,345},SectionUiPasteAir},
+                {{546,226},SectionUiHeightDown},{{624,226},SectionUiHeightUp},{{128,450},SectionUiClearSelection}}};
+            for (const auto& [point,id]:targets)
+                require(logicalHit(x+point.x,y+point.y,size.x,size.y,dpi)==id,
+                        "Building tool hit area disagrees with the scaled drawing");
+            draw(size.x,size.y,dpi);
+        }
+        act(SectionUiPasteAir);
+        require(game.sectionEditor().pasteIncludesAir(),"Paste-air option did not enable");
+        act(SectionUiPasteAir); act(SectionUiPaste);
+        game.camera.setPosition({8.5f,16,14.5f}); aim({8.5f,8.5f,8.5f});
+        InputActions refresh; refresh.active=true; game.update(refresh);
+        require(game.sectionEditor().toolPreview() && game.sectionEditor().toolPreviewValid(),
+                "Paste did not show a valid volume preview");
+        const auto paste=drawToolsOverlay();
+        std::size_t greenPixels=0;
+        for (std::size_t i=0;i<paste.size();i+=4) greenPixels+=paste[i+1]>150 && paste[i+1]>paste[i]+40;
+        require(greenPixels>50,"Valid paste volume and ghost are not visible");
+        press(&InputActions::devRotate);
+        require(difference(paste,drawToolsOverlay())>40,"Rotating a paste did not update its visible geometry");
+        game.camera.setPosition({27.5f,15,27.5f}); aim({31.5f,8.5f,31.5f}); game.update(refresh);
+        require(game.sectionEditor().toolPreview() && !game.sectionEditor().toolPreviewValid(),
+                "Out-of-room paste did not become invalid");
+        const auto invalid=drawToolsOverlay();
+        std::size_t redPixels=0;
+        for (std::size_t i=0;i<invalid.size();i+=4) redPixels+=invalid[i]>150 && invalid[i]>invalid[i+1]+50;
+        require(redPixels>50,"Invalid paste preview is not visibly red");
+        press(&InputActions::devCancel); press(&InputActions::devTools);
+        act(SectionUiClearSelection); act(SectionUiBack);
+        require(!game.sectionEditor().buildSelection(),"Clear selection left an active volume");
         InputActions inventory; inventory.active=true; inventory.devPalette=true; game.update(inventory);
         require(game.sectionEditor().screen()==SectionEditorScreen::Palette,"Creative inventory did not open");
         const auto blocks=draw(width,height);
@@ -191,6 +284,6 @@ void verifySectionHud(int width,int height)
         require(state()==before,"Minimized section HUD changed OpenGL state");
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout << "Section HUD passed: world library, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
+    std::cout << "Section HUD passed: world library, build tools, volume and rotated paste previews, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
 }
 }

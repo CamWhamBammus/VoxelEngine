@@ -2,6 +2,7 @@
 
 #include "editing.h"
 #include "sections.h"
+#include "section_tools.h"
 
 #include <array>
 #include <cstdint>
@@ -14,7 +15,8 @@ namespace voxel {
 class Game;
 struct InputActions;
 
-enum class SectionEditorScreen { Worlds, Library, Build, Palette, Test, Accept };
+enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, Test, Accept };
+enum class SectionBuildMode { Single, Select, Brush, Paste };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
     std::string name;
@@ -38,6 +40,11 @@ inline constexpr int SectionUiSave = 3204, SectionUiLibrary = 3205;
 inline constexpr int SectionUiPalettePrevious = 3206, SectionUiPaletteNext = 3207;
 inline constexpr int SectionUiLibraryPrevious = 3208, SectionUiLibraryNext = 3209;
 inline constexpr int SectionUiLevelCreator = 3210;
+inline constexpr int SectionUiModeBase = 3310;
+inline constexpr int SectionUiBrushSizeBase = 3320; // Sizes 1, 3, 5, 9.
+inline constexpr int SectionUiFill = 3330, SectionUiShell = 3331, SectionUiErase = 3332;
+inline constexpr int SectionUiCopy = 3333, SectionUiPaste = 3334, SectionUiPasteAir = 3335;
+inline constexpr int SectionUiClearSelection = 3336, SectionUiHeightDown = 3337, SectionUiHeightUp = 3338;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.
@@ -78,11 +85,24 @@ public:
     const std::optional<HubAsset>& placementPreview() const { return preview_; }
     const std::filesystem::path& libraryRoot() const { return libraryRoot_; }
     const std::filesystem::path& acceptedPath() const { return acceptedPath_; }
+    SectionBuildMode buildMode() const { return buildMode_; }
+    int brushSize() const { return brushSize_; }
+    bool brushErasing() const { return brushErasing_; }
+    std::optional<SectionBox> buildSelection() const;
+    const std::optional<glm::ivec3>& firstCorner() const { return cornerA_; }
+    const std::optional<glm::ivec3>& secondCorner() const { return cornerB_; }
+    const SectionClipboard& clipboard() const { return clipboard_; }
+    std::uint64_t clipboardRevision() const { return clipboardRevision_; }
+    int pasteRotation() const { return pasteRotation_; }
+    bool pasteIncludesAir() const { return pasteIncludesAir_; }
+    const std::optional<SectionBox>& toolPreview() const { return toolPreview_; }
+    bool toolPreviewValid() const { return toolPreviewValid_; }
 
 private:
     struct Edit {
         std::optional<glm::ivec3> position;
         Block before = Block::Air, after = Block::Air;
+        std::vector<SectionBlockEdit> blocks;
         SectionMetadata beforeMeta, afterMeta;
         std::vector<HubAsset> beforeAssets, afterAssets;
     };
@@ -103,6 +123,14 @@ private:
     void undo(Game& game, bool redo);
     void invalidateTest();
     void faceMarker(Game& game, glm::vec3 position);
+    void resetBuildTools();
+    void updateToolsMenu(Game& game, const InputActions& actions);
+    bool updateBuildTools(Game& game, const InputActions& actions);
+    void refreshToolPreview(Game& game);
+    void copySelection(Game& game);
+    void beginPaste();
+    void fillSelection(Game& game, SectionFillMode mode);
+    void applyPlan(Game& game, SectionEditPlan plan, std::string_view label);
 
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
@@ -128,5 +156,18 @@ private:
     std::optional<HubAsset> preview_;
     std::deque<Edit> undo_, redo_;
     std::string message_;
+    SectionBuildMode buildMode_ = SectionBuildMode::Single;
+    int brushSize_ = 3, pasteRotation_ = 0;
+    bool pasteIncludesAir_ = false, toolPreviewValid_ = false, brushErasing_ = false;
+    std::optional<glm::ivec3> cornerA_, cornerB_;
+    std::optional<SectionBox> toolPreview_;
+    SectionClipboard clipboard_;
+    std::uint64_t clipboardRevision_ = 0;
+    SectionEditPlan previewPlan_;
+    std::optional<glm::ivec3> previewOrigin_;
+    glm::ivec3 previewCameraCell_{0};
+    std::uint64_t previewRevision_ = ~std::uint64_t(0);
+    int previewRotation_ = -1;
+    bool previewAir_ = false;
 };
 } // namespace voxel

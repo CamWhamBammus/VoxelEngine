@@ -84,6 +84,10 @@ Input::Buttons Input::readButtons() const
         .selectAll = keyDown(GLFW_KEY_A),
         .menuLeft = keyDown(GLFW_KEY_LEFT),
         .menuRight = keyDown(GLFW_KEY_RIGHT),
+        .devTools = keyDown(GLFW_KEY_G),
+        .devCancel = keyDown(GLFW_KEY_X),
+        .devCornerA = keyDown(GLFW_KEY_J),
+        .devCornerB = keyDown(GLFW_KEY_K),
     };
 }
 
@@ -92,6 +96,7 @@ void Input::capture(bool enabled)
     captured_ = enabled;
     if (enabled) suppressDevMouse_ = true;
     scroll_ = 0.0;
+    hotbarScroll_.reset();
     glfwSetInputMode(window_, GLFW_CURSOR, enabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
     glfwGetCursorPos(window_, &cursorX_, &cursorY_);
 }
@@ -100,6 +105,13 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
                    bool devMode, bool devFlying, bool devTyping)
 {
     actions_ = {};
+    if (modal != wasModal_ || editorMode != wasEditorMode_ || devMode != wasDevMode_
+        || devFlying != wasDevFlying_) {
+        scroll_ = 0;
+        hotbarScroll_.reset();
+    }
+    wasModal_ = modal;
+    wasEditorMode_ = editorMode;
     if (!editorMode) wireframe_ = false;
     const Buttons buttons = readButtons();
     const Buttons previous = previousButtons_;
@@ -108,12 +120,15 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     const bool modifier = keyDown(GLFW_KEY_LEFT_CONTROL) || keyDown(GLFW_KEY_RIGHT_CONTROL)
         || keyDown(GLFW_KEY_LEFT_SUPER) || keyDown(GLFW_KEY_RIGHT_SUPER);
     const bool shift = keyDown(GLFW_KEY_LEFT_SHIFT) || keyDown(GLFW_KEY_RIGHT_SHIFT);
-    const EditShortcutKeys editKeys{keyDown(GLFW_KEY_Z), keyDown(GLFW_KEY_Y), modifier, shift};
+    const EditShortcutKeys editKeys{keyDown(GLFW_KEY_Z), keyDown(GLFW_KEY_Y), modifier, shift,
+                                    keyDown(GLFW_KEY_C), keyDown(GLFW_KEY_V)};
     const auto editActions = editShortcuts_.update(editKeys);
 
     if (!devMode && keyDown(GLFW_KEY_Q)) glfwSetWindowShouldClose(window_, GLFW_TRUE);
     if (!glfwGetWindowAttrib(window_, GLFW_FOCUSED)) {
         if (captured_) capture(false);
+        scroll_ = 0;
+        hotbarScroll_.reset();
         pendingText_.clear();
         return;
     }
@@ -130,7 +145,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         return;
     }
     if (wasDevMode_) capture(true);
-    wasDevMode_ = wasDevMenu_ = false;
+    wasDevMode_ = wasDevMenu_ = wasDevFlying_ = false;
     pendingText_.clear();
 
     if (!editorMode && modal) {
@@ -148,6 +163,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     if (resetCamera) {
         if (editorMode) camera.reset();
         scroll_ = 0.0;
+        hotbarScroll_.reset();
         glfwGetCursorPos(window_, &cursorX_, &cursorY_);
     }
     if (pressed(buttons.help, previous.help)) help_ = !help_;
@@ -172,6 +188,8 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     if (editorMode) {
         actions_.remove = pressed(buttons.remove, previous.remove);
         actions_.place = pressed(buttons.place, previous.place);
+        actions_.removePressed = actions_.remove;
+        actions_.placePressed = actions_.place;
         actions_.pick = pressed(buttons.pick, previous.pick);
         actions_.materialStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
             - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
@@ -196,7 +214,9 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
             if (pressed(buttons.tools[slot], previous.tools[slot])) actions_.selectedTool = slot;
         actions_.toolStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
             - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
-        if (actions_.toolStep == 0) actions_.toolStep = scroll_ > 0.0 ? -1 : scroll_ < 0.0 ? 1 : 0;
+        const int scrollSteps = modal ? 0 : hotbarScroll_.update(scroll_);
+        if (actions_.toolStep == 0) actions_.toolStep = scrollSteps;
+        if (modal) { actions_.toolStep = 0; hotbarScroll_.reset(); }
         scroll_ = 0.0;
     }
     if (!editorMode && modal) {
@@ -224,6 +244,9 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
     if (!typing) actions_.returnToHub = pressed(buttons.returnToHub, previous.returnToHub);
     if (modal) {
         suppressDevMouse_ = true;
+        actions_.devTools = !typing && !modifier && pressed(buttons.devTools, previous.devTools);
+        actions_.undo = !typing && shortcuts.undo;
+        actions_.redo = !typing && shortcuts.redo;
         actions_.closeMenu = pressed(buttons.releaseMouse, previous.releaseMouse);
         actions_.devMenuStep = {
             static_cast<int>(pressed(buttons.menuRight, previous.menuRight)) - static_cast<int>(pressed(buttons.menuLeft, previous.menuLeft)),
@@ -249,6 +272,7 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
         glfwGetWindowSize(window_, &width, &height);
         actions_.devPointer = {width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0};
         scroll_ = 0;
+        hotbarScroll_.reset();
         removeRepeat_ = placeRepeat_ = 0;
     } else {
         if (pressed(buttons.releaseMouse, previous.releaseMouse)) capture(false);
@@ -258,6 +282,14 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
         actions_.redo = shortcuts.redo;
         if (!captured_) return;
         actions_.active = true;
+        if (flying) {
+            actions_.devTools = !modifier && pressed(buttons.devTools, previous.devTools);
+            actions_.devCopy = shortcuts.copy;
+            actions_.devPaste = shortcuts.paste;
+            actions_.devCancel = !modifier && pressed(buttons.devCancel, previous.devCancel);
+            actions_.devCornerA = !modifier && pressed(buttons.devCornerA, previous.devCornerA);
+            actions_.devCornerB = !modifier && pressed(buttons.devCornerB, previous.devCornerB);
+        }
         actions_.movement = {float(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)), float(keyDown(GLFW_KEY_W) - keyDown(GLFW_KEY_S))};
         actions_.jump = pressed(buttons.jump, previous.jump);
         actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT);
@@ -271,18 +303,22 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
             if (!wasDown || countdown <= 0) { countdown = wasDown ? 0.16f : 0.35f; return true; }
             return false;
         };
-        if (suppressDevMouse_) {
-            if (!buttons.remove && !buttons.place && !buttons.pick) suppressDevMouse_ = false;
+        const bool clipboardShortcut = modifier && (keyDown(GLFW_KEY_C) || keyDown(GLFW_KEY_V));
+        if (clipboardShortcut) suppressDevMouse_ = true;
+        if (suppressDevMouse_ || clipboardShortcut) {
+            if (!clipboardShortcut && !buttons.remove && !buttons.place && !buttons.pick) suppressDevMouse_ = false;
             removeRepeat_ = placeRepeat_ = 0;
         } else {
             actions_.pick = pressed(buttons.pick, previous.pick);
+            actions_.removePressed = pressed(buttons.remove, previous.remove);
+            actions_.placePressed = pressed(buttons.place, previous.place);
             actions_.remove = repeating(buttons.remove, previous.remove, removeRepeat_);
             actions_.place = repeating(buttons.place, previous.place, placeRepeat_);
         }
-        actions_.materialStep = scroll_ > 0 ? -1 : scroll_ < 0 ? 1 : 0;
+        actions_.materialStep = hotbarScroll_.update(scroll_);
         scroll_ = 0;
         // Dev hotbar consumes scrolling; camera FOV stays fixed while building.
-        updateCamera(camera, deltaSeconds, modifier && (keyDown(GLFW_KEY_Z) || keyDown(GLFW_KEY_Y)), flying);
+        updateCamera(camera, deltaSeconds, clipboardShortcut || (modifier && (keyDown(GLFW_KEY_Z) || keyDown(GLFW_KEY_Y))), flying);
     }
     if (!typing)
         for (int slot = 0; slot < 9; ++slot)
@@ -300,7 +336,7 @@ void Input::updateCamera(Camera& camera, float deltaSeconds, bool editingShortcu
     cursorX_ = x;
     cursorY_ = y;
 
-    // Ctrl-Z/Ctrl-Y should edit history without also moving the camera down.
+    // Ctrl shortcuts should edit history or the clipboard without moving down.
     if (!editorMode || editingShortcut) return;
     const glm::vec3 direction{
         static_cast<float>(keyDown(GLFW_KEY_D) - keyDown(GLFW_KEY_A)),

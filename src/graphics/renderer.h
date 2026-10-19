@@ -13,6 +13,7 @@
 namespace voxel {
 class Camera;
 struct SectionMetadata;
+class SectionEditor;
 
 // Each renderer keeps its own copy of the meshed chunks, so multiple views can
 // share a world without consuming one another's pending updates.
@@ -60,6 +61,7 @@ public:
               float contentScale = 1.0f);
     void drawSection(const SectionMetadata& section, const std::optional<HubAsset>& preview,
                      const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height);
+    void drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height);
 
 private:
     Shader shader_;
@@ -68,6 +70,9 @@ private:
     GpuMesh previewMesh_;
     GpuMesh markerCube_, startLabel_, endLabel_;
     std::optional<HubAsset> previewAsset_;
+    GpuMesh clipboardMesh_;
+    std::uint64_t clipboardRevision_ = ~std::uint64_t(0);
+    int clipboardRotation_ = -1;
 };
 
 } // namespace voxel

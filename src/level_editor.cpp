@@ -368,8 +368,8 @@ void LevelController::updatePlay(Game& game, const InputActions& actions, float 
     if (actions.restartCrossing || actions.respawn) { reset(game, actions.restartCrossing); return; }
     if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
         game.equipment.selectedSlot = *actions.selectedTool;
-    else if (actions.toolStep) game.equipment.selectedSlot = (game.equipment.selectedSlot
-        + (actions.toolStep > 0 ? 1 : ToolCount - 1)) % ToolCount;
+    else if (actions.toolStep) game.equipment.selectedSlot = ((game.equipment.selectedSlot
+        + actions.toolStep % ToolCount) % ToolCount + ToolCount) % ToolCount;
     game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds);
     game.camera.setPosition(game.player.eyePosition());
     elapsed_ += stepTime(deltaSeconds);

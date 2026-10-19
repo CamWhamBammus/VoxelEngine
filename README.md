@@ -55,6 +55,16 @@ Run **`./build/VoxelEngine --dev`**, or press **F7** in the game. On a Mac keybo
 5. Press **F8** to test with normal walking, jumping, gravity, and collision. Reach the gold End to pass. **R** returns to the start or checkpoint; **Shift+R** restarts the attempt. **F8** returns to your previous build view. Any geometry or marker edit, including undo/redo, requires another test before acceptance.
 6. Press **F10** after passing, type a name, and choose **Parkour, Puzzle, Exploration, Mining, or Treasure**. Press **Enter** or click **Accept section**. It appears in that world's library immediately. **F9** opens the library to continue a draft or edit a copy of an accepted section.
 
+Press **G** while building for **Build tools**:
+
+- **Select box:** left click sets corner A, right click sets corner B. Both selected blocks are included. Clicking the protected room shell selects the empty cell just inside it. To choose a corner in empty space, fly there and press **J** for A or **K** for B. The outline shows your selected volume; the Tools panel can raise or lower its top by one block.
+- **Fill / Shell / Clear:** use your selected hotbar block to fill the whole box or build just its boundary. Shell preserves anything already inside. Clear removes the selected blocks and decorations whose origins are in the box. Move outside the area before filling it.
+- **Cube brush:** choose **1, 3, 5, or 9** blocks wide. Hold right click to add cubes of your selected block, or left click to carve them away. Painting fills empty cells and leaves existing blocks intact; brush edges stop at the protected room shell.
+- **Copy / Paste:** select a box and press **Cmd/Ctrl+C**, then **Cmd/Ctrl+V**. Blocks and decorations are copied together; Start, End, and Checkpoint stay unique. Aim at a surface to position the preview, press **T** to rotate by 90 degrees, and right click once per stamp. Empty copied cells preserve the destination by default. Enable **Paste with air** in Tools to replace the entire destination box, including its existing decorations.
+- **X** returns to single-item building while keeping your selection and clipboard. The clipboard can be reused in another section during the same session. Each fill, clear, brush stamp, or paste is one **Cmd/Ctrl+Z** undo step; **Cmd/Ctrl+Shift+Z** or **Cmd/Ctrl+Y** redoes it. Changes require another playtest before acceptance.
+
+The hotbar wheel direction is reversed from the earlier build, and fractional trackpad movement accumulates into whole slot steps instead of jumping on every tiny event. Camera zoom stays fixed in the section builder.
+
 **WASD** flies, **Space** rises, **Left Ctrl** descends, **Shift** speeds up, and **Alt/Option** slows down for precision. **Ctrl/Cmd+Z** undoes; **Ctrl/Cmd+Y** or **Ctrl/Cmd+Shift+Z** redoes blocks, models, and markers. **Escape** pauses; **Tab** resumes. The inventory also supports arrows, **Tab** to switch tabs, and **Enter** to equip. In the acceptance form, typing replaces the initially selected name; **Ctrl/Cmd+A** selects it again.
 
 **F5** saves a draft. Changed work also saves after 20 seconds of active editing, before tests or library changes, when leaving with **B/F7**, and when closing the window. A failed save keeps your work open. New rooms and accepted revisions receive unique files so earlier creations are preserved. Files live under **`sections/` in the working directory**, separately from equipment and terrain-editor saves:
@@ -139,6 +149,7 @@ src/
   root_crossings.h/.cpp Ten lush crossing layouts, shared landings, and cave construction
   sections.h/.cpp   Room template, world/category catalogs, and .vxs file library
   section_editor.h/.cpp Creative building, palette, markers, tests, and acceptance
+  section_tools.h/.cpp Box fills, brushes, clipboard rotation, and batch edit validation
   levels.h/.cpp     Ordered section references, numbered world slots, and .vlevel files
   level_editor.h/.cpp Level composition, publishing, playback, and section transitions
   hub_buildings.h/.cpp Seven building styles, facade variants, and height profiles

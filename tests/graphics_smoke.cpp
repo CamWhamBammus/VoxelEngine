@@ -507,8 +507,10 @@ void verifyUndergroundMaterials(int width, int height)
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, callerLightTexture);
     glActiveTexture(GL_TEXTURE3);
-    constexpr int patchSize = 128;
-    std::array<unsigned char, patchSize * patchSize * 4> pixels{};
+    // Sample the same part of the block at 1x and Retina framebuffer scales.
+    // A fixed 128px patch at 720p also samples the dark background around it.
+    const int patchSize = std::clamp(height * 128 / 1440, 32, 128);
+    std::vector<unsigned char> pixels(static_cast<std::size_t>(patchSize) * patchSize * 4);
     const auto sample = [&](Block material, float seconds = 0.0f, bool lantern = false) {
         world.set({0, 6, 0}, material);
         renderer.render(world, camera, width, height, false, true, seconds, lantern);

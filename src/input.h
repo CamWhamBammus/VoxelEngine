@@ -3,7 +3,9 @@
 #include "world.h"
 
 #include <glm/vec2.hpp>
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <optional>
 #include <string>
 
@@ -33,22 +35,48 @@ struct InputActions {
     bool levelCreator = false, levelMenu = false; // F11 authoring / F4 expeditions.
     bool devToggle = false, devPalette = false, devTest = false, devAccept = false, devLibrary = false;
     bool devRotate = false, devVariation = false, devBackspace = false, devSelectAll = false;
+    bool devTools = false; // G opens/closes the building tools menu.
+    bool devCopy = false, devPaste = false; // Cmd/Ctrl+C/V, once per physical key press.
+    bool devCancel = false, devCornerA = false, devCornerB = false; // X cancels; J/K select corners.
     std::optional<int> devSlot, devClick;
     int devTabStep = 0;
     glm::ivec2 devMenuStep{0};
     std::string devText;
     bool devPointerPressed = false;
     glm::vec2 devPointer{0}; // Window-relative position, normalized to [0,1].
-    // Editing requests are emitted only in --editor mode.
+    // Editing requests are emitted by --editor and the section creator.
     bool save = false;
     bool load = false;
     bool undo = false;
     bool redo = false;
     bool remove = false;
     bool place = false;
+    bool removePressed = false, placePressed = false; // Physical clicks, without creative brush repeat.
     bool pick = false;
     std::optional<Block> selectedBlock;
-    int materialStep = 0; // Previous (-1) or next (+1), unless a number key selects directly.
+    int materialStep = 0; // Signed hotbar steps; positive scroll moves to the next slot.
+};
+
+// Trackpads emit fractional wheel ticks. Preserve those between frames, but drop
+// excess whole ticks from a fast fling instead of letting the hotbar keep spinning.
+class HotbarScroll {
+public:
+    static constexpr int MaxSteps = 4;
+    int update(double offset)
+    {
+        if (!std::isfinite(offset)) return 0;
+        const double total = remainder_ + offset;
+        if (!std::isfinite(total)) { reset(); return 0; }
+        constexpr double TickTolerance = 1e-9;
+        const double whole = std::trunc(total + std::copysign(TickTolerance, total));
+        remainder_ = total - whole;
+        if (std::abs(remainder_) < TickTolerance) remainder_ = 0;
+        return static_cast<int>(std::clamp(whole, -double(MaxSteps), double(MaxSteps)));
+    }
+    void reset() { remainder_ = 0; }
+
+private:
+    double remainder_ = 0;
 };
 
 struct EditShortcutKeys {
@@ -56,11 +84,15 @@ struct EditShortcutKeys {
     bool y = false;
     bool modifier = false;
     bool shift = false;
+    bool c = false;
+    bool v = false;
 };
 
 struct EditShortcutActions {
     bool undo = false;
     bool redo = false;
+    bool copy = false;
+    bool paste = false;
 };
 
 class EditShortcuts {
@@ -71,9 +103,12 @@ public:
         // after redo must never turn the held Z key into a fresh undo action.
         const bool zPressed = keys.z && !previous_.z;
         const bool yPressed = keys.y && !previous_.y;
+        const bool cPressed = keys.c && !previous_.c;
+        const bool vPressed = keys.v && !previous_.v;
         previous_ = keys;
         return {keys.modifier && zPressed && !keys.shift,
-                keys.modifier && (yPressed || (zPressed && keys.shift))};
+                keys.modifier && (yPressed || (zPressed && keys.shift)),
+                keys.modifier && cPressed, keys.modifier && vPressed};
     }
 
 private:
@@ -124,6 +159,7 @@ private:
         bool levelCreator = false, levelMenu = false;
         bool rotate = false, variation = false, backspace = false, selectAll = false;
         bool menuLeft = false, menuRight = false;
+        bool devTools = false, devCancel = false, devCornerA = false, devCornerB = false;
     };
 
     bool keyDown(int key) const;
@@ -143,8 +179,10 @@ private:
     double cursorX_ = 0.0;
     double cursorY_ = 0.0;
     double scroll_ = 0.0;
+    HotbarScroll hotbarScroll_;
     std::string pendingText_;
     bool wasDevMode_ = false, wasDevMenu_ = false;
+    bool wasModal_ = false, wasEditorMode_ = true;
     float removeRepeat_ = 0.0f, placeRepeat_ = 0.0f;
     float backspaceRepeat_ = 0.0f;
     bool suppressDevMouse_ = true, wasDevFlying_ = false;

@@ -99,6 +99,8 @@ int main(int argc, char** argv)
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
                                       game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
                                       game.camera, width, height);
+            if (game.devFlying() && !game.devMenuOpen())
+                selection.drawBuildTools(game.sectionEditor(), game.camera, width, height);
             if (game.levelActive() && !game.levelMenuOpen())
                 selection.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height);
 

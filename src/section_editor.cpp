@@ -36,6 +36,16 @@ std::optional<float> assetHit(glm::vec3 minimum, glm::vec3 maximum, glm::vec3 or
     }
     return near;
 }
+SectionBox brushBox(const RayHit& hit, int size, bool place)
+{
+    const int radius = size / 2;
+    auto low = hit.position + (place ? hit.normal : glm::ivec3(0)) - glm::ivec3(radius);
+    for (int axis = 0; axis < 3; ++axis) if (hit.normal[axis]) {
+        low[axis] += radius;
+        if ((place && hit.normal[axis] < 0) || (!place && hit.normal[axis] > 0)) low[axis] -= size - 1;
+    }
+    return {glm::max(low, SectionInteriorMin), glm::min(low + glm::ivec3(size - 1), SectionInteriorMax - 1)};
+}
 }
 
 SectionEditor::SectionEditor(std::filesystem::path libraryRoot) : libraryRoot_(std::move(libraryRoot))
@@ -68,6 +78,7 @@ bool SectionEditor::leave(Game& game)
 {
     if (hasSection_ && dirty_ && !saveDraft(game)) return false;
     preview_.reset(); targetAsset_.reset();
+    resetBuildTools();
     hasSection_ = dirty_ = testComplete_ = checkpointReached_ = false;
     assets_.clear(); ++revision_;
     meta_.tested = false;
@@ -90,6 +101,7 @@ void SectionEditor::newSection(Game& game)
     draftPath_.clear();
     acceptedPath_.clear();
     undo_.clear(); redo_.clear();
+    resetBuildTools();
     hasSection_ = dirty_ = true;
     testComplete_ = checkpointReached_ = false;
     testElapsed_ = autosaveElapsed_ = 0;
@@ -117,6 +129,7 @@ void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draf
     testComplete_ = checkpointReached_ = false;
     testElapsed_ = autosaveElapsed_ = 0; testFalls_ = 0;
     undo_.clear(); redo_.clear(); ++revision_;
+    resetBuildTools();
     screen_ = SectionEditorScreen::Build;
     game.camera.setPosition(meta_.spawn + glm::vec3(0, 4, 1));
     pointCamera(game.camera, meta_.finish - meta_.spawn + glm::vec3(0, -8, 0));
@@ -159,6 +172,14 @@ void SectionEditor::changed(Edit edit)
     edit.afterMeta = meta_; edit.afterAssets = assets_;
     undo_.push_back(std::move(edit));
     if (undo_.size() > 256) undo_.pop_front();
+    // Large fills are one action, but retaining hundreds of full-room fills
+    // should not make the editor's history consume unbounded memory.
+    std::size_t cells = 0;
+    for (const auto& action : undo_) cells += action.blocks.size();
+    while (cells > 1000000 && undo_.size() > 1) {
+        cells -= undo_.front().blocks.size();
+        undo_.pop_front();
+    }
     redo_.clear(); dirty_ = true; ++revision_;
 }
 void SectionEditor::undo(Game& game, bool redo)
@@ -168,6 +189,7 @@ void SectionEditor::undo(Game& game, bool redo)
     if (source.empty()) { message_ = redo ? "NOTHING TO REDO" : "NOTHING TO UNDO"; return; }
     auto edit = std::move(source.back()); source.pop_back();
     if (edit.position) game.world.set(*edit.position, redo ? edit.after : edit.before);
+    for (const auto& block : edit.blocks) game.world.set(block.position, redo ? block.after : block.before);
     meta_ = redo ? edit.afterMeta : edit.beforeMeta;
     assets_ = redo ? edit.afterAssets : edit.beforeAssets;
     destination.push_back(std::move(edit));
@@ -187,12 +209,13 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
         }
         if (actions.devTest || (actions.devClick && *actions.devClick == SectionUiTest)) {
             if (screen_ == SectionEditorScreen::Test) stopTest(game);
-            else if (hasSection_ && (screen_ == SectionEditorScreen::Build || screen_ == SectionEditorScreen::Palette)) startTest(game);
+            else if (hasSection_ && (screen_ == SectionEditorScreen::Build || screen_ == SectionEditorScreen::Palette
+                                    || screen_ == SectionEditorScreen::Tools)) startTest(game);
             return;
         }
         if (actions.devAccept || (actions.devClick && *actions.devClick == SectionUiAccept)) {
             if (hasSection_ && (screen_ == SectionEditorScreen::Build || screen_ == SectionEditorScreen::Test
-                                || screen_ == SectionEditorScreen::Palette)) openAccept(game);
+                                || screen_ == SectionEditorScreen::Palette || screen_ == SectionEditorScreen::Tools)) openAccept(game);
             return;
         }
         if (menuOpen()) updateMenu(game, actions);
@@ -208,6 +231,7 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
 
 void SectionEditor::updateMenu(Game& game, const InputActions& actions)
 {
+    if (screen_ == SectionEditorScreen::Tools) { updateToolsMenu(game, actions); return; }
     const int click = actions.devClick.value_or(-1);
     const bool confirm = actions.upgrade || click == SectionUiConfirm;
     const bool back = actions.closeMenu || click == SectionUiBack;
@@ -364,11 +388,15 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
                                        glm::vec3(SectionInteriorMax) - glm::vec3(.2f)));
     if (actions.devPalette) { screen_ = SectionEditorScreen::Palette; preview_.reset(); game.target.reset(); return; }
     if (actions.devSlot && *actions.devSlot >= 0 && *actions.devSlot < 9) selectedSlot_ = *actions.devSlot;
-    else if (actions.materialStep || actions.toolStep) selectedSlot_ = wrap(selectedSlot_ + ((actions.materialStep + actions.toolStep) > 0 ? 1 : -1), 9);
-    if (actions.devRotate) facing_ = (facing_ + 1) % 4;
+    else if (actions.materialStep || actions.toolStep) selectedSlot_ = wrap(selectedSlot_ + actions.materialStep % 9 + actions.toolStep % 9, 9);
+    if (actions.devRotate) {
+        if (buildMode_ == SectionBuildMode::Paste) pasteRotation_ = (pasteRotation_ + 1) % 4;
+        else facing_ = (facing_ + 1) % 4;
+    }
     if (actions.devVariation) ++variation_;
     if (actions.undo || actions.redo) undo(game, actions.redo && !actions.undo);
     refreshTarget(game);
+    if (updateBuildTools(game, actions)) return;
     if (!actions.remove && !actions.place && !actions.pick) return;
     Edit edit;
     edit.beforeMeta = meta_; edit.beforeAssets = assets_;
@@ -431,6 +459,205 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         changed(std::move(edit)); message_ = "MOVED " + item.name + " | ONE OF EACH PER SECTION";
     }
     refreshTarget(game);
+}
+
+std::optional<SectionBox> SectionEditor::buildSelection() const
+{
+    if (!cornerA_ || !cornerB_) return std::nullopt;
+    return normalizedSectionBox(*cornerA_, *cornerB_);
+}
+
+void SectionEditor::resetBuildTools()
+{
+    buildMode_ = SectionBuildMode::Single;
+    brushErasing_ = false;
+    cornerA_.reset(); cornerB_.reset(); toolPreview_.reset(); previewOrigin_.reset();
+    previewPlan_ = {}; previewRevision_ = ~std::uint64_t(0);
+    toolPreviewValid_ = false;
+    // Keep the clipboard for reusing structures in another section this session.
+}
+
+void SectionEditor::applyPlan(Game& game, SectionEditPlan plan, std::string_view label)
+{
+    if (!plan.error.empty()) { message_ = plan.error; return; }
+    if (plan.blocks.empty() && plan.assets == assets_) { message_ = "NO CHANGES | " + std::string(label); return; }
+    Edit edit;
+    edit.beforeMeta = meta_; edit.beforeAssets = assets_;
+    edit.blocks = std::move(plan.blocks);
+    for (const auto& cell : edit.blocks) game.world.set(cell.position, cell.after);
+    assets_ = std::move(plan.assets);
+    const auto count = edit.blocks.size();
+    changed(std::move(edit));
+    message_ = std::string(label) + " | " + std::to_string(count) + " BLOCKS | CTRL/CMD+Z UNDO";
+}
+
+void SectionEditor::copySelection(Game& game)
+{
+    const auto box = buildSelection();
+    if (!box) { message_ = "SELECT TWO CORNERS FIRST | G TOOLS / J AND K AT YOUR POSITION"; return; }
+    clipboard_ = copySectionBox(game.world, assets_, *box);
+    ++clipboardRevision_;
+    previewRevision_ = ~std::uint64_t(0);
+    pasteRotation_ = 0;
+    message_ = "COPIED " + std::to_string(clipboard_.size.x) + " X " + std::to_string(clipboard_.size.y)
+        + " X " + std::to_string(clipboard_.size.z) + " + " + std::to_string(clipboard_.assets.size())
+        + " ASSETS | CTRL/CMD+V TO PREVIEW";
+}
+
+void SectionEditor::beginPaste()
+{
+    if (clipboard_.empty()) { message_ = "COPY A SELECTION FIRST | G TOOLS"; return; }
+    buildMode_ = SectionBuildMode::Paste;
+    screen_ = SectionEditorScreen::Build;
+    preview_.reset();
+    previewRevision_ = ~std::uint64_t(0);
+    message_ = "PASTE PREVIEW | RIGHT CLICK STAMP / T ROTATE / X CANCEL";
+}
+
+void SectionEditor::fillSelection(Game& game, SectionFillMode mode)
+{
+    const auto box = buildSelection();
+    if (!box) { message_ = "SELECT TWO CORNERS FIRST | LEFT / RIGHT IN SELECT MODE, OR J / K"; return; }
+    const auto block = hotbar_[selectedSlot_].block;
+    if (mode != SectionFillMode::Erase && !block) { message_ = "SELECT A BLOCK IN YOUR HOTBAR FOR FILL OR SHELL"; return; }
+    applyPlan(game, planSectionFill(game.world, assets_, *box, block.value_or(Block::Air), mode,
+                                   game.camera.position()),
+              mode == SectionFillMode::Erase ? "CLEARED SELECTION" : mode == SectionFillMode::Hollow ? "BUILT SHELL" : "FILLED SELECTION");
+}
+
+void SectionEditor::updateToolsMenu(Game& game, const InputActions& actions)
+{
+    if (actions.undo || actions.redo) { undo(game, actions.redo && !actions.undo); return; }
+    if (actions.devSlot && *actions.devSlot >= 0 && *actions.devSlot < 9) selectedSlot_ = *actions.devSlot;
+    const int click = actions.devClick.value_or(-1);
+    if (actions.closeMenu || actions.devTools || click == SectionUiBack) {
+        screen_ = SectionEditorScreen::Build;
+        refreshTarget(game); refreshToolPreview(game); return;
+    }
+    if (actions.devPalette) { screen_ = SectionEditorScreen::Palette; return; }
+    if (click >= SectionUiModeBase && click < SectionUiModeBase + 3) {
+        buildMode_ = static_cast<SectionBuildMode>(click - SectionUiModeBase);
+        brushErasing_ = false;
+        screen_ = SectionEditorScreen::Build;
+        message_ = buildMode_ == SectionBuildMode::Select ? "LEFT CLICK CORNER A / RIGHT CLICK CORNER B | J / K SET AT YOUR POSITION"
+            : buildMode_ == SectionBuildMode::Brush ? "CUBE BRUSH | RIGHT ADD / LEFT CLEAR | G CHOOSE SIZE"
+            : "SINGLE BLOCKS AND ASSETS | G BUILD TOOLS";
+    } else if (click >= SectionUiBrushSizeBase && click < SectionUiBrushSizeBase + 4) {
+        constexpr int sizes[]{1,3,5,9};
+        brushSize_ = sizes[click - SectionUiBrushSizeBase];
+        brushErasing_ = false;
+        buildMode_ = SectionBuildMode::Brush;
+        message_ = "BRUSH SIZE " + std::to_string(brushSize_) + " | G RETURN TO BUILD";
+    } else if (click == SectionUiFill) fillSelection(game, SectionFillMode::Solid);
+    else if (click == SectionUiShell) fillSelection(game, SectionFillMode::Hollow);
+    else if (click == SectionUiErase) fillSelection(game, SectionFillMode::Erase);
+    else if (click == SectionUiCopy) copySelection(game);
+    else if (click == SectionUiPaste) beginPaste();
+    else if (click == SectionUiPasteAir) {
+        pasteIncludesAir_ = !pasteIncludesAir_;
+        message_ = pasteIncludesAir_ ? "PASTE WITH AIR: REPLACES THE WHOLE BOX AND ITS DECORATIONS"
+                                    : "PASTE SOLIDS ONLY: EMPTY CELLS KEEP EXISTING SCENERY";
+    } else if (click == SectionUiClearSelection) {
+        cornerA_.reset(); cornerB_.reset(); message_ = "SELECTION CLEARED";
+    } else if (click == SectionUiHeightDown || click == SectionUiHeightUp) {
+        if (auto box = buildSelection()) {
+            box->max.y = std::clamp(box->max.y + (click == SectionUiHeightUp ? 1 : -1), box->min.y, SectionInteriorMax.y - 1);
+            cornerA_ = box->min; cornerB_ = box->max;
+            message_ = "SELECTION HEIGHT " + std::to_string(box->max.y - box->min.y + 1);
+        } else message_ = "SELECT TWO CORNERS BEFORE CHANGING HEIGHT";
+    }
+    if (screen_ == SectionEditorScreen::Build) { refreshTarget(game); refreshToolPreview(game); }
+}
+
+void SectionEditor::refreshToolPreview(Game& game)
+{
+    toolPreview_.reset(); toolPreviewValid_ = false;
+    if (buildMode_ != SectionBuildMode::Brush && buildMode_ != SectionBuildMode::Paste) return;
+    preview_.reset(); targetAsset_.reset();
+    if (!game.target || game.target->normal == glm::ivec3(0)) return;
+    if (buildMode_ == SectionBuildMode::Brush) {
+        toolPreview_ = brushBox(*game.target, brushSize_, !brushErasing_);
+        const auto block = hotbar_[selectedSlot_].block;
+        if (block && validSectionBox(*toolPreview_)) {
+            const auto cameraCell = glm::ivec3(glm::floor(game.camera.position()));
+            const bool inside = glm::all(glm::greaterThanEqual(cameraCell, toolPreview_->min))
+                && glm::all(glm::lessThanEqual(cameraCell, toolPreview_->max));
+            toolPreviewValid_ = brushErasing_ || !isSolid(*block) || !inside;
+        }
+        return;
+    }
+    const auto size = rotatedSectionSize(clipboard_, pasteRotation_);
+    auto origin = game.target->position + game.target->normal;
+    for (int axis = 0; axis < 3; ++axis) if (game.target->normal[axis] < 0) origin[axis] -= size[axis] - 1;
+    toolPreview_ = SectionBox{origin, origin + size - 1};
+    const auto cameraCell = glm::ivec3(glm::floor(game.camera.position()));
+    if (!previewOrigin_ || *previewOrigin_ != origin || previewRevision_ != revision_
+        || previewCameraCell_ != cameraCell || previewRotation_ != pasteRotation_ || previewAir_ != pasteIncludesAir_) {
+        previewPlan_ = planSectionPaste(game.world, assets_, clipboard_, origin, pasteRotation_, pasteIncludesAir_, game.camera.position());
+        previewOrigin_ = origin; previewRevision_ = revision_; previewCameraCell_ = cameraCell;
+        previewRotation_ = pasteRotation_; previewAir_ = pasteIncludesAir_;
+    }
+    toolPreviewValid_ = previewPlan_.error.empty();
+}
+
+bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
+{
+    if (actions.devTools) {
+        screen_ = SectionEditorScreen::Tools; preview_.reset(); game.target.reset(); return true;
+    }
+    if (actions.devCancel) {
+        buildMode_ = SectionBuildMode::Single; toolPreview_.reset();
+        message_ = "SINGLE BUILD | SELECTION AND CLIPBOARD KEPT"; return true;
+    }
+    if (actions.devCornerA || actions.devCornerB) {
+        const auto cell = glm::clamp(glm::ivec3(glm::floor(game.camera.position())), SectionInteriorMin, SectionInteriorMax - 1);
+        if (actions.devCornerA) cornerA_ = cell;
+        if (actions.devCornerB) cornerB_ = cell;
+        buildMode_ = SectionBuildMode::Select;
+        message_ = std::string("CORNER ") + (actions.devCornerA ? "A" : "B") + " SET AT YOUR POSITION | G FILL / COPY";
+    }
+    if (actions.devCopy) copySelection(game);
+    if (actions.devPaste) beginPaste();
+    if (buildMode_ == SectionBuildMode::Brush && (actions.remove || actions.place)) brushErasing_ = actions.remove;
+    refreshToolPreview(game);
+    if (actions.undo || actions.redo || actions.devCopy || actions.devPaste || actions.devCornerA || actions.devCornerB) return true;
+    if (buildMode_ == SectionBuildMode::Single) return false;
+    preview_.reset(); targetAsset_.reset();
+    if (buildMode_ == SectionBuildMode::Select) {
+        if (actions.removePressed || actions.placePressed) {
+            if (!game.target) { message_ = "AIM AT A BLOCK, OR USE J / K TO SELECT THE AIR AT YOUR POSITION"; return true; }
+            auto cell = game.target->position;
+            if (!sectionInterior(cell)) cell += game.target->normal;
+            if (!sectionInterior(cell)) { message_ = "SELECT INSIDE THE ROOM"; return true; }
+            if (actions.removePressed) cornerA_ = cell;
+            else cornerB_ = cell;
+            message_ = std::string("CORNER ") + (actions.removePressed ? "A" : "B") + " SET | G FILL / COPY / HEIGHT";
+        }
+        return true;
+    }
+    if (buildMode_ == SectionBuildMode::Paste) {
+        if (actions.placePressed) {
+            if (!toolPreview_) message_ = "AIM AT A SURFACE FOR THE PASTE PREVIEW";
+            else {
+                applyPlan(game, std::move(previewPlan_), "PASTED STRUCTURE");
+                previewRevision_ = ~std::uint64_t(0);
+                refreshTarget(game); refreshToolPreview(game);
+            }
+        }
+        return true;
+    }
+    if (!actions.remove && !actions.place) return true;
+    if (!game.target || game.target->normal == glm::ivec3(0)) { message_ = "AIM AT A BLOCK FACE FOR THE BRUSH"; return true; }
+    const auto block = hotbar_[selectedSlot_].block;
+    if (!block) { message_ = "SELECT A BLOCK FOR THE BRUSH | X FOR SINGLE ASSET PLACEMENT"; return true; }
+    auto plan = planSectionFill(game.world, assets_, brushBox(*game.target, brushSize_, !actions.remove),
+                               *block, actions.remove ? SectionFillMode::Erase : SectionFillMode::Solid, game.camera.position());
+    // Painting builds around existing scenery. The explicit Fill command is
+    // available when replacing the contents of a region is intended.
+    if (!actions.remove) std::erase_if(plan.blocks, [](const SectionBlockEdit& cell) { return cell.before != Block::Air; });
+    applyPlan(game, std::move(plan), actions.remove ? "CLEARED BRUSH" : "PAINTED BRUSH");
+    refreshTarget(game); refreshToolPreview(game);
+    return true;
 }
 
 void SectionEditor::faceMarker(Game& game, glm::vec3 position)
