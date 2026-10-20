@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/vec2.hpp>
 
 namespace voxel {
@@ -493,6 +494,24 @@ ItemStack itemPickupStack(const HubAsset& asset)
     return asset.kind == HubAssetKind::ItemPickup ? asset.pickupItem : ItemStack{};
 }
 
+glm::mat4 pickupTransform(const HubAsset& asset, float timeSeconds)
+{
+    constexpr double tau = 6.283185307179586;
+    const double time = std::isfinite(timeSeconds) ? timeSeconds : 0;
+    const double phase = std::remainder(glm::dot(asset.position,glm::vec3(1.731f,.937f,2.417f)),tau);
+    const float height = .34f + .055f * static_cast<float>(std::sin(std::remainder(time*1.9+phase,tau)));
+    const float angle = static_cast<float>(std::remainder(time*.62+phase+asset.facing*tau*.25,tau));
+    auto transform = glm::translate(glm::mat4(1),asset.position+glm::vec3(0,height,0));
+    transform = glm::rotate(transform,angle,glm::vec3(0,1,0));
+    return glm::scale(transform,glm::vec3(.55f));
+}
+
+std::pair<glm::vec3,glm::vec3> pickupVisualBounds(const HubAsset& asset)
+{
+    return {asset.position+glm::vec3(-.32f,.28f,-.32f),
+            asset.position+glm::vec3(.32f,.85f,.32f)};
+}
+
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
@@ -517,6 +536,7 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
 {
     HubDressing dressing;
     for (const auto& asset : assets) {
+        if (isItemPickup(asset.kind)) continue; // Drawn as independently animated instances.
         if (!World::contains(glm::ivec3(glm::floor(asset.position)))) continue;
         const auto local = glm::ivec3(glm::floor(asset.position)) - World::Min;
         const auto index = static_cast<std::size_t>(local.x / Chunk::Size

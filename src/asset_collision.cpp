@@ -216,6 +216,8 @@ void AssetCollision::rebuild(std::span<const HubAsset> assets)
 {
     auto data = std::make_shared<Data>();
     for (const auto& asset : assets) {
+        // Dropped items are collectible visuals, never walls, floors, or marker supports.
+        if (isItemPickup(asset.kind)) continue;
         // Leave ample room for mesh extents and safe conversion to grid cells.
         if (static_cast<std::size_t>(asset.kind) >= HubAssetCount || !finite(asset.position)
             || glm::any(glm::greaterThan(glm::abs(asset.position), glm::vec3(10000000.0f)))) continue;

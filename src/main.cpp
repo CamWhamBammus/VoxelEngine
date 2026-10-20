@@ -104,7 +104,7 @@ int main(int argc, char** argv)
                             static_cast<float>(now), !game.editorMode()
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
                             !game.rootCrossingActive() && !game.devMode() && !game.levelActive(),
-                            game.sectionSceneAssets());
+                            game.sectionSceneAssets(), game.sectionPickupOffsets());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
@@ -113,11 +113,13 @@ int main(int argc, char** argv)
             if (game.devMode() && game.sectionEditor().hasSection() && !game.devMenuOpen())
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
                                       game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
-                                      game.camera, width, height);
+                                      game.camera, width, height, static_cast<float>(now));
             if (game.devFlying() && !game.devMenuOpen())
-                selection.drawBuildTools(game.sectionEditor(), game.camera, width, height);
+                selection.drawBuildTools(game.sectionEditor(), game.camera, width, height,
+                                         static_cast<float>(now));
             if (game.levelActive() && !game.levelMenuOpen())
-                selection.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height);
+                selection.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height,
+                                      static_cast<float>(now));
 
             // Refresh text four times per second; draw the cached text every frame.
             ++sampleFrames;

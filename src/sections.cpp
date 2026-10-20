@@ -89,8 +89,8 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::LootChest, "Wooden chest", "Chests / authored contents"},
     SectionAssetInfo{HubAssetKind::CrystalChest, "Crystal chest", "Chests / authored contents"},
     SectionAssetInfo{HubAssetKind::IronboundChest, "Ironbound chest", "Chests / authored contents"},
-    SectionAssetInfo{HubAssetKind::KeyPickup, "Cave key", "Loot / E collect in play"},
-    SectionAssetInfo{HubAssetKind::ItemPickup, "Item pickup", "Items / E collect in play"},
+    SectionAssetInfo{HubAssetKind::KeyPickup, "Cave key", "Loot / walk over to collect"},
+    SectionAssetInfo{HubAssetKind::ItemPickup, "Item pickup", "Items / walk over to collect"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};

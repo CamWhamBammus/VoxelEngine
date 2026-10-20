@@ -81,7 +81,17 @@ void everyKindHasSurfaces()
                                  facing, std::uint32_t(41 + facing)};
             const auto mesh = buildHubAsset(asset);
             auto collision = collisionFor(asset);
-            check(!collision.empty(), "every non-block asset kind receives collision geometry");
+            if (isItemPickup(asset.kind)) {
+                const auto low = asset.position - glm::vec3(1);
+                const auto high = asset.position + glm::vec3(1);
+                check(collision.empty() && !collision.overlaps(low, high),
+                      "legacy keys and dropped items never occupy player space");
+                check(near(collision.sweep(low, high, 0, 4), 4)
+                      && !collision.raycast(asset.position + glm::vec3(0, 2, 0), {0,-1,0}, 4),
+                      "dropped items neither stop movement nor provide a solid surface");
+                continue;
+            }
+            check(!collision.empty(), "every scenery and chest kind receives collision geometry");
             float area = 0;
             glm::vec3 center{}, normal{};
             for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {

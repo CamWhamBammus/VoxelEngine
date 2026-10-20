@@ -23,6 +23,7 @@ void Game::endSectionLoot()
     closeInventory();
     discardSectionKeys();
     loot_.clear();
+    pickupAttempts_.clear();
     lootPrompt_.clear();
     sectionLootActive_ = false;
     if (playtestEquipment_) {
@@ -54,6 +55,7 @@ void Game::beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std
     if (playtest) playtestEquipment_ = equipment;
     // Authoring always tests a fresh room without touching real collection history.
     loot_.begin(assets, section, playtest ? std::map<std::string, LootProgress>{} : equipment.lootProgress);
+    pickupAttempts_.resize(loot_.size());
     sectionLootActive_ = true;
     player.setAssetCollision(loot_.collision());
     player.setFeetPosition(world, player.feetPosition());
@@ -67,7 +69,9 @@ void Game::refreshLootPrompt()
     if (!target) return;
     if (loot_.pickup(*target)) {
         const auto& stack = loot_.contents(*target)[0];
-        lootPrompt_ = "E  PICK UP " + std::to_string(stack.count) + " " + std::string(loot_.name(*target));
+        lootPrompt_ = "WALK OVER TO COLLECT " + std::to_string(stack.count) + " " + std::string(loot_.name(*target));
+        auto space = equipment.inventory;
+        if (space.add(stack.item, stack.count) == stack.count) lootPrompt_ += " / BAG FULL";
         if (stack.item == ItemId::Key) lootPrompt_ += " / THIS SECTION ONLY";
         return;
     }
@@ -84,10 +88,7 @@ void Game::refreshLootPrompt()
 
 bool Game::openLoot(std::size_t index)
 {
-    if (loot_.pickup(index)) {
-        takeLoot(index);
-        return false;
-    }
+    if (loot_.pickup(index)) return false;
     if (loot_.locked(index)) {
         auto receipt = std::find_if(heldKeys_.begin(), heldKeys_.end(), [](const auto& key) { return key.count > 0; });
         if (equipment.inventory.count(ItemId::Key) == 0 || receipt == heldKeys_.end()) {
@@ -136,7 +137,6 @@ void Game::takeLoot(std::size_t index, std::optional<std::size_t> selected)
     const bool leftovers = std::any_of(remaining.begin(), remaining.end(), [](const auto& stack) { return stack.count > 0; });
     if (!taken) {
         inventoryMessage_ = leftovers ? "BAG FULL / REMAINING LOOT STAYS HERE" : "CHEST EMPTY";
-        if (loot_.pickup(index)) inventoryOpen_ = true;
     } else if (commitEquipment(next, keyCount > 0 ? "KEY COLLECTED / USE IN THIS SECTION OR FIND IT AGAIN LATER"
         : "COLLECTED " + std::to_string(taken) + " ITEMS / SAVED PERMANENTLY")) {
         loot_.contents(index) = std::move(remaining);
@@ -144,7 +144,37 @@ void Game::takeLoot(std::size_t index, std::optional<std::size_t> selected)
         const auto previousCollision = loot_.collision();
         loot_.refreshAssets();
         if (loot_.collision() != previousCollision) player.setAssetCollision(loot_.collision());
-    } else if (loot_.pickup(index)) inventoryOpen_ = true;
+    }
+}
+
+void Game::collectNearbyItems(float deltaSeconds)
+{
+    if (!sectionLootActive_) return;
+    for (std::size_t i = 0; i < loot_.size(); ++i) {
+        if (!loot_.canCollectPickup(i, world, player.feetPosition())) {
+            loot_.stopPickupPull(i);
+            pickupAttempts_[i].reset();
+            continue;
+        }
+        if (pickupAttempts_[i] && *pickupAttempts_[i] == equipment.inventory) {
+            loot_.stopPickupPull(i);
+            continue;
+        }
+        const auto& stack = loot_.contents(i)[0];
+        auto space = equipment.inventory;
+        if (space.add(stack.item, stack.count) == stack.count) {
+            inventoryMessage_ = "BAG FULL / REMAINING LOOT STAYS HERE";
+            pickupAttempts_[i] = equipment.inventory;
+            loot_.stopPickupPull(i);
+            continue;
+        }
+        if (!loot_.pullPickup(i, player.feetPosition(), deltaSeconds)) continue;
+        takeLoot(i);
+        loot_.stopPickupPull(i);
+        // Remember the resulting bag as well as failed attempts. A partial
+        // transfer must not repeatedly retry its full remainder every frame.
+        pickupAttempts_[i] = equipment.inventory;
+    }
 }
 
 bool Game::commitEquipment(const Equipment& next, std::string_view action)
@@ -166,7 +196,7 @@ bool Game::commitEquipment(const Equipment& next, std::string_view action)
     }
 }
 
-bool Game::updateInventory(const InputActions& actions)
+bool Game::updateInventory(const InputActions& actions, float deltaSeconds)
 {
     const bool testing = devMode_ && sectionEditor_.screen() == SectionEditorScreen::Test;
     const bool playing = !editorMode_ && ((!devMode_ && !levelController_.open() && !smithOpen_ && !crossingMenuOpen_)
@@ -184,9 +214,14 @@ bool Game::updateInventory(const InputActions& actions)
         return true;
     }
     if (!inventoryOpen_) {
+        if (!actions.devToggle && !actions.devTest && !actions.levelMenu && !actions.levelCreator
+            && !actions.returnToHub && !actions.respawn && !actions.restartCrossing) {
+            collectNearbyItems(deltaSeconds);
+            refreshLootPrompt();
+        }
         if (!actions.interact) return false;
         const auto target = loot_.target(world, player.eyePosition(), camera.forward());
-        if (!target) return false;
+        if (!target || loot_.pickup(*target)) return false;
         openLoot(*target);
         return true;
     }

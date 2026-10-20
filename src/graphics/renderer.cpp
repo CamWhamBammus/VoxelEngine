@@ -22,6 +22,16 @@ namespace voxel {
 
 namespace {
 
+GpuMesh* pickupMesh(std::array<GpuMesh,ItemCount>& cache, const HubAsset& asset)
+{
+    const auto stack = itemPickupStack(asset);
+    if (!validItem(stack.item) || stack.count <= 0) return nullptr;
+    auto& mesh = cache[static_cast<std::size_t>(stack.item)];
+    if (!mesh.indexCount())
+        mesh.upload(buildHubAsset({HubAssetKind::ItemPickup,{},0,0,{}, {stack.item,1}}));
+    return &mesh;
+}
+
 constexpr const char* worldVertexShader = R"glsl(#version 410 core
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -29,18 +39,19 @@ layout(location = 2) in vec3 color;
 layout(location = 3) in float material;
 layout(location = 4) in vec4 relief;
 uniform mat4 viewProjection;
+uniform mat4 model;
 out vec3 worldPosition;
 out vec3 surfaceNormal;
 out vec3 surfaceColor;
 out vec4 reliefSurface;
 flat out int materialId;
 void main() {
-    worldPosition = position;
-    surfaceNormal = normal;
+    worldPosition = (model * vec4(position, 1.0)).xyz;
+    surfaceNormal = normalize(mat3(model) * normal);
     surfaceColor = color;
     reliefSurface = relief;
     materialId = int(material + 0.5);
-    gl_Position = viewProjection * vec4(position, 1.0);
+    gl_Position = viewProjection * vec4(worldPosition, 1.0);
 }
 )glsl";
 
@@ -276,7 +287,7 @@ void WorldRenderer::uploadLights(const World& world)
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
                            bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets,
-                           std::span<const HubAsset> placedAssets)
+                           std::span<const HubAsset> placedAssets, std::span<const glm::vec3> pickupOffsets)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -296,8 +307,16 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         if (index >= layer) rebuild[index - layer] = true;
         if (index + layer < meshes_.size()) rebuild[index + layer] = true;
     }
-    bool changed = hubAssets != hubAssets_
-        || !std::equal(placedAssets.begin(), placedAssets.end(), placedAssets_.begin(), placedAssets_.end());
+    // Floating items are independent draw instances. Their movement, stack size
+    // and collection must never invalidate terrain or the world-light textures.
+    auto cached = placedAssets_.begin();
+    bool changed = hubAssets != hubAssets_;
+    for (const auto& asset : placedAssets) {
+        if (isItemPickup(asset.kind)) continue;
+        if (cached == placedAssets_.end() || *cached != asset) { changed = true; break; }
+        ++cached;
+    }
+    changed |= cached != placedAssets_.end();
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (rebuild[index]) {
             auto opaque = buildMesh(world, index);
@@ -311,11 +330,15 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     }
     std::vector<HubAssetLight> assetLights;
     if (changed) {
+        ++sceneRebuildCount_;
+        placedAssets_.clear();
+        for (const auto& asset : placedAssets)
+            if (!isItemPickup(asset.kind)) placedAssets_.push_back(asset);
         // Plans can depend on supports farther than an adjacent voxel, so a
         // changed world refreshes the entire small set of handcrafted models.
         // Expedition test rooms keep voxel roots and natural cave details but
         // do not inherit fittings from the village's fixed architectural plan.
-        auto dressing = hubAssets ? buildHubDressing(world) : buildAssetDressing(placedAssets);
+        auto dressing = hubAssets ? buildHubDressing(world) : buildAssetDressing(placedAssets_);
         for (std::size_t index = 0; index < assets_.size(); ++index) {
             assets_[index].upload(dressing.meshes[index]);
         }
@@ -415,7 +438,6 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         uploadLights(world);
         meshedWorld_ = world;
         hubAssets_ = hubAssets;
-        placedAssets_.assign(placedAssets.begin(), placedAssets.end());
     }
     glViewport(0, 0, width, height);
     if (underground) postProcess_.begin(width, height);
@@ -437,6 +459,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                                     * camera.viewMatrix();
     const Frustum frustum(viewProjection);
     shader_.setMat4("viewProjection", viewProjection);
+    shader_.setMat4("model", glm::mat4(1));
     shader_.setMat4("inverseViewProjection", glm::inverse(viewProjection));
     // Keep unused 2D samplers bound to a complete texture during the opaque
     // pass, including the first frame before a scene snapshot exists.
@@ -453,7 +476,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
-    visibleChunks_ = drawnTriangles_ = 0;
+    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -484,6 +507,31 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             drawnTriangles_ += assets_[index].indexCount() / 3;
             shader_.setInt("decorative", 0);
         }
+    }
+    // Render before the opaque snapshot so water refraction and scene depth
+    // include animated drops, just as they include walls and static props.
+    if (underground && !hubAssets) {
+        shader_.setInt("decorative", 1);
+        for (std::size_t index = 0; index < placedAssets.size(); ++index) {
+            const auto& asset = placedAssets[index];
+            if (!isItemPickup(asset.kind) || !World::contains(glm::ivec3(glm::floor(asset.position)))) continue;
+            const auto mesh = pickupMesh(pickups_,asset);
+            if (!mesh) continue;
+            pickupTriangles_ += mesh->indexCount()/3;
+            const auto offset = index < pickupOffsets.size() ? pickupOffsets[index] : glm::vec3(0);
+            const auto [minimum,maximum] = pickupVisualBounds(asset);
+            if (!frustum.intersects(minimum+offset,maximum+offset)) continue;
+            const auto cell = glm::clamp(glm::ivec3(glm::floor(asset.position+offset)),World::Min,World::MaxExclusive-1)-World::Min;
+            const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
+                + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
+            shader_.setInt("lightOffset", lightOffsets_[chunk]);
+            shader_.setInt("lightCount", lightCounts_[chunk]);
+            shader_.setMat4("model", glm::translate(glm::mat4(1),offset)*pickupTransform(asset,timeSeconds));
+            mesh->draw();
+            drawnTriangles_ += mesh->indexCount()/3;
+        }
+        shader_.setMat4("model", glm::mat4(1));
+        shader_.setInt("decorative", 0);
     }
     if (!visibleWater.empty()) {
         if (underground && !wireframe) {
@@ -529,6 +577,7 @@ std::size_t WorldRenderer::triangleCount() const
         for (const auto& mesh : details_) total += mesh.indexCount() / 3;
         for (const auto& mesh : relief_) total += mesh.indexCount() / 3;
         for (const auto& mesh : assets_) total += mesh.indexCount() / 3;
+        total += pickupTriangles_;
     }
     return total;
 }
@@ -574,7 +623,7 @@ MeshData clipboardPreviewMesh(const SectionClipboard& clipboard, int rotation)
                 if (!append(buildMesh(chunk, origin, sample))) return {};
             }
     for (const auto& asset : clipboard.assets)
-        if (!append(buildHubAsset(asset))) return {};
+        if (!isItemPickup(asset.kind) && !append(buildHubAsset(asset))) return {};
     const auto turn = [&](glm::vec3 point, bool position) -> glm::vec3 {
         const auto size = position ? glm::vec3(clipboard.size) : glm::vec3(0);
         switch (rotation & 3) {
@@ -719,7 +768,8 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
 }
 
 void Overlay::drawSection(const SectionMetadata& section, const std::optional<HubAsset>& preview,
-                           const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height)
+                           const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height,
+                           float timeSeconds)
 {
     if (width <= 0 || height <= 0) return;
     const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST), cullFace = glIsEnabled(GL_CULL_FACE);
@@ -768,7 +818,17 @@ void Overlay::drawSection(const SectionMetadata& section, const std::optional<Hu
     marker(section.spawn, {0.40f,1.0f,0.48f}, &startLabel_);
     if (section.checkpoint) marker(*section.checkpoint, {0.15f,0.95f,1.0f}, nullptr);
     marker(section.finish, {1.0f,0.70f,0.16f}, &endLabel_);
-    if (selectedAsset) {
+    const auto drop = [&](const HubAsset& asset, glm::vec3 color) {
+        if (const auto mesh = pickupMesh(pickupMeshes_,asset)) {
+            shader_.setMat4("transform",projection*pickupTransform(asset,timeSeconds));
+            shader_.setVec3("color",color);
+            glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
+            mesh->draw();
+        }
+    };
+    if (selectedAsset && isItemPickup(selectedAsset->kind)) {
+        drop(*selectedAsset,{1.0f,.85f,.45f});
+    } else if (selectedAsset) {
         const auto mesh = buildHubAsset(*selectedAsset);
         if (!mesh.vertices.empty()) {
             auto low = mesh.vertices.front().position, high = low;
@@ -778,7 +838,9 @@ void Overlay::drawSection(const SectionMetadata& section, const std::optional<Hu
             box(low - 0.015f, high - low + 0.03f, {1.0f,0.85f,0.45f});
         }
     }
-    if (preview) {
+    if (preview && isItemPickup(preview->kind)) {
+        drop(*preview,{.45f,1.0f,.65f});
+    } else if (preview) {
         if (previewAsset_ != preview) {
             previewMesh_.upload(buildHubAsset(*preview));
             previewAsset_ = preview;
@@ -797,7 +859,8 @@ void Overlay::drawSection(const SectionMetadata& section, const std::optional<Hu
     glPolygonMode(GL_FRONT_AND_BACK, polygon[0]);
 }
 
-void Overlay::drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height)
+void Overlay::drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height,
+                             float timeSeconds)
 {
     if (width <= 0 || height <= 0) return;
     const auto selection = editor.buildSelection();
@@ -861,6 +924,23 @@ void Overlay::drawBuildTools(const SectionEditor& editor, const Camera& camera, 
                 }
                 shader_.setVec3("color",color*0.66f);
                 clipboardMesh_.draw();
+                for (auto asset : editor.clipboard().assets) {
+                    if (!isItemPickup(asset.kind)) continue;
+                    const auto& clipboard = editor.clipboard();
+                    const auto point = asset.position;
+                    switch (editor.pasteRotation() & 3) {
+                    case 1: asset.position={point.z,point.y,clipboard.size.x-point.x}; break;
+                    case 2: asset.position={clipboard.size.x-point.x,point.y,clipboard.size.z-point.z}; break;
+                    case 3: asset.position={clipboard.size.z-point.z,point.y,point.x}; break;
+                    default: break;
+                    }
+                    asset.position += origin;
+                    asset.facing = (asset.facing+editor.pasteRotation())&3;
+                    if (const auto mesh = pickupMesh(pickupMeshes_,asset)) {
+                        shader_.setMat4("transform",projection*pickupTransform(asset,timeSeconds));
+                        mesh->draw();
+                    }
+                }
             }
         }
         const auto boundsColor = fillGaps && editor.toolPreviewValid() ? cyan*0.30f : color;

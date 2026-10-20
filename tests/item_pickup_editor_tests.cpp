@@ -42,6 +42,7 @@ void aim(Camera& camera, glm::vec3 point)
 
 glm::vec3 center(const HubAsset& asset)
 {
+    if (isItemPickup(asset.kind)) return asset.position + PickupVisualCenter;
     glm::vec3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
     for (const auto& vertex : buildHubAsset(asset).vertices) {
         low = glm::min(low, vertex.position); high = glm::max(high, vertex.position);
@@ -71,10 +72,12 @@ void openPalette(Game& game)
 
 void collect(Game& game, const HubAsset& asset)
 {
-    require(game.player.setFeetPosition(game.world, asset.position + glm::vec3(0, 0, 2.5f)),
-            "pickup must have a walkable approach");
-    game.camera.setPosition(game.player.eyePosition()); aim(game.camera, center(asset));
-    press(game, &InputActions::interact);
+    require(game.player.setFeetPosition(game.world, asset.position),
+            "dropped items must not block the player");
+    game.camera.setPosition(game.player.eyePosition());
+    aim(game.camera, game.camera.position() + glm::vec3(0, 0, 1));
+    InputActions walking; walking.active = true;
+    for (int frame = 0; frame < 30; ++frame) game.update(walking, 1.0f / 60);
 }
 }
 
@@ -151,13 +154,23 @@ int main()
             press(game, &InputActions::place);
             require(editor.assets().size() == count + 1 && editor.assets().back() == preview,
                     "right click places the exact preview stack");
-            float lowest = std::numeric_limits<float>::max();
-            for (const auto& vertex : buildHubAsset(editor.assets().back()).vertices)
-                lowest = std::min(lowest, vertex.position.y);
-            require(std::abs(lowest - 9) < .002f, "pickup mesh rests directly on the room floor");
+            const auto [low, high] = pickupVisualBounds(editor.assets().back());
+            require(std::abs(editor.assets().back().position.y - 9) < .002f
+                    && low.y > editor.assets().back().position.y && high.y > low.y,
+                    "dropped items keep floor spawn anchors while their visible models hover above them");
             placed.push_back(editor.assets().back());
         }
         const auto built = editor.assets();
+        // Creative flight normally moves only the camera. Attach the authored
+        // room's collision here before probing its drops with the walking body.
+        game.player.setAssetCollision(editor.assetCollision());
+        for (const auto& drop : placed) {
+            require(game.player.setFeetPosition(game.world, drop.position),
+                    "creative pickup spawns have no solid collision");
+            game.camera.setPosition(game.player.eyePosition()); update(game);
+        }
+        require(editor.assets() == built && game.equipment == originalEquipment,
+                "moving through dropped items in creative mode never collects them");
         press(game, &InputActions::undo);
         require(editor.assets().size() == built.size() - 1, "pickup placement has a single undo action");
         press(game, &InputActions::redo);
@@ -188,6 +201,11 @@ int main()
                 && editor.pickupQuantity() == placed[13].pickupItem.count
                 && editor.facing() == placed[13].facing,
                 "middle pick restores the exact item, stack count and facing");
+        press(game, &InputActions::remove);
+        require(editor.assets().size() == built.size() - 1,
+                "left click removes the hovered item at its visible floating position");
+        press(game, &InputActions::undo);
+        require(editor.assets() == built, "undo restores the removed dropped stack exactly");
         pointAt(game, legacy); press(game, &InputActions::pick);
         require(editor.hotbar()[editor.selectedSlot()].pickup == ItemId::Key
                 && editor.hotbar()[editor.selectedSlot()].asset == HubAssetKind::ItemPickup
@@ -226,7 +244,7 @@ int main()
         require(game.equipment.inventory.count(ItemId::Coal) == placed[0].pickupItem.count
                 && game.equipment.inventory.count(ItemId::Key) == placed.back().pickupItem.count
                 && game.sectionSceneAssets().size() == withCopy.size() - 2,
-                "F8 collects the exact ore and key stacks and hides the collected models");
+                "walking through drops in F8 collects exact ore/key stacks without aiming or pressing E");
         require(editor.assets() == withCopy, "playtest collection never changes the authored item placements");
         press(game, &InputActions::devTest);
         require(editor.screen() == SectionEditorScreen::Build && game.equipment == originalEquipment

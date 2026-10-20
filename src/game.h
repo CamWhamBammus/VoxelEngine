@@ -95,6 +95,10 @@ public:
     void beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std::string_view section = {});
     void endSectionLoot();
     std::span<const HubAsset> sectionSceneAssets() const;
+    std::span<const glm::vec3> sectionPickupOffsets() const
+    {
+        return sectionLootActive_ ? std::span<const glm::vec3>(loot_.scenePickupOffsets()) : std::span<const glm::vec3>{};
+    }
     std::shared_ptr<const AssetCollision> sectionSceneCollision() const
     {
         return sectionLootActive_ ? loot_.collision() : sectionEditor_.assetCollision();
@@ -135,9 +139,10 @@ private:
     void leaveDevMode();
     void updatePlay(const InputActions& actions, float deltaSeconds);
     void upgradeEquipment();
-    bool updateInventory(const InputActions& actions);
+    bool updateInventory(const InputActions& actions, float deltaSeconds);
     bool commitEquipment(const Equipment& next, std::string_view action);
     void refreshLootPrompt();
+    void collectNearbyItems(float deltaSeconds);
     void closeInventory();
     bool openLoot(std::size_t index);
     void takeLoot(std::size_t index, std::optional<std::size_t> slot = {});
@@ -167,6 +172,8 @@ private:
     LootSession loot_;
     struct HeldKey { std::string source; std::size_t slot; int count; };
     std::vector<HeldKey> heldKeys_;
+    // A failed/full pickup retries after leaving its reach or changing the bag.
+    std::vector<std::optional<Inventory>> pickupAttempts_;
     bool sectionLootActive_ = false;
     std::optional<Equipment> playtestEquipment_;
     bool inventoryOpen_ = false;

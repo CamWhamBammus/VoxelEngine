@@ -63,7 +63,7 @@ void verifyInventoryHud(int width,int height)
         authoredLoot.push_back({static_cast<ItemId>(slot%ItemCount),3+slot});
     const std::vector<HubAsset> assets{
         {HubAssetKind::LootChest,{.5f,9,21.5f},0,0,authoredLoot},
-        {HubAssetKind::ItemPickup,{1.5f,9,23.5f},0,0,{},{ItemId::Key,1}}
+        {HubAssetKind::ItemPickup,{4.5f,9,24.5f},0,0,{},{ItemId::Key,1}}
     };
     saveSectionDraft(world,{},assets,temporary);
     Options options; options.dev=true; options.smokeTest=true; options.sectionLibrary=temporary.string();
@@ -162,12 +162,17 @@ void verifyInventoryHud(int width,int height)
         require(difference(chest,draw(width,height))>1000,"Empty chest state did not change visibly");
         draw(640,360,2);
         press(&InputActions::closeMenu);
-        const auto keyDirection=glm::normalize(assets.back().position+glm::vec3(0,.3f,0)-game.camera.position());
+        require(game.player.setFeetPosition(game.world,assets.back().position+glm::vec3(0,0,3)),
+                "Key prompt fixture needs an approach outside automatic pickup range");
+        game.camera.setPosition(game.player.eyePosition());
+        const auto keyDirection=glm::normalize(assets.back().position+PickupVisualCenter-game.camera.position());
         const auto oldDirection=game.camera.forward();
         game.camera.rotate(glm::degrees(std::atan2(keyDirection.z,keyDirection.x)-std::atan2(oldDirection.z,oldDirection.x)),
                            glm::degrees(std::asin(keyDirection.y)-std::asin(oldDirection.y)));
         InputActions active;active.active=true;game.update(active);
-        require(game.lootPrompt().ends_with("THIS SECTION ONLY"),"Ground key must explain its section-only lifetime");
+        require(game.lootPrompt().find("WALK OVER")!=std::string::npos
+                && game.lootPrompt().ends_with("THIS SECTION ONLY"),
+                "Dropped key prompt must explain automatic collection and its section-only lifetime");
         const auto keyPrompt=draw(640,360,2);
         // The final word must actually reach the framebuffer at small Retina size;
         // shortening this prompt would hide the key's section-only lifetime.

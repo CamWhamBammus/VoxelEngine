@@ -122,7 +122,7 @@ struct Fixture {
     {
         close(game);
         const auto& model = assets.at(asset);
-        require(game.player.setFeetPosition(game.world, model.position + glm::vec3(0,0,2.5f)),
+        require(game.player.setFeetPosition(game.world, model.position + glm::vec3(0,0,isItemPickup(model.kind) ? .7f : 2.5f)),
                 "key/chest approach must fit the player");
         game.camera.setPosition(game.player.eyePosition());
         const auto point = model.position + glm::vec3(0, isKeyPickup(model.kind) ? .3f : .65f, 0);
@@ -130,7 +130,10 @@ struct Fixture {
         const auto previous = game.camera.forward();
         game.camera.rotate(glm::degrees(std::atan2(next.z,next.x) - std::atan2(previous.z,previous.x)),
                            glm::degrees(std::asin(next.y) - std::asin(previous.y)));
-        press(game, &InputActions::interact);
+        if (isItemPickup(model.kind)) {
+            InputActions walk; walk.active = true;
+            for (int frame = 0; frame < 3; ++frame) game.update(walk, .1f);
+        } else press(game, &InputActions::interact);
     }
 
     bool pickupVisible(const Game& game) const
@@ -161,7 +164,7 @@ void persistentUnlocks(const Fixture& f)
 
     f.interact(game, 0);
     require(keys(game) == 1 && !f.pickupVisible(game),
-            "E collects a placed key and removes its visible pickup");
+            "walking over a placed key collects it and removes its visible pickup");
     require(game.player.setFeetPosition(game.world, f.assets[0].position),
             "a collected key no longer leaves collision in the section");
     press(game, &InputActions::respawn);

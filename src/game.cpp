@@ -192,7 +192,7 @@ bool Game::saveAuthoringDraft()
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
-    if (updateInventory(actions)) return;
+    if (updateInventory(actions, deltaSeconds)) return;
     if (!editorMode_ && actions.active && (actions.levelCreator || actions.levelMenu
         || (actions.devClick && *actions.devClick == SectionUiLevelCreator))) {
         if (actions.levelMenu && !levelController_.creator()

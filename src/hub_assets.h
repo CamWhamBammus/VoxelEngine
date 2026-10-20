@@ -4,7 +4,9 @@
 #include "items.h"
 #include <array>
 #include <span>
+#include <utility>
 #include <vector>
+#include <glm/mat4x4.hpp>
 
 namespace voxel {
 
@@ -53,6 +55,11 @@ constexpr bool isItemPickup(HubAssetKind kind)
     return isKeyPickup(kind) || kind == HubAssetKind::ItemPickup;
 }
 ItemStack itemPickupStack(const HubAsset& asset);
+// Pickups keep a floor anchor in the document. Their cached local mesh uses
+// this transform only while drawing; gameplay and selection use the envelope.
+inline constexpr glm::vec3 PickupVisualCenter{0,.55f,0};
+glm::mat4 pickupTransform(const HubAsset& asset, float timeSeconds);
+std::pair<glm::vec3,glm::vec3> pickupVisualBounds(const HubAsset& asset);
 std::string_view chestAssetName(HubAssetKind kind);
 // Validate all item payloads: chest contents or one generic pickup stack.
 // Other models, including legacy KeyPickup, have a canonical empty pickupItem.

@@ -1029,6 +1029,78 @@ void verifySectionAssets(int width, int height)
     std::cout << "Section assets passed: placement, rotation, asset-only refresh, markers, preview, removal\n";
 }
 
+void verifyDroppedItems(int width, int height)
+{
+    width=std::min(width,960);height=std::min(height,540);
+    World world;buildBlankSection(world);
+    Camera camera;camera.setPosition({.5f,10.2f,24.0f});
+    const auto direction=glm::normalize(glm::vec3(.5f,9.55f,20.5f)-camera.position()),old=camera.forward();
+    camera.rotate(glm::degrees(std::atan2(direction.z,direction.x)-std::atan2(old.z,old.x)),
+                  glm::degrees(std::asin(direction.y)-std::asin(old.y)));
+    WorldRenderer renderer;
+    std::vector<HubAsset> drops{
+        {HubAssetKind::KeyPickup,{-1.0f,9,20.5f}},
+        {HubAssetKind::ItemPickup,{.5f,9,20.5f},0,0,{},{ItemId::Amethyst,4}},
+        {HubAssetKind::ItemPickup,{2,9,20.5f},0,0,{},{ItemId::CopperOre,12}}
+    };
+    const auto frame=[&](float time,std::span<const HubAsset> assets,std::span<const glm::vec3> offsets={}) {
+        renderer.render(world,camera,width,height,false,true,time,true,false,assets,offsets);
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(width)*height*4);
+        glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        checkOpenGl();
+        return pixels;
+    };
+    const auto changedPixels=[](const auto& a,const auto& b) {
+        std::size_t count=0;
+        for (std::size_t i=0;i<a.size();i+=4)
+            count+=std::max({std::abs(int(a[i])-int(b[i])),std::abs(int(a[i+1])-int(b[i+1])),
+                            std::abs(int(a[i+2])-int(b[i+2]))})>15;
+        return count;
+    };
+    frame(0,{});
+    const auto terrainTriangles=renderer.triangleCount(),rebuilds=renderer.sceneRebuildCount();
+    const auto first=frame(0,drops);
+    std::size_t dropTriangles=0;
+    for (const auto& drop:drops) dropTriangles+=buildHubAsset(drop).indices.size()/3;
+    if (renderer.triangleCount()!=terrainTriangles+dropTriangles)
+        throw std::runtime_error("Dynamic drops were omitted or double-counted in the scene");
+    const auto moving=frame(1.75f,drops);
+    if (changedPixels(first,moving)<30 || renderer.sceneRebuildCount()!=rebuilds)
+        throw std::runtime_error("Dropped items did not animate independently of the static scene cache");
+    if (frame(0,drops)!=first)
+        throw std::runtime_error("Pickup animation depends on render order instead of its stable time and anchor");
+    drops[1].pickupItem.count=99;
+    if (frame(0,drops)!=first || renderer.sceneRebuildCount()!=rebuilds)
+        throw std::runtime_error("Changing a pickup quantity changed its mesh or rebuilt world lighting");
+    const std::array<glm::vec3,3> offsets{{{}, {.6f,.25f,.65f}, {}}};
+    if (changedPixels(first,frame(0,drops,offsets))<30 || renderer.sceneRebuildCount()!=rebuilds)
+        throw std::runtime_error("Magnetic pickup offsets failed to move the model independently");
+    frame(0,{});
+    if (renderer.triangleCount()!=terrainTriangles || renderer.sceneRebuildCount()!=rebuilds)
+        throw std::runtime_error("Collecting a drop left stale geometry or invalidated static scenery");
+    Overlay overlay;
+    frame(0,drops);overlay.drawSection({},drops[1],drops[0],camera,width,height,0);
+    std::vector<unsigned char> outlined(first.size());
+    glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,outlined.data());
+    frame(1.75f,drops);overlay.drawSection({},drops[1],drops[0],camera,width,height,1.75f);
+    std::vector<unsigned char> later(first.size());
+    glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,later.data());
+    if (changedPixels(outlined,later)<30)
+        throw std::runtime_error("Creative pickup previews do not follow the animated item pose");
+    for (int x=-3;x<=3;++x) for (int y=9;y<=12;++y) world.set({x,y,22},Block::Stone);
+    const auto wall=frame(0,{});
+    if (frame(0,drops)!=wall)
+        throw std::runtime_error("Floating drops ignore opaque wall depth");
+    for (int x=-3;x<=3;++x) for (int y=9;y<=12;++y) world.set({x,y,22},Block::Air);
+    for (int x=-3;x<=3;++x) for (int z=20;z<=22;++z) world.set({x,9,z},Block::Water);
+    const auto water=frame(0,{});
+    if (changedPixels(water,frame(0,drops))<10)
+        throw std::runtime_error("The water scene snapshot lost the animated dropped items");
+    frame(0,drops,offsets);
+    checkOpenGl();
+    std::cout<<"Dropped items passed: hover/spin, legacy keys, dynamic offsets, stable caches, previews, depth and water\n";
+}
+
 } // namespace
 
 void verifyGpuResources()
@@ -1193,6 +1265,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyRootCrossingRendering(width, height);
     verifySectionHud(width, height);
     verifySectionAssets(width, height);
+    verifyDroppedItems(width, height);
     verifyLevelHud(width, height);
     verifyLushMaterials(width, height);
 

@@ -23,10 +23,12 @@ public:
     ~WorldRenderer();
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
                 bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false,
-                bool hubAssets = true, std::span<const HubAsset> placedAssets = {});
+                bool hubAssets = true, std::span<const HubAsset> placedAssets = {},
+                std::span<const glm::vec3> pickupOffsets = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
+    std::size_t sceneRebuildCount() const { return sceneRebuildCount_; }
 
 private:
     struct Light { glm::vec3 position; glm::vec3 color; float radius; };
@@ -38,6 +40,7 @@ private:
     std::array<GpuMesh, World::ChunkCount> details_;
     std::array<GpuMesh, World::ChunkCount> relief_;
     std::array<GpuMesh, World::ChunkCount> assets_;
+    std::array<GpuMesh, ItemCount> pickups_; // Local meshes; animated with per-draw transforms.
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.
     std::array<int, World::ChunkCount> lightOffsets_{}, lightCounts_{};
@@ -45,6 +48,7 @@ private:
     GLuint occupancy_ = 0; // Opaque=255, water=127, air/foliage=0; lighting and shoreline queries.
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
+    std::size_t pickupTriangles_ = 0, sceneRebuildCount_ = 0;
     bool underground_ = false;
     bool hubAssets_ = true;
     std::vector<HubAsset> placedAssets_;
@@ -60,8 +64,10 @@ public:
     void draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height,
               float contentScale = 1.0f);
     void drawSection(const SectionMetadata& section, const std::optional<HubAsset>& preview,
-                     const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height);
-    void drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height);
+                     const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height,
+                     float timeSeconds = 0);
+    void drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height,
+                       float timeSeconds = 0);
 
 private:
     Shader shader_;
@@ -70,6 +76,7 @@ private:
     GpuMesh previewMesh_;
     GpuMesh markerCube_, startLabel_, endLabel_;
     std::optional<HubAsset> previewAsset_;
+    std::array<GpuMesh, ItemCount> pickupMeshes_;
     GpuMesh clipboardMesh_, pasteChangesMesh_;
     std::uint64_t pasteChangesRevision_ = ~std::uint64_t(0);
     std::uint64_t clipboardRevision_ = ~std::uint64_t(0);

@@ -366,6 +366,11 @@ void SectionEditor::refreshTarget(Game& game)
     if (boundsRevision_ != revision_) {
         assetBounds_.clear();
         for (const auto& asset : assets_) {
+            if (isItemPickup(asset.kind)) {
+                const auto [minimum, maximum] = pickupVisualBounds(asset);
+                assetBounds_.push_back({minimum, maximum});
+                continue;
+            }
             AssetBounds bounds{glm::vec3(std::numeric_limits<float>::max()), glm::vec3(std::numeric_limits<float>::lowest())};
             for (const auto& vertex : buildHubAsset(asset).vertices) {
                 bounds.minimum = glm::min(bounds.minimum, vertex.position);
@@ -446,7 +451,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
     }
     if (actions.devVariation) {
         if (hotbar_[selectedSlot_].pickup)
-            message_ = "PICKUP STACKS ARE SET IN THE ITEMS MENU | E TO COLLECT IN PLAY";
+            message_ = "DROP STACKS FROM THE ITEMS MENU | WALK OVER TO COLLECT IN PLAY";
         else if (hotbar_[selectedSlot_].asset && isChestAsset(*hotbar_[selectedSlot_].asset))
             message_ = "CHEST STYLES ARE IN THE ASSET MENU | AIM AT A PLACED CHEST AND PRESS E TO SET ITEMS";
         else ++variation_;
@@ -536,7 +541,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         if (game.world.set(placement.position, *item.block)) { changed(std::move(edit)); message_ = "PLACED " + item.name; }
     } else if (item.asset) {
         if (!preview_) {
-            message_ = item.pickup ? "ITEMS NEED THE TOP OF A SOLID FLOOR INSIDE THE ROOM"
+            message_ = item.pickup ? "AIM AT A SOLID FLOOR TOP TO DROP ITEMS INSIDE THE ROOM"
                                    : "AIM AT A BLOCK FACE INSIDE THE ROOM";
             return;
         }
@@ -550,7 +555,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         validateAssetEdit(game.world, plan);
         if (!plan.error.empty()) { message_ = plan.error; return; }
         assets_ = std::move(plan.assets); changed(std::move(edit));
-        message_ = item.pickup ? "PLACED " + std::to_string(pickupQuantity_) + " " + item.name + " | E TO COLLECT IN PLAY"
+        message_ = item.pickup ? "DROPPED " + std::to_string(pickupQuantity_) + " " + item.name + " | WALK OVER TO COLLECT IN PLAY"
             : isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
                                        : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
     }

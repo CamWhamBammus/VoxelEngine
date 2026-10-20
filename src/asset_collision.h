@@ -13,9 +13,9 @@ struct AssetSurfaceHit {
     float distance;
 };
 
-// Collision uses the same triangles as the visible models, including their
-// rotation and variation. Build once when placements change, then query the
-// spatial index during play. Copies share the immutable collision geometry.
+// Scenery collision uses its visible triangles, including rotation and variation.
+// Dropped item pickups are ignored. Build once when placements change, then query
+// the spatial index during play. Copies share the immutable collision geometry.
 class AssetCollision {
 public:
     void rebuild(std::span<const HubAsset> assets);

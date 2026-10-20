@@ -87,11 +87,17 @@ glm::vec3 rotateOrigin(glm::vec3 p, glm::ivec3 size, int rotation)
 
 bool meshInsideRoom(const HubAsset& asset)
 {
-    const auto mesh = buildHubAsset(asset);
-    if (mesh.vertices.empty()) return false;
     // Match the single-model tool's small surface-attachment tolerance.
     const auto low = glm::vec3(SectionInteriorMin) - glm::vec3(.02f);
     const auto high = glm::vec3(SectionInteriorMax) + glm::vec3(.02f);
+    if (isItemPickup(asset.kind)) {
+        const auto [minimum, maximum] = pickupVisualBounds(asset);
+        return finite(minimum) && finite(maximum)
+            && glm::all(glm::greaterThanEqual(minimum, low))
+            && glm::all(glm::lessThanEqual(maximum, high));
+    }
+    const auto mesh = buildHubAsset(asset);
+    if (mesh.vertices.empty()) return false;
     return std::all_of(mesh.vertices.begin(), mesh.vertices.end(), [&](const MeshVertex& vertex) {
         const auto p = vertex.position;
         return finite(p) && p.x >= low.x && p.y >= low.y && p.z >= low.z

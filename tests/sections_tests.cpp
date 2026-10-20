@@ -190,6 +190,21 @@ int main()
     saveSection(world, meta, pickups, pickupDocument);
     check(loadSection(pickupDocument).assets == pickups,
           "every resource and key preserves its exact ground pickup quantity and order");
+    const std::vector<HubAsset> markerDrops{
+        {HubAssetKind::ItemPickup, meta.spawn, 0, 0, {}, {ItemId::Ruby, 3}},
+        {HubAssetKind::KeyPickup, meta.finish}
+    };
+    AssetCollision pickupCollision;
+    pickupCollision.rebuild(markerDrops);
+    check(sectionMarkerSafe(world, meta.spawn, &pickupCollision)
+          && sectionMarkerSafe(world, meta.finish, &pickupCollision),
+          "dropped items at Start or End never block player headroom or marker safety");
+    const auto markerDocument = temp.path / "marker-drops.vxs";
+    auto testedMarkers = meta;
+    testedMarkers.tested = true;
+    saveSection(world, testedMarkers, markerDrops, markerDocument);
+    check(loadSection(markerDocument).assets == markerDrops,
+          "tested sections preserve pickup spawn points that overlap player markers");
     check(fails([&] { saveSection(world, meta, {}, document); }), "a new save cannot replace an existing document");
     check(readBytes(document) == originalBytes, "rejected overwrite must preserve the original document");
     SectionMetadata replacement = meta;

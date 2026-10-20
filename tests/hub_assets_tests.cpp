@@ -219,11 +219,8 @@ void validateLootChest()
         const std::array<HubAsset, 1> placements{{{HubAssetKind::KeyPickup, {}, facing, 0}}};
         AssetCollision collision;
         collision.rebuild(placements);
-        const auto shaft = collision.raycast(turn({0,.30f,1}, facing), turn({0,0,-1}, facing), 2);
-        check(shaft && std::abs(shaft->distance - .945f) < .001f,
-              "the small key shaft can be targeted in every rotation");
-        check(!collision.raycast(turn({0,.63f,1}, facing), turn({0,0,-1}, facing), 2),
-              "the key handle's visible hole remains open");
+        check(collision.empty() && !collision.raycast(turn({0,.30f,1}, facing), turn({0,0,-1}, facing), 2),
+              "legacy floating keys never obstruct scenery collision");
     }
 }
 
@@ -243,7 +240,7 @@ void validateItemPickups()
               "all nineteen item types have small visible ground meshes");
         float lowest = std::numeric_limits<float>::max();
         for (const auto& vertex : mesh.vertices) lowest = std::min(lowest, vertex.position.y);
-        check(lowest == 0, "ground items rest directly on their authored support");
+        check(lowest == 0, "cached local pickup meshes retain a consistent base for the hover transform");
         auto stack = pickup;
         stack.pickupItem.count = 99;
         stack.variation = 123;
@@ -260,14 +257,37 @@ void validateItemPickups()
             const std::array<HubAsset, 1> placed{pickup};
             AssetCollision collision;
             collision.rebuild(placed);
-            const auto hit = collision.raycast(turn({0,.20f,2}, facing), turn({0,0,-1}, facing), 3);
-            check(hit && hit->distance > 1.5f && hit->distance < 2,
-                  "each ground item can be targeted against its real surface in every rotation");
-            const auto top = collision.raycast({0,2,0}, {0,-1,0}, 3);
-            check(top && top->point.y > .2f && top->point.y < .8f && top->normal.y > 0,
-                  "ground item collision follows its modeled top surface");
+            check(collision.empty() && !collision.raycast({0,2,0}, {0,-1,0}, 3)
+                  && !collision.overlaps({-.3f,0,-.3f},{.3f,2,.3f})
+                  && collision.sweep({-.3f,0,-.3f},{.3f,2,.3f},0,2)==2,
+                  "dropped ores, gems and keys are pass-through in every rotation");
+            pickup.position = {-13.25f,22.5f,15.75f};
+            const auto [minimum,maximum] = pickupVisualBounds(pickup);
+            for (const float time : {0.0f,.25f,1.5f,4.0f,15.0f,1000000.0f,std::numeric_limits<float>::quiet_NaN()}) {
+                const auto transform = pickupTransform(pickup,time);
+                float bottom = std::numeric_limits<float>::max(), top = std::numeric_limits<float>::lowest();
+                for (const auto& vertex : mesh.vertices) {
+                    const auto p = glm::vec3(transform*glm::vec4(vertex.position,1));
+                    bottom=std::min(bottom,p.y);top=std::max(top,p.y);
+                    check(glm::all(glm::greaterThanEqual(p,minimum)) && glm::all(glm::lessThanEqual(p,maximum)),
+                          "the fixed hover envelope contains every rotated pickup vertex");
+                }
+                check(bottom-pickup.position.y>.28f && bottom-pickup.position.y<.40f
+                      && top-bottom<.45f,"dropped items stay small and visibly clear of the floor");
+            }
+            check(pickupTransform(pickup,1.5f)==pickupTransform(pickup,1.5f)
+                  && pickupTransform(pickup,0)!=pickupTransform(pickup,1.5f),
+                  "pickup bob and spin are deterministic and advance over time");
+            pickup.position = {};
         }
+        const std::array<HubAsset,1> placed{pickup};
+        const auto dressing=buildAssetDressing(placed);
+        check(std::all_of(dressing.meshes.begin(),dressing.meshes.end(),[](const auto& part){return part.indices.empty();})
+              && dressing.lights.empty(),"animated pickups never enter baked chunk meshes or the world-light cache");
     }
+    auto translated=oldKey;translated.position={1,0,0};
+    check(pickupTransform(oldKey,2)[3].y!=pickupTransform(translated,2)[3].y,
+          "neighboring pickups have stable independent bob phases");
 }
 
 void checkArchWalkingClearance(const World& world, const HubAsset& asset)

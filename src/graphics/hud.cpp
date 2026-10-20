@@ -516,7 +516,7 @@ void sectionItemIcon(Drawing& out,const SectionPaletteItem& item,glm::vec2 cente
 
 std::string_view sectionItemGroup(const SectionPaletteItem& item)
 {
-    if (item.pickup) return "GROUND PICKUP";
+    if (item.pickup) return "DROPPED ITEM";
     if (item.asset) for (const auto& entry:sectionAssetCatalog()) if (entry.kind==*item.asset) return entry.group;
     if (item.block) return "SOLID BUILDING BLOCK";
     return "SECTION MARKER";
@@ -667,7 +667,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     if (!items.empty()) {
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
-        const auto hint=item.pickup ? "PLACE ON GROUND / E TO COLLECT IN PLAY"
+        const auto hint=item.pickup ? "DROP ON GROUND / WALK OVER TO COLLECT"
             : item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
             : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
@@ -920,7 +920,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
             : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
-            : item.pickup ? "RIGHT PLACE PICKUP / E ITEMS / E COLLECT IN PLAY"
+            : item.pickup ? "RIGHT DROP ITEM / WALK OVER TO COLLECT IN PLAY"
             : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
