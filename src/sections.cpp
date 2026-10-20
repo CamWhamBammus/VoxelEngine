@@ -86,6 +86,7 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::SporeStalks, "Spore stalks", "Lush / ground / light"},
     SectionAssetInfo{HubAssetKind::CaveOrchid, "Cave orchid", "Lush / ground"},
     SectionAssetInfo{HubAssetKind::HangingPlanter, "Hanging planter", "Lush / ceiling"},
+    SectionAssetInfo{HubAssetKind::LootChest, "Loot chest", "Loot / Y changes contents"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};

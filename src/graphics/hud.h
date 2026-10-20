@@ -8,6 +8,12 @@
 namespace voxel {
 class Game;
 
+inline constexpr int InventoryUiSlotBase = 0;
+inline constexpr int InventoryUiLootBase = 100;
+inline constexpr int InventoryUiSort = 200;
+inline constexpr int InventoryUiTakeAll = 201;
+inline constexpr int InventoryUiClose = 202;
+
 // Requires a current OpenGL context throughout its lifetime.
 class Hud {
 public:
@@ -32,6 +38,11 @@ public:
     static std::optional<int> levelClick(const Game& game, int framebufferWidth,
                                         int framebufferHeight, float contentScale,
                                         float x, float y);
+    void drawInventory(const Game& game, int framebufferWidth, int framebufferHeight,
+                       float contentScale = 1.0f);
+    static std::optional<int> inventoryClick(const Game& game, int framebufferWidth,
+                                            int framebufferHeight, float contentScale,
+                                            float x, float y);
 
 private:
     Shader shader_;

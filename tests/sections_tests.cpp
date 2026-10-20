@@ -67,7 +67,13 @@ int main()
     TemporaryDirectory temp;
     check(sectionWorldCatalog().size() == 3, "three world collections must be available");
     check(sectionCategoryCatalog().size() == 5, "five section categories must be available");
-    check(sectionAssetCatalog().size() == HubAssetCount, "every existing and lush asset must be exposed");
+    check(sectionAssetCatalog().size() == HubAssetCount, "every existing, lush, and loot asset must be exposed");
+    check(static_cast<int>(HubAssetKind::HangingPlanter) == 53
+          && static_cast<int>(HubAssetKind::LootChest) == 54,
+          "the chest is appended without changing saved asset identifiers");
+    check(sectionAssetCatalog().back().kind == HubAssetKind::LootChest
+          && sectionAssetCatalog().back().name == "Loot chest",
+          "the creative menu exposes the placeable loot chest");
     std::set<HubAssetKind> uniqueAssets;
     for (const auto& info : sectionAssetCatalog()) {
         uniqueAssets.insert(info.kind);
@@ -138,6 +144,15 @@ int main()
               && restored.assets[i].facing == assets[i].facing && restored.assets[i].variation == assets[i].variation,
               "section must round trip every model and its orientation");
     }
+    const std::vector<HubAsset> chests{
+        {HubAssetKind::LootChest, {-12.5f,9,10.5f}, 0, 0},
+        {HubAssetKind::LootChest, {-8.5f,9,10.5f}, 1, 1},
+        {HubAssetKind::LootChest, {-4.5f,9,10.5f}, 3, 2},
+    };
+    const auto chestDocument = temp.path / "chest-presets.vxs";
+    saveSection(world, meta, chests, chestDocument);
+    check(loadSection(chestDocument).assets == chests,
+          "all three chest loot presets and their rotations survive a section save");
     check(fails([&] { saveSection(world, meta, {}, document); }), "a new save cannot replace an existing document");
     check(readBytes(document) == originalBytes, "rejected overwrite must preserve the original document");
     SectionMetadata replacement = meta;

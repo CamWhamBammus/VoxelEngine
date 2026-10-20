@@ -138,9 +138,10 @@ void verifyPlayHud(int width, int height)
         game.update(open);
         require(game.smithOpen(),"HUD fixture could not open the blacksmith");
         game.equipment.selectedSlot=0;
-        game.equipment.pickaxeTier=1; game.equipment.copper=12; game.equipment.iron=0;
+        game.equipment.pickaxeTier=1; game.equipment.inventory={};
+        game.equipment.inventory.add(ItemId::CopperOre,12);
         const auto affordable=draw(width,height);
-        game.equipment.copper=0;
+        game.equipment.inventory.remove(ItemId::CopperOre,12);
         require(difference(affordable,draw(width,height))>400,"Unaffordable forge upgrade did not show a disabled state");
         game.equipment.pickaxeTier=3;
         require(difference(affordable,draw(width,height))>400,"Maximum pickaxe tier did not change the forge panel");

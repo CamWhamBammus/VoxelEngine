@@ -63,6 +63,8 @@ Input::Buttons Input::readButtons() const
         .pick = glfwGetMouseButton(window_, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS,
         .interact = keyDown(GLFW_KEY_E),
         .upgrade = keyDown(GLFW_KEY_ENTER) || keyDown(GLFW_KEY_KP_ENTER),
+        .inventory = keyDown(GLFW_KEY_I),
+        .inventorySort = keyDown(GLFW_KEY_S),
         .tools = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3)},
         .courses = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3),
                     keyDown(GLFW_KEY_4), keyDown(GLFW_KEY_5), keyDown(GLFW_KEY_6),
@@ -105,7 +107,7 @@ void Input::capture(bool enabled)
 }
 
 void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool modal, bool crossingPicker,
-                   bool devMode, bool devFlying, bool devTyping)
+                   bool devMode, bool devFlying, bool devTyping, bool inventoryModal)
 {
     actions_ = {};
     if (modal != wasModal_ || editorMode != wasEditorMode_ || devMode != wasDevMode_
@@ -143,6 +145,35 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     actions_.devToggle = !editorMode && pressed(buttons.devToggle, previous.devToggle);
     actions_.levelCreator = !editorMode && pressed(buttons.levelCreator, previous.levelCreator);
     actions_.levelMenu = !editorMode && pressed(buttons.levelMenu, previous.levelMenu);
+    actions_.inventory = !editorMode && !devTyping && (!devMode || !devFlying)
+        && (inventoryModal || (captured_ && !modal))
+        && pressed(buttons.inventory, previous.inventory);
+    if (inventoryModal) {
+        if (captured_) capture(false);
+        actions_.active = true;
+        actions_.closeMenu = pressed(buttons.releaseMouse, previous.releaseMouse)
+            || pressed(buttons.toggleMouse, previous.toggleMouse);
+        actions_.inventorySort = pressed(buttons.inventorySort, previous.inventorySort);
+        actions_.lootAll = pressed(buttons.upgrade, previous.upgrade);
+        actions_.interact = pressed(buttons.interact, previous.interact);
+        actions_.inventoryPointerPressed = pressed(buttons.remove, previous.remove);
+        double x, y;
+        int width, height;
+        glfwGetCursorPos(window_, &x, &y);
+        glfwGetWindowSize(window_, &width, &height);
+        actions_.inventoryPointer = {width > 0 ? float(x / width) : 0,
+                                     height > 0 ? float(y / height) : 0};
+        scroll_ = 0;
+        hotbarScroll_.reset();
+        pendingText_.clear();
+        removeRepeat_ = placeRepeat_ = 0;
+        wasInventoryModal_ = true;
+        return;
+    }
+    if (wasInventoryModal_) {
+        if (!modal) capture(true);
+        wasInventoryModal_ = false;
+    }
     if (devMode) {
         if (wasDevFlying_ != devFlying) suppressDevMouse_ = true;
         updateDev(camera, deltaSeconds, buttons, previous, modal, devFlying, devTyping, modifier, editActions, pasteActions);
@@ -245,7 +276,8 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
     if (modal && captured_) capture(false);
     if (!modal && (!wasDevMode_ || wasDevMenu_)) capture(true);
     actions_.active = modal; // A focused menu accepts clicks and keys with the pointer released.
-    actions_.devPalette = !typing && pressed(buttons.interact, previous.interact);
+    actions_.devPalette = (flying || modal) && !typing && pressed(buttons.interact, previous.interact);
+    actions_.interact = !flying && !modal && pressed(buttons.interact, previous.interact);
     actions_.devTest = pressed(buttons.devTest, previous.devTest);
     actions_.devAccept = pressed(buttons.devAccept, previous.devAccept);
     actions_.devLibrary = pressed(buttons.load, previous.load);

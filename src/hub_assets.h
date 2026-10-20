@@ -22,10 +22,11 @@ enum class HubAssetKind {
     TreeFern, LushSapling, HangingRoots, BlossomVines,
     GlowMushroomColony, GiantMushroom, ShelfFungi, CaveLotus,
     WaterGrass, MossyLog, RootFan, MossyStones,
-    CrystalFlower, SporeStalks, CaveOrchid, HangingPlanter
+    CrystalFlower, SporeStalks, CaveOrchid, HangingPlanter,
+    LootChest
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::HangingPlanter) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::LootChest) + 1;
 
 struct HubAsset {
     HubAssetKind kind;

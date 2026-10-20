@@ -114,11 +114,15 @@ struct Vertex {
     glm::vec4 color;
 };
 
-constexpr glm::vec4 Cream{0.94f,0.93f,0.83f,1};
-constexpr glm::vec4 Muted{0.57f,0.70f,0.69f,1};
+// The field satchel palette is shared by play, authoring menus and the pack.
+constexpr glm::vec4 Cream{0.95f,0.91f,0.79f,1};
+constexpr glm::vec4 Muted{0.73f,0.64f,0.49f,1};
 constexpr glm::vec4 Gold{0.95f,0.70f,0.30f,1};
-constexpr glm::vec4 Panel{0.035f,0.075f,0.085f,0.97f};
-constexpr glm::vec4 Edge{0.23f,0.37f,0.37f,1};
+constexpr glm::vec4 Panel{0.09f,0.061f,0.043f,0.98f};
+constexpr glm::vec4 Edge{0.46f,0.34f,0.22f,1};
+constexpr glm::vec4 Canvas{0.16f,0.105f,0.072f,1};
+constexpr glm::vec4 Selected{0.24f,0.18f,0.10f,1};
+constexpr glm::vec4 Stitch{0.54f,0.42f,0.27f,0.70f};
 constexpr glm::vec4 Leaf{0.45f,0.86f,0.60f,1};
 
 // Small colored triangles and bitmap glyphs share one buffer and draw call.
@@ -170,10 +174,33 @@ public:
         pixel=fontPixel(pixel);
         text(value, center - (value.size() * 6 - (value.empty() ? 0 : 1)) * pixel * 0.5f, y, pixel, color);
     }
-    void frame(float x, float y, float width, float height, glm::vec4 border, glm::vec4 fill = Panel)
+    void frame(float x, float y, float width, float height, glm::vec4 border,
+               glm::vec4 fill = Panel, float corner = 6)
     {
-        quad(x,y,width,height,border);
-        quad(x+2,y+2,width-4,height-4,fill);
+        if (width<=4 || height<=4) return;
+        corner=std::min({corner,width*.2f,height*.2f});
+        const auto polygon=[&](float left,float top,float w,float h,float cut,glm::vec4 color) {
+            const std::array<glm::vec2,8> points{{{left+cut,top},{left+w-cut,top},
+                {left+w,top+cut},{left+w,top+h-cut},{left+w-cut,top+h},
+                {left+cut,top+h},{left,top+h-cut},{left,top+cut}}};
+            const glm::vec2 center(left+w*.5f,top+h*.5f);
+            for (std::size_t i=0;i<points.size();++i)
+                triangle(center,points[i],points[(i+1)%points.size()],color);
+        };
+        polygon(x,y,width,height,corner,border);
+        polygon(x+2,y+2,width-4,height-4,std::max(1.0f,corner-1),fill);
+        // Keep seams away from labels on small buttons and counts in hotbar pockets.
+        if (width>=34 && height>=36 && fill.a>.9f) {
+            const bool pocket=width<=80;
+            for (float step=pocket ? 25 : 10;step<width-10;step+=9)
+                quad(x+step,y+5,4,1,Stitch);
+            for (float step=10;step<width-(pocket ? 25 : 10);step+=9)
+                quad(x+step,y+height-6,4,1,Stitch);
+            for (float step=pocket ? 22 : 12;step<height-10;step+=9) {
+                quad(x+5,y+step,1,4,Stitch);
+                quad(x+width-6,y+step,1,4,Stitch);
+            }
+        }
     }
 
 private:
@@ -244,6 +271,30 @@ std::string crossingTime(float seconds)
         +std::to_string(remainder)+"."+std::to_string(tenths%10);
 }
 
+void fittedText(Drawing& out, std::string_view text, float x, float y, float width,
+                float pixel=1.0f, glm::vec4 color=Cream)
+{
+    if (text.empty()) return;
+    pixel=out.fontPixel(std::min(pixel,width/(text.size()*6.0f-1)));
+    const auto columns=static_cast<std::size_t>(std::max(1.0f,(width/pixel+1)/6));
+    if (text.size()>columns) {
+        const auto clipped=std::string(text.substr(0,columns>3 ? columns-3 : columns))+(columns>3 ? "..." : "");
+        out.text(clipped,x,y,pixel,color);
+    } else out.text(text,x,y,pixel,color);
+}
+
+void fittedCentered(Drawing& out,std::string_view text,float center,float y,float width,
+                    float pixel=1,glm::vec4 color=Cream)
+{
+    if (text.empty()) return;
+    pixel=out.fontPixel(std::min(pixel,width/(text.size()*6.0f-1)));
+    const auto columns=static_cast<std::size_t>(std::max(1.0f,(width/pixel+1)/6));
+    if (text.size()>columns) {
+        const auto clipped=std::string(text.substr(0,columns>3 ? columns-3 : columns))+(columns>3 ? "..." : "");
+        out.centered(clipped,center,y,pixel,color);
+    } else out.centered(text,center,y,pixel,color);
+}
+
 void wrappedDescription(Drawing& out, std::string_view text, float x, float y,
                         std::size_t columns)
 {
@@ -261,15 +312,15 @@ void wrappedDescription(Drawing& out, std::string_view text, float x, float y,
 
 void crossingPicker(Drawing& out, const Game& game, float width, float height)
 {
-    out.quad(0,0,width,height,{0.01f,0.025f,0.035f,0.72f});
+    out.quad(0,0,width,height,{.025f,.016f,.009f,.72f});
     constexpr float panelWidth=578, panelHeight=420;
     const float x=(width-panelWidth)*0.5f, y=(height-panelHeight)*0.5f;
     out.quad(x+6,y+7,panelWidth,panelHeight,{0,0,0,0.35f});
     out.frame(x,y,panelWidth,panelHeight,Edge);
-    out.quad(x+2,y+2,panelWidth-4,3,Leaf);
-    out.text("ROOT CROSSINGS",x+23,y+18,2,Leaf);
-    out.text("LUSH CAVES / 10 PLAYABLE LAYOUTS",x+24,y+43,1,Muted);
-    out.text("ESC - CLOSE",x+panelWidth-90,y+22,1,Muted);
+    out.quad(x+12,y+12,panelWidth-24,43,Canvas);
+    out.text("ROOT CROSSINGS",x+23,y+18,2,Cream);
+    fittedText(out,"LUSH CAVES / 10 PLAYABLE LAYOUTS",x+24,y+43,panelWidth-48,1,Muted);
+    fittedText(out,"ESC - CLOSE",x+panelWidth-112,y+22,90,1,Muted);
 
     const auto catalog=rootCrossingCatalog();
     const int selection=std::clamp(game.crossingMenuSelection(),0,RootCrossingCount-1);
@@ -280,21 +331,21 @@ void crossingPicker(Drawing& out, const Game& game, float width, float height)
         const float cardX=x+23+(index/5)*(cardWidth+12);
         const float cardY=y+66+(index%5)*49;
         out.frame(cardX,cardY,cardWidth,cardHeight,selected ? Gold : Edge,
-                  selected ? glm::vec4(0.09f,0.19f,0.16f,1) : Panel);
-        out.quad(cardX+7,cardY+8,18,25,selected ? Gold : glm::vec4(0.12f,0.22f,0.21f,1));
+                  selected ? Selected : Panel);
+        out.quad(cardX+7,cardY+8,18,25,selected ? Gold : Canvas);
         out.centered(std::to_string((index+1)%10),cardX+16,cardY+16,1.25f,
                      selected ? Panel : Muted);
-        const float namePixel=std::min(1.25f,213.0f/std::max(1.0f,info.name.size()*6.0f));
-        out.text(info.name,cardX+33,cardY+9,namePixel,selected ? Cream : Muted);
-        out.text(info.difficulty,cardX+33,cardY+27,1,selected ? Leaf : Muted);
+        fittedText(out,info.name,cardX+33,cardY+9,213,1.25f,selected ? Cream : Muted);
+        fittedText(out,info.difficulty,cardX+33,cardY+27,213,1,selected ? Leaf : Muted);
     }
     out.quad(x+23,y+316,panelWidth-46,1,Edge);
-    wrappedDescription(out,catalog[selection].description,x+24,y+330,88);
-    out.text("CYAN CHECKPOINT / GOLD EXIT / FALLS RESET",x+24,y+359,0.9f,Leaf);
-    out.text("UP/DOWN OR 1-9/0 - SELECT",x+24,y+376,1,Muted);
-    out.text("WASD MOVE / SPACE JUMP / SHIFT SPRINT",x+24,y+395,1,Muted);
+    wrappedDescription(out,catalog[selection].description,x+24,y+330,
+                       static_cast<std::size_t>((panelWidth-48)/(6*out.fontPixel(1))));
+    fittedText(out,"CYAN CHECKPOINT / GOLD EXIT / FALLS RESET",x+24,y+359,panelWidth-48,0.9f,Leaf);
+    fittedText(out,"UP/DOWN OR 1-9/0 - SELECT",x+24,y+376,322,1,Muted);
+    fittedText(out,"WASD MOVE / SPACE JUMP / SHIFT SPRINT",x+24,y+395,322,1,Muted);
     out.frame(x+360,y+370,194,34,Gold,{0.72f,0.49f,0.20f,1});
-    out.centered("ENTER - START",x+457,y+382,1.5f,Panel);
+    fittedCentered(out,"ENTER - START",x+457,y+382,174,1.5f,Panel);
 }
 
 void crossingProgress(Drawing& out, const Game& game, float width, float height)
@@ -308,30 +359,30 @@ void crossingProgress(Drawing& out, const Game& game, float width, float height)
     out.quad(x+2,18,3,79,Leaf);
     out.text("ROOT CROSSING "+std::to_string(index+1)+" / "+std::to_string(RootCrossingCount),
              x+17,28,1,Leaf);
-    out.text(info.difficulty,x+panelWidth-15-info.difficulty.size()*6,28,1,Muted);
-    const float namePixel=std::min(1.75f,386.0f/std::max(1.0f,info.name.size()*6.0f));
-    out.text(info.name,x+17,45,namePixel,Cream);
+    const float difficultyWidth=(info.difficulty.size()*6-1)*out.fontPixel(1);
+    out.text(info.difficulty,x+panelWidth-15-difficultyWidth,28,1,Muted);
+    fittedText(out,info.name,x+17,45,386,1.75f,Cream);
     out.text("TIME "+crossingTime(game.crossingElapsed()),x+17,70,1,Cream);
     out.text("FALLS "+std::to_string(game.crossingFalls()),x+155,70,1,Muted);
-    out.text(game.crossingCompleted() ? "EXIT REACHED"
+    fittedText(out,game.crossingCompleted() ? "EXIT REACHED"
                  : game.crossingCheckpointReached() ? "CHECKPOINT SAVED" : "CHECKPOINT AHEAD",
-             x+271,70,1,game.crossingCompleted() || game.crossingCheckpointReached() ? Leaf : Muted);
+             x+271,70,132,1,game.crossingCompleted() || game.crossingCheckpointReached() ? Leaf : Muted);
     const auto best=game.crossingBestTime();
     out.text(best>0 ? "SESSION BEST "+crossingTime(best) : "CYAN CHECKPOINT / GOLD EXIT",
              x+17,86,0.75f,Muted);
     if (game.crossingCompleted()) {
         out.frame(center-170,113,340,62,Leaf);
         out.centered("CROSSING COMPLETE",center,126,1.75f,Leaf);
-        out.centered("N - NEXT   SHIFT+R - RETRY   B - VILLAGE",center,153,1,Cream);
+        fittedCentered(out,"N - NEXT   SHIFT+R - RETRY   B - VILLAGE",center,153,316,1,Cream);
     } else if (game.status.starts_with("RETURNED") || game.status.starts_with("CHECKPOINT")
                || game.status.starts_with("NEW ATTEMPT")) {
         const auto feedback=std::string_view(game.status).substr(0,game.status.find(" | "));
         out.frame(center-170,109,340,24,Edge);
-        out.centered(feedback.substr(0,52),center,117,1,Leaf);
+        fittedCentered(out,feedback,center,117,316,1,Leaf);
     }
     out.frame(x,height-165,panelWidth,37,Edge);
-    out.centered("N/P CHANGE  R CHECKPOINT  SHIFT+R RESTART",center,height-155,1,Cream);
-    out.centered("F6 ALL COURSES  B VILLAGE  H CONTROLS",center,height-142,1,Muted);
+    fittedCentered(out,"N/P CHANGE  R CHECKPOINT  SHIFT+R RESTART",center,height-155,panelWidth-28,1,Cream);
+    fittedCentered(out,"F6 ALL COURSES  B VILLAGE  H CONTROLS",center,height-142,panelWidth-28,1,Muted);
 }
 
 struct SectionHit {
@@ -350,23 +401,12 @@ SectionCanvas sectionCanvas(int width, int height, float contentScale)
     return {scale,width/scale,height/scale};
 }
 
-void fittedText(Drawing& out, std::string_view text, float x, float y, float width,
-                float pixel=1.0f, glm::vec4 color=Cream)
-{
-    if (text.empty()) return;
-    pixel=out.fontPixel(std::min(pixel,width/(text.size()*6.0f-1)));
-    const auto columns=static_cast<std::size_t>(std::max(1.0f,(width/pixel+1)/6));
-    if (text.size()>columns) {
-        const auto clipped=std::string(text.substr(0,columns>3 ? columns-3 : columns))+(columns>3 ? "..." : "");
-        out.text(clipped,x,y,pixel,color);
-    } else out.text(text,x,y,pixel,color);
-}
 
 void sectionButton(Drawing& out, std::vector<SectionHit>& hits, float x,float y,float width,float height,
                    std::string_view text,int action,bool active=false,bool enabled=true,float textPixel=1.1f)
 {
-    const auto color=enabled ? (active ? Gold : Edge) : glm::vec4(0.14f,0.20f,0.21f,1);
-    out.frame(x,y,width,height,color,active ? glm::vec4(0.12f,0.22f,0.20f,1) : Panel);
+    const auto color=enabled ? (active ? Gold : Edge) : glm::vec4(.23f,.18f,.13f,1);
+    out.frame(x,y,width,height,color,active ? Selected : Panel);
     const float pixel=out.fontPixel(std::min(textPixel,(width-14)/std::max(1.0f,text.size()*6.0f)));
     const auto columns=static_cast<std::size_t>(std::max(1.0f,((width-12)/pixel+1)/6));
     std::string clipped(text.substr(0,columns));
@@ -378,11 +418,11 @@ void sectionButton(Drawing& out, std::vector<SectionHit>& hits, float x,float y,
 void sectionPanel(Drawing& out,float width,float height,float x,float y,float w,float h,
                   std::string_view title,std::string_view subtitle)
 {
-    out.quad(0,0,width,height,{0.005f,0.02f,0.025f,0.76f});
+    out.quad(0,0,width,height,{.025f,.016f,.009f,.76f});
     out.quad(x+6,y+7,w,h,{0,0,0,0.35f});
     out.frame(x,y,w,h,Edge);
-    out.quad(x+2,y+2,w-4,3,Leaf);
-    fittedText(out,title,x+22,y+18,w-44,2,Leaf);
+    out.quad(x+12,y+12,w-24,43,Canvas);
+    fittedText(out,title,x+22,y+18,w-44,2,Cream);
     fittedText(out,subtitle,x+23,y+43,w-46,1,Muted);
 }
 
@@ -485,7 +525,7 @@ void sectionHotbar(Drawing& out,std::vector<SectionHit>& hits,const SectionEdito
     for (int index=0;index<9;++index) {
         const float left=x+index*(slot+gap);
         const bool selected=index==editor.selectedSlot();
-        out.frame(left,y,slot,slot,selected ? Gold : Edge,selected ? glm::vec4(0.11f,0.21f,0.18f,1) : Panel);
+        out.frame(left,y,slot,slot,selected ? Gold : Edge,selected ? Selected : Panel);
         sectionItemIcon(out,editor.hotbar()[index],{left+24,y+26},32);
         out.quad(left+4,y+4,9,10,Panel);
         out.text(std::to_string(index+1),left+6,y+5,1,selected ? Gold : Muted);
@@ -525,7 +565,7 @@ void sectionWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
         const float top=y+72+index*78;
         const auto color=index==0 ? Leaf : index==1 ? glm::vec4(0.36f,0.79f,0.94f,1) : glm::vec4(0.98f,0.53f,0.25f,1);
         const bool selected=index==editor.selection();
-        out.frame(x+22,top,w-44,68,selected ? Gold : Edge,selected ? glm::vec4(0.09f,0.18f,0.16f,1) : Panel);
+        out.frame(x+22,top,w-44,68,selected ? Gold : Edge,selected ? Selected : Panel);
         out.quad(x+30,top+10,4,48,color);
         out.text("0"+std::to_string(index+1),x+48,top+24,2,color);
         fittedText(out,world.name,x+94,top+13,w-130,1.8f,Cream);
@@ -556,7 +596,7 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         const bool draft=index<static_cast<int>(drafts.size());
         const auto& entry=draft ? drafts[index] : entries[index-static_cast<int>(drafts.size())];
         const bool selected=editor.selection()==index+1;
-        out.frame(x+22,top,w-44,35,selected ? Gold : Edge,selected ? glm::vec4(0.09f,0.19f,0.16f,1) : Panel);
+        out.frame(x+22,top,w-44,35,selected ? Gold : Edge,selected ? Selected : Panel);
         fittedText(out,entry.meta.name,x+35,top+8,400,1.15f,Cream);
         out.text(draft ? "DRAFT / CONTINUE" : "ACCEPTED / EDIT COPY",x+487,top+9,0.9f,draft ? Gold : Leaf);
         fittedText(out,sectionCategoryName(entry.meta.category),x+35,top+23,390,0.8f,Muted);
@@ -597,7 +637,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         if (index>=static_cast<int>(items.size())) continue;
         const auto& item=items[index];
         const bool selected=index==selection;
-        out.frame(left,top,cellWidth,cellHeight,selected ? Gold : Edge,selected ? glm::vec4(0.10f,0.21f,0.18f,1) : Panel);
+        out.frame(left,top,cellWidth,cellHeight,selected ? Gold : Edge,selected ? Selected : Panel);
         const bool compact=out.physicalScale()<0.9f;
         sectionItemIcon(out,item,compact ? glm::vec2(left+52,top+14) : glm::vec2(left+24,top+27),compact ? 23 : 35);
         const float nameX=left+(compact ? 5 : 45),nameWidth=cellWidth-(compact ? 10 : 49);
@@ -729,8 +769,8 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
     sectionPanel(out,width,height,x,y,w,h,"ADD TO WORLD",sectionWorldName(editor.selectedWorld())+" / NAME AND CLASSIFY THIS SECTION");
     out.text(editor.nameSelected() ? "SECTION NAME / TYPE TO REPLACE SELECTED NAME" : "SECTION NAME / CTRL+A SELECTS ALL",x+23,y+72,1,Muted);
-    out.frame(x+22,y+88,w-44,36,Gold,{0.065f,0.12f,0.13f,1});
-    if (editor.nameSelected()) out.quad(x+31,y+95,std::min(w-62,editor.meta().name.size()*9.0f+10),22,{0.23f,0.37f,0.32f,1});
+    out.frame(x+22,y+88,w-44,36,Gold,Canvas);
+    if (editor.nameSelected()) out.quad(x+31,y+95,std::min(w-62,editor.meta().name.size()*9.0f+10),22,{.34f,.27f,.17f,1});
     fittedText(out,editor.meta().name+(editor.nameSelected() ? "" : "_"),x+35,y+100,w-70,1.5f,Cream);
     out.text("CATEGORY",x+23,y+143,1,Muted);
     const auto categories=sectionCategoryCatalog();
@@ -738,7 +778,7 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
         const auto& category=categories[index];
         const float top=y+163+index*37;
         const bool selected=editor.meta().category==category.id;
-        out.frame(x+22,top,w-44,31,selected ? Gold : Edge,selected ? glm::vec4(0.10f,0.21f,0.18f,1) : Panel);
+        out.frame(x+22,top,w-44,31,selected ? Gold : Edge,selected ? Selected : Panel);
         out.text(selected ? ">" : "-",x+33,top+10,1.2f,selected ? Gold : Muted);
         fittedText(out,category.name,x+51,top+10,142,1.1f,selected ? Gold : Cream);
         fittedText(out,category.description,x+210,top+11,w-246,0.9f,Muted);
@@ -784,7 +824,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         const auto mode=editor.buildMode();
         const bool pasting=mode==SectionBuildMode::Paste;
         const float labelY=height-(pasting ? 164 : 129);
-        out.quad(center-280,labelY-6,560,pasting ? 74 : 39,{0.01f,0.03f,0.04f,0.87f});
+        out.frame(center-280,labelY-6,560,pasting ? 74 : 39,Edge,Panel);
         const auto title=mode==SectionBuildMode::Select ? "SELECT AREA / PICK TWO CORNERS"
             : pasting ? std::string(editor.pasteFillGaps() ? "FILL GAPS / " : "PASTE / ")+sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
                 +" / "+std::to_string(editor.pasteRotation()*90)+" DEG"
@@ -793,6 +833,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
             : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
+            : item.asset==HubAssetKind::LootChest ? "T ROTATE / Y LOOT: "+std::string(chestLootName(editor.variation()))
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
         if (pasting) {
@@ -864,7 +905,7 @@ void levelWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelContro
         const float top=y+72+index*78;
         const bool selected=index==level.selection();
         const auto color=index==0 ? Leaf : index==1 ? glm::vec4(.36f,.79f,.94f,1) : glm::vec4(.98f,.53f,.25f,1);
-        out.frame(x+22,top,w-44,68,selected ? Gold : Edge,selected ? glm::vec4(.09f,.18f,.16f,1) : Panel);
+        out.frame(x+22,top,w-44,68,selected ? Gold : Edge,selected ? Selected : Panel);
         out.quad(x+30,top+10,4,48,color);
         out.text("0"+std::to_string(index+1),x+48,top+24,2,color);
         fittedText(out,worlds[index].name,x+94,top+13,w-130,1.8f,Cream);
@@ -896,7 +937,7 @@ void levelLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
         const auto& entry=entries[index].definition;
         const float top=y+108+row*39;
         const bool selected=index==level.selection();
-        out.frame(x+22,top,w-44,34,selected ? Gold : Edge,selected ? glm::vec4(.09f,.19f,.16f,1) : Panel);
+        out.frame(x+22,top,w-44,34,selected ? Gold : Edge,selected ? Selected : Panel);
         fittedText(out,"LEVEL "+std::to_string(entry.number),x+35,top+10,98,1.1f,selected ? Gold : Leaf);
         fittedText(out,entry.name,x+145,top+7,388,1.25f,Cream);
         fittedText(out,std::to_string(entry.sections.size())+" SECTIONS",x+w-134,top+11,100,1,Muted);
@@ -918,8 +959,8 @@ void levelField(Drawing& out,std::vector<SectionHit>& hits,const LevelController
                 float x,float y,float width,std::string_view value,LevelTextField field,int action)
 {
     const bool active=level.textField()==field;
-    out.frame(x,y,width,31,active ? Gold : Edge,{.065f,.12f,.13f,1});
-    if (active && level.textSelected()) out.quad(x+7,y+6,width-14,19,{.23f,.37f,.32f,1});
+    out.frame(x,y,width,31,active ? Gold : Edge,Canvas);
+    if (active && level.textSelected()) out.quad(x+7,y+6,width-14,19,{.34f,.27f,.17f,1});
     fittedText(out,std::string(value)+(active && !level.textSelected() ? "_" : ""),x+10,y+10,width-20,1.35f,Cream);
     hits.push_back({x,y,width,31,action});
 }
@@ -942,7 +983,7 @@ void levelComposeMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
         const auto& section=level.sections()[index];
         const float top=y+146+row*34;
         const bool selected=index==level.selection();
-        out.frame(left,top,column,30,selected ? Gold : Edge,selected ? glm::vec4(.09f,.19f,.16f,1) : Panel);
+        out.frame(left,top,column,30,selected ? Gold : Edge,selected ? Selected : Panel);
         out.text("+",left+10,top+9,1.3f,Leaf);
         fittedText(out,section.meta.name,left+29,top+5,column-42,1,Cream);
         fittedText(out,sectionCategoryName(section.meta.category),left+29,top+18,column-42,.8f,Muted);
@@ -954,8 +995,8 @@ void levelComposeMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
         if (index>=static_cast<int>(definition.sections.size())) break;
         const float top=y+146+row*34;
         const bool selected=index==level.selectedQueue();
-        out.frame(right,top,column,30,selected ? Gold : Edge,selected ? glm::vec4(.12f,.20f,.15f,1) : Panel);
-        out.quad(right+5,top+4,29,22,selected ? Gold : glm::vec4(.17f,.27f,.25f,1));
+        out.frame(right,top,column,30,selected ? Gold : Edge,selected ? Selected : Panel);
+        out.quad(right+5,top+4,29,22,selected ? Gold : Canvas);
         out.centered(std::to_string(index+1),right+19.5f,top+11,1,selected ? Panel : Cream);
         fittedText(out,level.sectionName(definition.sections[index]),right+43,top+10,column-57,1.15f,Cream);
         hits.push_back({right,top,column,30,LevelUiQueueBase+index});
@@ -1020,14 +1061,14 @@ void levelRunHud(Drawing& out,std::vector<SectionHit>& hits,const LevelControlle
         out.frame(x,height-171,w,35,Edge);
         fittedText(out,"R CHECKPOINT / SHIFT+R RESTART LEVEL / B VILLAGE / F4 LEVELS",x+14,height-159,w-28,1,Cream);
     } else if (level.screen()==LevelScreen::Transition) {
-        out.quad(0,0,width,height,{.005f,.02f,.025f,.78f});
+        out.quad(0,0,width,height,{.025f,.016f,.009f,.78f});
         out.frame(center-244,height*.5f-56,488,112,Leaf);
         out.centered("SECTION COMPLETE",center,height*.5f-35,1.8f,Leaf);
         out.centered("TRAVELING TO THE NEXT START",center,height*.5f-5,1.15f,Cream);
         out.centered("SECTION "+std::to_string(level.sectionIndex()+2)+" / "+std::to_string(definition.sections.size()),center,height*.5f+23,1,Muted);
     } else if (level.screen()==LevelScreen::Complete) {
         const float top=height*.5f-78;
-        out.quad(0,0,width,height,{.005f,.02f,.025f,.6f});
+        out.quad(0,0,width,height,{.025f,.016f,.009f,.6f});
         out.frame(center-280,top,560,167,Leaf);
         out.centered("LEVEL COMPLETE",center,top+22,2,Leaf);
         out.centered("ALL "+std::to_string(definition.sections.size())+" SECTIONS FINISHED",center,top+54,1.3f,Cream);
@@ -1062,6 +1103,161 @@ void levelUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float w
     case LevelScreen::Error: levelErrorMenu(out,hits,level,width,height); break;
     case LevelScreen::Closed: break;
     }
+}
+
+SectionCanvas inventoryCanvas(int width, int height, float contentScale)
+{
+    if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
+    const float scale=std::min({std::clamp(contentScale,0.5f,4.0f),width/784.0f,height/530.0f});
+    return {scale,width/scale,height/scale};
+}
+
+void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale)
+{
+    const auto color=itemInfo(item).color;
+    const auto p=[&](float x,float y) { return center+glm::vec2(x,y)*scale; };
+    const auto facet=[&](glm::vec2 a,glm::vec2 b,glm::vec2 c,float shade) {
+        out.triangle(center+a*scale,center+b*scale,center+c*scale,glm::vec4(color*shade,1));
+    };
+    const int shape=static_cast<int>(item)%3;
+    out.quad(center.x-15*scale,center.y+13*scale,31*scale,3*scale,{0,0,0,0.22f});
+    if (shape==0) {
+        // A jagged cluster with a pale cut face.
+        facet({-17,7},{-9,-9},{2,3},.62f);
+        facet({-9,-9},{1,-17},{2,3},1.23f);
+        facet({1,-17},{13,-6},{2,3},.98f);
+        facet({13,-6},{17,9},{2,3},.64f);
+        facet({17,9},{2,16},{2,3},.82f);
+        facet({2,16},{-17,7},{2,3},.48f);
+        out.triangle(p(-9,-9),p(1,-17),p(-1,-11),glm::vec4(glm::mix(color,glm::vec3(1),.55f),1));
+    } else if (shape==1) {
+        // Rough metal ore, with exposed mineral seams on the dark host rock.
+        constexpr glm::vec4 rock{.20f,.25f,.27f,1};
+        out.triangle(p(-17,8),p(-11,-10),p(11,-13),rock);
+        out.triangle(p(-17,8),p(11,-13),p(18,5),rock);
+        out.triangle(p(-17,8),p(18,5),p(7,16),{.12f,.17f,.19f,1});
+        facet({-11,-4},{-4,-10},{2,-4},1.15f);
+        facet({-11,-4},{2,-4},{-4,3},.78f);
+        facet({2,2},{12,-5},{15,5},1.0f);
+        facet({2,2},{15,5},{7,11},.64f);
+        out.bar(p(-12,6),p(-3,10),2*scale,glm::vec4(color,1));
+    } else {
+        // A pair of angular crystals.
+        facet({-13,7},{-9,-11},{0,-1},.78f);
+        facet({-9,-11},{-2,-6},{0,-1},1.20f);
+        facet({-13,7},{0,-1},{-3,15},.50f);
+        facet({-2,7},{6,-18},{10,-2},1.12f);
+        facet({6,-18},{16,-9},{10,-2},1.35f);
+        facet({10,-2},{16,-9},{15,10},.77f);
+        facet({-2,7},{10,-2},{15,10},.88f);
+        facet({-2,7},{15,10},{6,16},.54f);
+    }
+}
+
+void packFrame(Drawing& out,float x,float y,float width,float height,glm::vec4 border,
+               glm::vec4 fill,float corner=6)
+{
+    out.frame(x,y,width,height,border,fill,corner);
+}
+
+void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
+{
+    const auto& inventory=game.equipment.inventory;
+    const bool chest=game.chestOpen();
+    const float panelWidth=chest ? 748.0f : 396.0f;
+    constexpr float panelHeight=482;
+    const float x=(width-panelWidth)*.5f,y=(height-panelHeight)*.5f;
+    const glm::vec4 leather{.34f,.25f,.17f,1}, brass{.58f,.42f,.24f,1}, lining{.22f,.16f,.11f,1};
+    out.quad(0,0,width,height,{.025f,.016f,.009f,.73f});
+    packFrame(out,x+6,y+8,panelWidth,panelHeight,{0,0,0,.4f},{0,0,0,.4f},13);
+    packFrame(out,x,y,panelWidth,panelHeight,brass,{.08f,.045f,.026f,.99f},12);
+    packFrame(out,x+8,y+8,panelWidth-16,panelHeight-16,leather,Canvas,8);
+    // Leather grain and brass fasteners match the stitched field satchel.
+    out.quad(x+17,y+17,panelWidth-34,37,lining);
+    for (int i=0;i<46;++i) {
+        const float gx=x+20+float((i*139)%static_cast<int>(panelWidth-44));
+        const float gy=y+62+float((i*83)%364);
+        out.quad(gx,gy,3+(i%4)*3,1,{.40f,.28f,.15f,.35f});
+    }
+    for (const auto corner:{glm::vec2(x+12,y+12),glm::vec2(x+panelWidth-15,y+12),
+                            glm::vec2(x+12,y+panelHeight-15),glm::vec2(x+panelWidth-15,y+panelHeight-15)}) {
+        out.quad(corner.x,corner.y,3,3,brass);
+        out.quad(corner.x,corner.y,1,1,Gold);
+    }
+    out.text("FIELD SATCHEL",x+24,y+23,2,Cream);
+    fittedText(out,game.devMode() ? "PLAYTEST / LOOT RESETS WHEN YOU LEAVE"
+                                : "ORE AND EXPEDITION SUPPLIES",
+               x+24,y+44,panelWidth-94,1,Muted);
+    sectionButton(out,hits,x+panelWidth-50,y+16,28,26,"X",InventoryUiClose);
+    out.text(std::to_string(inventory.occupiedSlots())+" / 20 SLOTS",x+24,y+65,1,Muted);
+    sectionButton(out,hits,x+262,y+58,94,24,"S - SORT",InventoryUiSort);
+    for (int slot=0;slot<Inventory::SlotCount;++slot) {
+        const float sx=x+24+(slot%5)*68,sy=y+92+(slot/5)*68;
+        const auto& stack=inventory.slots[slot];
+        const bool selected=slot==game.inventorySelection();
+        packFrame(out,sx,sy,60,60,selected ? Gold : leather,
+                  selected ? Selected : Panel,4);
+        out.quad(sx+7,sy+4,44,1,selected ? brass : leather);
+        out.text(std::to_string(slot+1),sx+5,sy+5,1,{.54f,.43f,.30f,1});
+        if (stack.count>0 && validItem(stack.item)) {
+            oreIcon(out,stack.item,{sx+30,sy+29},.90f);
+            const auto count=std::to_string(stack.count);
+            const float countWidth=(count.size()*6-1)*out.fontPixel(1);
+            out.quad(sx+54-countWidth,sy+45,countWidth+3,12,{.06f,.042f,.025f,.92f});
+            out.text(count,sx+54-countWidth,sy+48,1,Cream);
+        } else {
+            out.quad(sx+27,sy+28,6,2,{.23f,.17f,.11f,1});
+            out.quad(sx+29,sy+26,2,6,{.23f,.17f,.11f,1});
+        }
+        hits.push_back({sx,sy,60,60,InventoryUiSlotBase+slot});
+    }
+    packFrame(out,x+24,y+371,332,62,leather,{.13f,.12f,.084f,1},5);
+    const int selected=game.inventorySelection();
+    if (selected>=0 && selected<Inventory::SlotCount && inventory.slots[selected].count>0) {
+        const auto& info=itemInfo(inventory.slots[selected].item);
+        fittedText(out,info.name,x+35,y+381,205,1.25f,Leaf);
+        fittedText(out,info.rarity,x+245,y+382,101,1,Gold);
+        wrappedDescription(out,info.description,x+35,y+400,
+                           static_cast<std::size_t>(310/(6*out.fontPixel(1))));
+    } else {
+        out.text("CLICK AN ITEM TO INSPECT OR MOVE IT",x+35,y+382,1,Muted);
+        out.text("THEN CLICK A SLOT TO MOVE OR SWAP",x+35,y+401,1,Cream);
+        out.text("TOOLS KEEP THEIR OWN HOTBAR",x+35,y+415,1,Muted);
+    }
+    if (chest) {
+        const float cx=x+396;
+        out.quad(cx-20,y+65,1,368,Edge);
+        fittedText(out,game.chestName(),cx,y+65,302,1.25f,Gold);
+        const auto& contents=game.chestContents();
+        const bool roomy=contents.size()<=6;
+        const int columns=roomy ? 2 : 3;
+        bool hasItems=false;
+        for (std::size_t slot=0;slot<contents.size() && slot<18;++slot) {
+            const auto& stack=contents[slot];
+            if (stack.count<=0 || !validItem(stack.item)) continue;
+            hasItems=true;
+            const float sx=cx+(slot%columns)*(roomy ? 153 : 102);
+            const float sy=y+92+(slot/columns)*(roomy ? 89 : 45);
+            const float sw=roomy ? 145 : 94,sh=roomy ? 81 : 40;
+            packFrame(out,sx,sy,sw,sh,brass,{.20f,.145f,.081f,1},4);
+            oreIcon(out,stack.item,{sx+(roomy ? 45 : 22),sy+(roomy ? 34 : 16)},roomy ? 1.05f : .53f);
+            out.text("X"+std::to_string(stack.count),sx+(roomy ? 97 : 50),sy+(roomy ? 32 : 12),1,Cream);
+            fittedText(out,itemInfo(stack.item).name,sx+8,sy+(roomy ? 64 : 29),sw-16,1,Muted);
+            hits.push_back({sx,sy,sw,sh,InventoryUiLootBase+static_cast<int>(slot)});
+        }
+        if (!hasItems) {
+            out.frame(cx,y+92,298,267,Edge);
+            out.centered("CHEST EMPTY",cx+149,y+194,1.5f,Gold);
+            out.centered("YOUR LOOT IS IN YOUR PACK",cx+149,y+219,1,Muted);
+        }
+        sectionButton(out,hits,cx,y+371,298,32,"ENTER - TAKE ALL",InventoryUiTakeAll,
+                      hasItems,hasItems,1.25f);
+        out.centered("CLICK A STACK TO TAKE WHAT FITS",cx+149,y+414,1,Muted);
+    }
+    out.quad(x+22,y+442,panelWidth-44,1,Edge);
+    const auto& message=game.inventoryMessage();
+    if (!message.empty()) fittedText(out,message,x+24,y+452,panelWidth-48,1,Leaf);
+    else out.text("I / ESC CLOSE",x+24,y+453,1,Muted);
 }
 
 class SavedState {
@@ -1212,10 +1408,10 @@ void Hud::draw(std::string_view text, int framebufferWidth, int framebufferHeigh
 
     Drawing drawing(static_cast<float>(framebufferWidth), static_cast<float>(framebufferHeight));
     drawing.vertices.reserve(6 + lines.size() * widest * 18 * 6);
-    drawing.quad(margin, margin, widest * advance + 2.0f * padding,
-                 lines.size() * lineHeight - 2.0f * pixel + 2.0f * padding, {0,0,0,0.75f});
+    drawing.frame(margin, margin, widest * advance + 2.0f * padding,
+                  lines.size() * lineHeight - 2.0f * pixel + 2.0f * padding, Edge,Panel,3*pixel);
     for (std::size_t line = 0; line < lines.size(); ++line)
-        drawing.text(lines[line],margin+padding,margin+padding+line*lineHeight,pixel,glm::vec4(1));
+        drawing.text(lines[line],margin+padding,margin+padding+line*lineHeight,pixel,Cream);
     render(drawing, shader_, vao_, buffer_);
 }
 
@@ -1229,7 +1425,7 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     const float scale = std::min({std::clamp(contentScale,0.5f,4.0f),
                                  framebufferWidth / minWidth, framebufferHeight / minHeight});
     const float width = framebufferWidth / scale, height = framebufferHeight / scale;
-    Drawing drawing(width,height);
+    Drawing drawing(width,height,scale);
     drawing.vertices.reserve(24000);
     const auto& equipment = game.equipment;
     const auto selected = equipment.selectedTool();
@@ -1248,20 +1444,20 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     const float barTop = height - 80;
     constexpr float slotWidth = 58, gap = 7;
     const float barLeft = center - (3 * slotWidth + 2 * gap) * 0.5f;
-    drawing.quad(barLeft-7,barTop-7,202,72,{0.01f,0.03f,0.04f,0.68f});
+    drawing.frame(barLeft-7,barTop-7,202,72,Edge,Panel);
     for (int slot=0; slot<ToolCount; ++slot) {
         const float x = barLeft + slot * (slotWidth+gap);
         const bool active = slot == equipment.selectedSlot;
         drawing.frame(x,barTop,slotWidth,58,active ? Gold : Edge,
-                      active ? glm::vec4(0.10f,0.15f,0.14f,0.96f) : Panel);
-        drawing.quad(x+5,barTop+5,10,11,{0.02f,0.04f,0.05f,1});
+                      active ? Selected : Panel);
+        drawing.quad(x+5,barTop+5,10,11,Panel);
         drawing.text(std::to_string(slot+1),x+8,barTop+7,1,active ? Gold : Muted);
         const glm::vec2 icon(x+29,barTop+31);
         if (slot == 0) pickaxeIcon(drawing,icon,0.95f,equipment.pickaxeTier);
         else if (slot == 1) lanternIcon(drawing,icon,0.95f);
         else compassIcon(drawing,icon,0.95f,needle);
         if (slot == 0) {
-            drawing.quad(x+35,barTop+43,19,11,{0.08f,0.12f,0.12f,1});
+            drawing.quad(x+35,barTop+43,19,11,Panel);
             drawing.text("T"+std::to_string(equipment.pickaxeTier),x+39,barTop+45,1,Gold);
         }
         if (active) drawing.quad(x+6,barTop+54,slotWidth-12,2,Gold);
@@ -1281,17 +1477,19 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
         if (distance > 1)
             hint += "  " + std::to_string(std::abs(bearing)) + " DEG " + (bearing < 0 ? "LEFT" : "RIGHT");
     }
-    const float labelWidth = std::max(title.size()*9.0f,hint.size()*6.0f)+18;
-    drawing.quad(center-labelWidth*0.5f,barTop-38,labelWidth,33,{0.015f,0.035f,0.045f,0.82f});
-    drawing.centered(title,center,barTop-33,1.5f,Cream);
-    drawing.centered(hint,center,barTop-16,1,Muted);
+    const float labelWidth = std::min(width-24,
+        std::max((title.size()*6-1)*drawing.fontPixel(1.5f),
+                 (hint.size()*6-1)*drawing.fontPixel(1))+18);
+    drawing.frame(center-labelWidth*0.5f,barTop-38,labelWidth,33,Edge,Panel);
+    fittedCentered(drawing,title,center,barTop-33,labelWidth-18,1.5f,Cream);
+    fittedCentered(drawing,hint,center,barTop-16,labelWidth-18,1,Muted);
 
     if (game.player.inWater() && !game.menuOpen() && !game.devMode()) {
         constexpr float swimWidth=420;
         const float swimPixel=std::max(1.0f,1.0f/scale);
         drawing.frame(center-swimWidth*.5f,height-210,swimWidth,35,Edge);
         drawing.centered(game.player.underwater() ? "UNDERWATER" : "SWIMMING",center,height-202,swimPixel,Leaf);
-        drawing.centered("SPACE RISE / CTRL DIVE / SHIFT SWIM FASTER",center,height-189,swimPixel,Cream);
+        fittedCentered(drawing,"SPACE RISE / CTRL DIVE / SHIFT SWIM FASTER",center,height-189,swimWidth-24,swimPixel,Cream);
     }
 
     if (game.rootCrossingActive() && !game.crossingMenuOpen())
@@ -1300,51 +1498,51 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (game.nearBlacksmith() && !game.menuOpen()) {
         constexpr float promptWidth = 160;
         drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Edge);
-        drawing.centered("E - BLACKSMITH",center,height*0.5f+43,1.25f,Gold);
+        fittedCentered(drawing,"E - BLACKSMITH",center,height*0.5f+43,promptWidth-20,1.25f,Gold);
     }
     if (game.nearExpeditionGate() && !game.menuOpen()) {
         constexpr float promptWidth=234;
         drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Leaf);
-        drawing.centered("E - EXPEDITIONS",center,height*0.5f+43,1.25f,Leaf);
+        fittedCentered(drawing,"E - EXPEDITIONS",center,height*0.5f+43,promptWidth-20,1.25f,Leaf);
     }
     if (game.smithOpen()) {
-        drawing.quad(0,0,width,height,{0.01f,0.025f,0.035f,0.55f});
+        drawing.quad(0,0,width,height,{.025f,.016f,.009f,.55f});
         constexpr float panelWidth = 410, panelHeight = 300;
         const float x = center-panelWidth*0.5f, y = height*0.5f-panelHeight*0.5f-28;
         drawing.quad(x+5,y+6,panelWidth,panelHeight,{0,0,0,0.35f});
         drawing.frame(x,y,panelWidth,panelHeight,Edge);
-        drawing.quad(x+2,y+2,panelWidth-4,3,Gold);
+        drawing.quad(x+12,y+12,panelWidth-24,43,Canvas);
         drawing.text("BLACKSMITH",x+22,y+19,2,Gold);
         drawing.text("THE VILLAGE FORGE",x+23,y+42,1,Muted);
         drawing.quad(x+20,y+61,panelWidth-40,1,Edge);
-        drawing.frame(x+22,y+77,80,74,Edge,{0.075f,0.13f,0.14f,1});
+        drawing.frame(x+22,y+77,80,74,Edge,Canvas);
         pickaxeIcon(drawing,{x+61,y+115},1.75f,equipment.pickaxeTier);
         drawing.text("PICKAXE",x+122,y+81,1.75f,Cream);
-        drawing.text("CURRENT TIER "+std::to_string(equipment.pickaxeTier),x+122,y+103,1.25f,Muted);
+        fittedText(drawing,"CURRENT TIER "+std::to_string(equipment.pickaxeTier),x+122,y+103,panelWidth-144,1.25f,Muted);
         const auto cost = pickaxeUpgradeCost(equipment.pickaxeTier);
-        const bool affordable = cost && equipment.copper >= cost->copper && equipment.iron >= cost->iron;
-        drawing.text(cost ? "NEXT TIER "+std::to_string(equipment.pickaxeTier+1) : "FULLY UPGRADED",
-                     x+122,y+124,1.25f,Gold);
+        const bool affordable = cost && equipment.inventory.count(ItemId::CopperOre) >= cost->copper && equipment.inventory.count(ItemId::IronOre) >= cost->iron;
+        fittedText(drawing,cost ? "NEXT TIER "+std::to_string(equipment.pickaxeTier+1) : "FULLY UPGRADED",
+                   x+122,y+124,panelWidth-144,1.25f,Gold);
         std::string feedback = game.status;
         std::replace(feedback.begin(),feedback.end(),'\n',' ');
         std::replace(feedback.begin(),feedback.end(),'\r',' ');
         if (feedback.size() > 60) feedback = feedback.substr(0,57) + "...";
         const bool error = feedback.starts_with("Upgrade not saved") || feedback.starts_with("Progress unavailable")
             || feedback.starts_with("Not enough");
-        drawing.text(feedback,x+24,y+153,1,error ? glm::vec4(0.94f,0.53f,0.39f,1)
-                     : feedback.starts_with("Pickaxe upgraded") ? Gold : Muted);
+        fittedText(drawing,feedback,x+24,y+153,panelWidth-48,1,error ? glm::vec4(0.94f,0.53f,0.39f,1)
+                   : feedback.starts_with("Pickaxe upgraded") ? Gold : Muted);
         drawing.text("UPGRADE COST",x+24,y+166,1,Muted);
         drawing.text("IN YOUR PACK",x+225,y+166,1,Muted);
         drawing.text(cost ? std::to_string(cost->copper)+" COPPER" : "-",x+24,y+183,1.25f,
-                     cost && equipment.copper < cost->copper ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
+                     cost && equipment.inventory.count(ItemId::CopperOre) < cost->copper ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
         drawing.text(cost ? std::to_string(cost->iron)+" IRON" : "-",x+24,y+202,1.25f,
-                     cost && equipment.iron < cost->iron ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
-        drawing.text(std::to_string(equipment.copper)+" COPPER",x+225,y+183,1.25f,Cream);
-        drawing.text(std::to_string(equipment.iron)+" IRON",x+225,y+202,1.25f,Cream);
+                     cost && equipment.inventory.count(ItemId::IronOre) < cost->iron ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
+        fittedText(drawing,std::to_string(equipment.inventory.count(ItemId::CopperOre))+" COPPER",x+225,y+183,panelWidth-249,1.25f,Cream);
+        fittedText(drawing,std::to_string(equipment.inventory.count(ItemId::IronOre))+" IRON",x+225,y+202,panelWidth-249,1.25f,Cream);
         drawing.frame(x+22,y+226,panelWidth-44,30,affordable ? Gold : Edge,
-                      affordable ? glm::vec4(0.77f,0.51f,0.18f,1) : glm::vec4(0.09f,0.14f,0.15f,1));
-        drawing.centered(!cost ? "MAXIMUM TIER" : affordable ? "ENTER - UPGRADE" : "MORE MATERIALS NEEDED",
-                         center,y+236,1.5f,affordable ? Panel : Muted);
+                      affordable ? glm::vec4(0.77f,0.51f,0.18f,1) : Canvas);
+        fittedCentered(drawing,!cost ? "MAXIMUM TIER" : affordable ? "ENTER - UPGRADE" : "MORE MATERIALS NEEDED",
+                       center,y+236,panelWidth-64,1.5f,affordable ? Panel : Muted);
         drawing.centered("E / ESC - CLOSE",center,y+268,1, Cream);
         drawing.centered("STARTER GIFT: 12 COPPER",center,y+283,1,Muted);
     }
@@ -1396,6 +1594,43 @@ std::optional<int> Hud::levelClick(const Game& game,int framebufferWidth,int fra
     Drawing drawing(canvas.width,canvas.height,canvas.scale);
     std::vector<SectionHit> hits;
     levelUi(drawing,hits,game,canvas.width,canvas.height);
+    x/=canvas.scale; y/=canvas.scale;
+    for (const auto& hit:hits)
+        if (x>=hit.x && x<hit.x+hit.width && y>=hit.y && y<hit.y+hit.height) return hit.action;
+    return std::nullopt;
+}
+
+void Hud::drawInventory(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    if (game.editorMode() || framebufferWidth<=0 || framebufferHeight<=0
+        || (game.devMode() && game.sectionEditor().screen()!=SectionEditorScreen::Test)) return;
+    const auto canvas=inventoryCanvas(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(canvas.width,canvas.height,canvas.scale);
+    std::vector<SectionHit> hits;
+    if (game.inventoryOpen()) inventoryUi(drawing,hits,game,canvas.width,canvas.height);
+    else if (!game.menuOpen()) {
+        const float x=canvas.width-192,y=canvas.height-40;
+        packFrame(drawing,x,y,174,25,Edge,Panel,4);
+        drawing.text("I  PACK "+std::to_string(game.equipment.inventory.occupiedSlots())+"/20",x+13,y+9,1,Muted);
+        if (!game.lootPrompt().empty()) {
+            constexpr float promptWidth=330;
+            const float px=(canvas.width-promptWidth)*.5f,py=canvas.height*.5f+35;
+            packFrame(drawing,px,py,promptWidth,30,Gold,Canvas,5);
+            fittedText(drawing,game.lootPrompt(),px+14,py+11,promptWidth-28,1,Gold);
+        }
+    }
+    render(drawing,shader_,vao_,buffer_);
+}
+
+std::optional<int> Hud::inventoryClick(const Game& game,int framebufferWidth,int framebufferHeight,
+                                      float contentScale,float x,float y)
+{
+    if (!game.inventoryOpen() || framebufferWidth<=0 || framebufferHeight<=0
+        || !std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
+    const auto canvas=inventoryCanvas(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(canvas.width,canvas.height,canvas.scale);
+    std::vector<SectionHit> hits;
+    inventoryUi(drawing,hits,game,canvas.width,canvas.height);
     x/=canvas.scale; y/=canvas.scale;
     for (const auto& hit:hits)
         if (x>=hit.x && x<hit.x+hit.width && y>=hit.y && y<hit.y+hit.height) return hit.action;

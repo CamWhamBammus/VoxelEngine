@@ -145,6 +145,7 @@ void Game::enterDevMode()
     if (levelController_.open() && !levelController_.leave(*this)) { status = levelController_.message(); return; }
     smithOpen_ = crossingMenuOpen_ = false;
     rootCrossingIndex_ = -1;
+    endSectionLoot();
     devMode_ = true;
     sectionEditor_.enter(*this);
 }
@@ -191,6 +192,7 @@ bool Game::saveAuthoringDraft()
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
+    if (updateInventory(actions)) return;
     if (!editorMode_ && actions.active && (actions.levelCreator || actions.levelMenu
         || (actions.devClick && *actions.devClick == SectionUiLevelCreator))) {
         if (actions.levelMenu && !levelController_.creator()
@@ -237,6 +239,7 @@ void Game::update(const InputActions& actions, float deltaSeconds)
 
 void Game::buildVillage()
 {
+    endSectionLoot();
     buildUndergroundScene(world);
     auto collision = std::make_shared<AssetCollision>();
     collision->rebuild(planHubAssets(world));
@@ -344,6 +347,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     }
     if (actions.interact && nearBlacksmith()) {
         smithOpen_ = true;
+        status = "Spend ore from your satchel to strengthen your pickaxe";
         return;
     }
     player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
@@ -384,6 +388,7 @@ void Game::positionForCrossing(glm::vec3 feet, bool checkpoint)
 void Game::startRootCrossing(int index)
 {
     if (index < 0 || index >= RootCrossingCount) return;
+    endSectionLoot();
     crossingCourse_ = buildRootCrossing(world, index);
     player.setAssetCollision(nullptr);
     rootCrossingIndex_ = crossingMenuSelection_ = index;
@@ -616,6 +621,7 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
              << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
              << "\nSCROLL / [ ] CHANGE TOOL | TAB RESUME"
              << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS"
+             << "\nI INVENTORY | E OPEN CHEST | ENTER TAKE ALL LOOT"
              << "\nF6 ROOT CROSSING TESTS | F4 EXPEDITIONS | F11 LEVEL CREATOR";
         if (rootCrossingActive()) {
             text << "\nN NEXT TEST | P PREVIOUS | B RETURN TO HUB"
@@ -626,7 +632,7 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
             text << "\nE BLACKSMITH / EXPEDITION GATE | ENTER CONFIRM | ESC CLOSE / PAUSE"
                  << "\nR RETURN TO VILLAGE | Q QUIT"
                  << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
-                 << "\nTERRAIN RESETS ON LAUNCH | EQUIPMENT UPGRADES ARE SAVED"
+             << "\nTERRAIN RESETS ON LAUNCH | INVENTORY AND UPGRADES ARE SAVED"
                  << "\nMINING AND FULL EXPEDITIONS COMING LATER";
         }
     }

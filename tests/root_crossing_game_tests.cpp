@@ -51,9 +51,10 @@ int main()
 
         voxel::Equipment profile;
         profile.pickaxeTier = 2;
-        profile.copper = 27;
-        profile.iron = 13;
-        profile.crystal = 5;
+        profile.inventory = {};
+        profile.inventory.add(voxel::ItemId::CopperOre, 27);
+        profile.inventory.add(voxel::ItemId::IronOre, 13);
+        profile.inventory.add(voxel::ItemId::GlowCrystal, 5);
         const auto profilePath = directory / "progress.vxp";
         voxel::saveEquipment(profile, profilePath);
         const auto savedProfile = readFile(profilePath);

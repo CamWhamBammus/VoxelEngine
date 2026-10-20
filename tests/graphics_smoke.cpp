@@ -1,6 +1,7 @@
 #include "graphics_smoke.h"
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
+#include "inventory_hud_smoke.h"
 #include "root_crossing_hud_smoke.h"
 #include "section_hud_smoke.h"
 #include "level_hud_smoke.h"
@@ -1187,6 +1188,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyHubDressing(width, height);
     verifyWaterRendering(width, height);
     verifyPlayHud(width, height);
+    verifyInventoryHud(width, height);
     verifyRootCrossingHud(width, height);
     verifyRootCrossingRendering(width, height);
     verifySectionHud(width, height);

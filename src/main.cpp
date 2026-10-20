@@ -62,8 +62,25 @@ int main(int argc, char** argv)
             input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen(),
                          game.devMode() || game.levelMenuOpen(), game.devFlying(),
                          (game.devMode() && game.sectionEditor().screen() == voxel::SectionEditorScreen::Accept)
-                             || game.levelController().typing());
+                             || game.levelController().typing(), game.inventoryOpen());
             auto actions = input.actions();
+            if (game.inventoryOpen() && actions.inventoryPointerPressed) {
+                int menuWidth, menuHeight;
+                float menuScaleX, menuScaleY;
+                window.framebufferSize(menuWidth, menuHeight);
+                glfwGetWindowContentScale(window.handle(), &menuScaleX, &menuScaleY);
+                const auto hit = voxel::Hud::inventoryClick(game, menuWidth, menuHeight, menuScaleY,
+                    actions.inventoryPointer.x * menuWidth, actions.inventoryPointer.y * menuHeight);
+                if (hit) {
+                    if (*hit >= voxel::InventoryUiSlotBase && *hit < voxel::InventoryUiSlotBase + 20)
+                        actions.inventoryClick = *hit - voxel::InventoryUiSlotBase;
+                    else if (*hit >= voxel::InventoryUiLootBase && *hit < voxel::InventoryUiSort)
+                        actions.lootClick = *hit - voxel::InventoryUiLootBase;
+                    else if (*hit == voxel::InventoryUiSort) actions.inventorySort = true;
+                    else if (*hit == voxel::InventoryUiTakeAll) actions.lootAll = true;
+                    else if (*hit == voxel::InventoryUiClose) actions.closeMenu = true;
+                }
+            }
             if ((game.devMenuOpen() || game.levelMenuOpen()) && actions.devPointerPressed) {
                 int menuWidth, menuHeight;
                 float menuScaleX, menuScaleY;
@@ -123,12 +140,13 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
-            if (!game.devMode() && !game.levelController().open()
+            if (!game.menuOpen() && !game.devMode() && !game.levelController().open()
                 && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
                 hud.draw(statusText, width, height, scaleY);
             if (game.devMode()) hud.drawSection(game, width, height, scaleY);
             else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
             if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
+            hud.drawInventory(game, width, height, scaleY);
             if ((game.devMode() || game.levelActive()) && !game.menuOpen() && !input.captured())
                 hud.draw("PAUSED | TAB TO RESUME", width, height, scaleY);
             window.present();

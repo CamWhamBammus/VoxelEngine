@@ -213,7 +213,7 @@ int main()
               "completed levels can be replayed");
         press(game, &voxel::InputActions::returnToHub);
         check(!game.levelActive() && !game.menuOpen(), "B returns to the village");
-        check(game.equipment.pickaxeTier == equipment.pickaxeTier && game.equipment.copper == equipment.copper && game.equipment.iron == equipment.iron && game.equipment.crystal == equipment.crystal,
+        check(game.equipment.pickaxeTier == equipment.pickaxeTier && game.equipment.inventory == equipment.inventory,
               "level creation and play preserve equipment and resources");
 
         // A missing later section must not destroy the active room or crash.

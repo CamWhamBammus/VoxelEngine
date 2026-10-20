@@ -86,6 +86,7 @@ void SectionEditor::enter(Game& game)
 bool SectionEditor::leave(Game& game)
 {
     if (hasSection_ && dirty_ && !saveDraft(game)) return false;
+    game.endSectionLoot();
     preview_.reset(); targetAsset_.reset();
     resetBuildTools();
     hasSection_ = dirty_ = testComplete_ = checkpointReached_ = false;
@@ -844,10 +845,12 @@ void SectionEditor::startTest(Game& game)
     checkpointReached_ = testComplete_ = false; testElapsed_ = 0; testFalls_ = 0;
     faceMarker(game, meta_.spawn);
     screen_ = SectionEditorScreen::Test; game.target.reset(); preview_.reset();
+    game.beginSectionLoot(assets_, true, 0x73574u);
     message_ = "WALK TO THE GOLD END | R RESET | F8 RETURN TO BUILD";
 }
 void SectionEditor::stopTest(Game& game)
 {
+    game.endSectionLoot();
     screen_ = SectionEditorScreen::Build;
     game.camera.setPosition(buildPosition_); pointCamera(game.camera, buildDirection_);
     message_ = testComplete_ ? "TEST PASSED | F10 CHOOSE A CATEGORY AND ACCEPT" : "BACK TO BUILD | COMPLETE A TEST BEFORE ACCEPTING";

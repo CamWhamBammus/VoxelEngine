@@ -197,6 +197,73 @@ void crate(AssetBuilder& out, glm::vec3 center, float width, float height)
         out.beam(center+glm::vec3(x,0.13f,-half+0.06f), center+glm::vec3(x,height-0.13f,half-0.06f), 0.065f, Block::Timber, Wood);
 }
 
+void chestLid(AssetBuilder& out, float left, float right, float outset, Block material, glm::vec3 color)
+{
+    // A closed six-sided profile gives the lid real shoulders and a broad,
+    // flat crown. Straps follow the same outline, slightly outside the wood.
+    const std::array<glm::vec2, 6> profile{{
+        {.75f,-.46f-outset}, {.91f+outset,-.46f-outset},
+        {1.10f+outset,-.27f}, {1.10f+outset,.27f},
+        {.91f+outset,.46f+outset}, {.75f,.46f+outset}
+    }};
+    for (std::size_t i = 0; i < profile.size(); ++i) {
+        const auto a = profile[i], b = profile[(i+1) % profile.size()];
+        out.quad({left,a.x,a.y}, {left,b.x,b.y}, {right,b.x,b.y}, {right,a.x,a.y},
+                 material, color * (i == 2 ? 1.0f : .88f));
+    }
+    for (std::size_t i = 1; i+1 < profile.size(); ++i) {
+        const auto a = profile[0], b = profile[i], c = profile[i+1];
+        out.triangle({left,c.x,c.y}, {left,b.x,b.y}, {left,a.x,a.y}, material, color * .82f);
+        out.triangle({right,a.x,a.y}, {right,b.x,b.y}, {right,c.x,c.y}, material, color * .92f);
+    }
+}
+
+void lootChest(AssetBuilder& out, std::uint32_t variation)
+{
+    // Match the three authored loot presets without changing geometry or
+    // collision when an artist changes the contents with Y.
+    const auto preset = variation % 3;
+    constexpr std::array<glm::vec3, 3> woods{{
+        {.51f,.29f,.13f}, {.27f,.23f,.39f}, {.25f,.16f,.14f}
+    }};
+    constexpr std::array<glm::vec3, 3> trims{{
+        {.76f,.46f,.19f}, {.18f,.66f,.70f}, {.62f,.24f,.16f}
+    }};
+    const auto wood = woods[preset], trim = trims[preset];
+    for (const float x : {-.56f,.56f}) for (const float z : {-.32f,.32f}) {
+        out.box({x-.13f,0,z-.13f}, {x+.13f,.22f,z+.13f}, Block::Slate, Metal);
+        out.box({x-.145f,.02f,z-.145f}, {x+.145f,.09f,z+.145f}, Block::Slate, trim * .72f);
+    }
+    out.box({-.70f,.13f,-.43f}, {.70f,.74f,.43f}, Block::Planks, wood);
+    out.box({-.73f,.14f,-.46f}, {.73f,.22f,.46f}, Block::Timber, wood * .67f);
+    out.box({-.73f,.69f,-.46f}, {.73f,.755f,.46f}, Block::Slate, Metal);
+    chestLid(out, -.72f, .72f, 0, Block::Planks, wood * 1.12f);
+
+    for (const float x : {-.49f,.49f}) {
+        // Full-height banding, lid straps, and bright inset rivets.
+        out.box({x-.065f,.20f,-.445f}, {x+.065f,.75f,.445f}, Block::Slate, Metal);
+        chestLid(out, x-.075f, x+.075f, .018f, Block::Slate, trim);
+        for (const float y : {.28f,.61f}) for (const float z : {-.454f,.454f})
+            out.box({x-.027f,y-.026f,z-.012f}, {x+.027f,y+.026f,z+.012f},
+                    Block::Slate, trim * 1.15f);
+        out.box({x-.10f,.62f,-.49f}, {x+.10f,.84f,-.45f}, Block::Slate, trim * .8f);
+    }
+
+    // The front lock has a readable dark keyhole and a colored inset badge.
+    out.box({-.14f,.48f,.46f}, {.14f,.88f,.515f}, Block::Slate, trim);
+    out.box({-.10f,.52f,.516f}, {.10f,.76f,.535f}, Block::Slate, Metal);
+    out.box({-.042f,.59f,.536f}, {.042f,.68f,.545f}, Block::Slate, trim * 1.15f);
+    out.box({-.018f,.56f,.546f}, {.018f,.62f,.553f}, Block::Slate, Metal);
+    out.quad({0,.94f,.462f}, {-.075f,.87f,.488f}, {0,.80f,.492f}, {.075f,.87f,.488f},
+             Block::Slate, preset == 1 ? glm::vec3(.60f,.86f,.91f) : Cream);
+    for (const float x : {-.754f,.754f}) {
+        out.box({x-.017f,.39f,-.15f}, {x+.017f,.50f,.15f}, Block::Slate, trim);
+        out.box({x-.03f,.32f,-.15f}, {x+.03f,.41f,-.09f}, Block::Slate, Metal);
+        out.box({x-.03f,.32f,.09f}, {x+.03f,.41f,.15f}, Block::Slate, Metal);
+        out.box({x-.03f,.30f,-.15f}, {x+.03f,.35f,.15f}, Block::Slate, Metal);
+    }
+}
+
 } // namespace
 
 void appendHubProp(MeshData& mesh, const HubAsset& asset)
@@ -225,6 +292,7 @@ void appendHubProp(MeshData& mesh, const HubAsset& asset)
         crate(out, {0,0,0}, 1.10f, 0.82f);
         if (asset.variation % 2 == 0) crate(out, {0.14f,0.82f,0.08f}, 0.74f, 0.65f);
         break;
+    case HubAssetKind::LootChest: lootChest(out, asset.variation); break;
     default: break; // Plant kinds are built by appendHubFoliage.
     }
 }

@@ -1,4 +1,5 @@
 #include "hub_assets.h"
+#include "asset_collision.h"
 #include "scene.h"
 
 #include <algorithm>
@@ -174,6 +175,39 @@ void validateRootArch(std::uint32_t variation)
     for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
         check(!triangleIntersectsBox(mesh, i, {-2.4999f,-0.0001f,-4.001f}, {2.4999f,2.4999f,4.001f}),
               "root arch faces leave a five-wide opening clear below height 2.5");
+}
+
+void validateLootChest()
+{
+    const auto original = buildHubAsset({HubAssetKind::LootChest, {}, 0, 0});
+    check(original.indices.size() / 3 < 700, "the detailed chest retains a small model triangle budget");
+    for (std::uint32_t preset = 0; preset < 3; ++preset) {
+        const auto mesh = buildHubAsset({HubAssetKind::LootChest, {}, 0, preset});
+        validate(mesh, {-.79f,0,-.50f}, {.79f,1.12f,.56f});
+        check(same(mesh, buildHubAsset({HubAssetKind::LootChest, {}, 0, preset + 3})),
+              "chest colors repeat exactly with their three loot presets");
+        check(original.indices == mesh.indices && original.vertices.size() == mesh.vertices.size(),
+              "changing chest contents preserves the standing and collision geometry");
+        for (std::size_t i = 0; i < original.vertices.size() && i < mesh.vertices.size(); ++i)
+            check(original.vertices[i].position == mesh.vertices[i].position,
+                  "chest preset changes do not move its surfaces");
+        if (preset) check(!same(original, mesh), "each chest loot preset has a distinct painted palette");
+        for (int facing = 0; facing < 4; ++facing) {
+            const std::array<HubAsset, 1> placements{{{HubAssetKind::LootChest, {}, facing, preset}}};
+            AssetCollision collision;
+            collision.rebuild(placements);
+            const auto top = collision.raycast({0,3,0}, {0,-1,0}, 4);
+            check(top && std::abs(top->point.y - 1.10f) < .001f && top->normal.y > .99f,
+                  "the chest has a real flat lid surface in every orientation");
+            check(collision.overlaps({-.1f,.3f,-.1f}, {.1f,.5f,.1f}),
+                  "the closed chest body is solid");
+            const auto latch = collision.raycast(turn({0,.65f,2}, facing), turn({0,0,-1}, facing), 3);
+            check(latch && latch->distance > 1.40f && latch->distance < 1.50f,
+                  "the front latch rotates with the visible model and can be targeted");
+            check(std::abs(collision.sweep({-.3f,2,-.3f}, {.3f,3.8f,.3f}, 1, -3) + .90f) < .001f,
+                  "a falling player lands on the chest crown without tunneling");
+        }
+    }
 }
 
 void checkArchWalkingClearance(const World& world, const HubAsset& asset)
@@ -535,6 +569,7 @@ int main()
         }
     }
     check(varyingKinds >= 7, "variants provide meaningful visual variation across the asset set");
+    validateLootChest();
 
     World world(1337);
     for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {

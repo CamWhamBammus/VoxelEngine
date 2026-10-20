@@ -306,7 +306,7 @@ void verifySectionHud(int width,int height)
         require(game.sectionEditor().paletteSelection()/24==2,"Lush assets cannot be reached on page three");
         require(difference(assetsLast,draw(width,height))>1000,"New lush model icons did not replace page two");
         act(SectionUiPaletteItemBase+static_cast<int>(HubAssetCount)-1);
-        require(game.sectionEditor().hotbar()[8].asset==HubAssetKind::HangingPlanter,"Last lush asset cannot be equipped");
+        require(game.sectionEditor().hotbar()[8].asset==HubAssetKind::LootChest,"Loot chest cannot be equipped");
         for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
             const float dpi=size.x==640 ? 2.0f : 1.0f;
             const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});

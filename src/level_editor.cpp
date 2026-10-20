@@ -182,6 +182,7 @@ bool LevelController::loadSectionAt(Game& game, std::size_t index)
         game.target.reset();
         position(game, meta_.spawn);
         screen_ = LevelScreen::Play;
+        game.beginSectionLoot(assets_, false, static_cast<std::uint32_t>(definition_.number * 131 + index));
         message_ = "REACH END TO CONTINUE | R CHECKPOINT | SHIFT+R RESTART LEVEL | B HUB";
         return true;
     } catch (const std::exception& error) {

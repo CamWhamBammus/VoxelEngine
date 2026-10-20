@@ -29,7 +29,8 @@ inline constexpr int LevelUiQueuePrevious = 300019, LevelUiQueueNext = 300020;
 inline constexpr int LevelLibraryPageSize = 7, LevelSectionPageSize = 7, LevelQueuePageSize = 7;
 
 // Level assembly stores references to accepted sections. Playing loads one section
-// at a time into Game::world; no creative editor state or equipment is modified.
+// at a time into Game::world. Loot goes into the player's saved inventory;
+// creative section documents are never modified by playing a level.
 class LevelController {
 public:
     explicit LevelController(std::filesystem::path sectionRoot = "sections", std::filesystem::path levelRoot = "levels");

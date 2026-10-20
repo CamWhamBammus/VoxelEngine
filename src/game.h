@@ -4,6 +4,7 @@
 #include "editing.h"
 #include "equipment.h"
 #include "level_editor.h"
+#include "loot.h"
 #include "player.h"
 #include "root_crossings.h"
 #include "section_editor.h"
@@ -49,7 +50,7 @@ inline constexpr const char* Usage =
     "  --screenshot path.ppm\n"
     "                     Run the smoke test and write a rendered image.\n"
     "  -h, --help         Show this help without opening a window.\n\n"
-    "The village terrain starts fresh; equipment upgrades use progress.vxp.\n"
+    "The village terrain starts fresh; inventory and upgrades use progress.vxp.\n"
     "Editor startup loads world.vxl unless --seed is given.\n"
     "In the editor, an explicit existing --world file takes precedence over --seed.\n"
     "Use --editor with --world; game progress is not saved to world files.\n"
@@ -83,6 +84,16 @@ public:
     LevelController& levelController() { return levelController_; }
     const LevelController& levelController() const { return levelController_; }
     bool smithOpen() const { return smithOpen_; }
+    bool inventoryOpen() const { return inventoryOpen_; }
+    bool chestOpen() const { return openChest_.has_value(); }
+    int inventorySelection() const { return inventorySelection_; }
+    const std::vector<ItemStack>& chestContents() const;
+    const std::string& chestName() const { return chestName_; }
+    const std::string& inventoryMessage() const { return inventoryMessage_; }
+    const std::string& lootPrompt() const { return lootPrompt_; }
+    // Called by section mode transitions, never by a checkpoint respawn.
+    void beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std::uint32_t seed);
+    void endSectionLoot();
     bool nearBlacksmith() const;
     bool crossingMenuOpen() const { return crossingMenuOpen_; }
     bool rootCrossingActive() const { return rootCrossingIndex_ >= 0; }
@@ -95,7 +106,7 @@ public:
     int crossingFalls() const { return crossingFalls_; }
     bool nearExpeditionGate() const;
     glm::vec3 compassTarget() const;
-    bool menuOpen() const { return smithOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
+    bool menuOpen() const { return inventoryOpen_ || smithOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
                            bool captured, bool showHelp) const;
@@ -119,6 +130,10 @@ private:
     void leaveDevMode();
     void updatePlay(const InputActions& actions, float deltaSeconds);
     void upgradeEquipment();
+    bool updateInventory(const InputActions& actions);
+    bool commitEquipment(const Equipment& next, std::string_view action);
+    void refreshLootPrompt();
+    void closeInventory();
     void openCrossingMenu();
     void startRootCrossing(int index);
     void leaveRootCrossing();
@@ -141,6 +156,12 @@ private:
     bool smithOpen_ = false;
     std::string progressPath_;
     std::string progressError_;
+    LootSession loot_;
+    std::optional<Equipment> playtestEquipment_;
+    bool inventoryOpen_ = false;
+    int inventorySelection_ = -1;
+    std::optional<std::size_t> openChest_;
+    std::string inventoryMessage_, chestName_, lootPrompt_;
     RootCrossingCourse crossingCourse_;
     int rootCrossingIndex_ = -1;
     int crossingMenuSelection_ = 0;

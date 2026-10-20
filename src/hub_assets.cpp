@@ -470,7 +470,8 @@ std::vector<HubAsset> planHubAssets(const World& world)
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
+    if (asset.kind == HubAssetKind::LootChest) appendHubProp(mesh, asset);
+    else if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
     else if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
     else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);
     else if (asset.kind >= HubAssetKind::BroadleafClump) appendHubGarden(mesh, asset);

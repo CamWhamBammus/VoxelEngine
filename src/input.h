@@ -27,6 +27,10 @@ struct InputActions {
     bool interact = false;
     bool upgrade = false;
     bool closeMenu = false;
+    bool inventory = false, inventorySort = false, lootAll = false;
+    std::optional<int> inventoryClick, lootClick;
+    bool inventoryPointerPressed = false;
+    glm::vec2 inventoryPointer{0}; // Normalized window coordinates, like the creative menus.
     bool crossingMenu = false;
     std::optional<int> selectedCrossing; // 0–9 while the test picker is open.
     int crossingMenuStep = 0;
@@ -158,7 +162,7 @@ public:
 
     void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false,
                 bool crossingPicker = false, bool devMode = false, bool devFlying = false,
-                bool devTyping = false);
+                bool devTyping = false, bool inventoryModal = false);
     const InputActions& actions() const { return actions_; }
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
@@ -181,6 +185,7 @@ private:
         bool pick = false;
         bool interact = false;
         bool upgrade = false;
+        bool inventory = false, inventorySort = false;
         std::array<bool, 3> tools{};
         std::array<bool, 10> courses{};
         bool crossingMenu = false;
@@ -220,6 +225,7 @@ private:
     std::string pendingText_;
     bool wasDevMode_ = false, wasDevMenu_ = false;
     bool wasModal_ = false, wasEditorMode_ = true;
+    bool wasInventoryModal_ = false;
     float removeRepeat_ = 0.0f, placeRepeat_ = 0.0f;
     float backspaceRepeat_ = 0.0f;
     bool suppressDevMouse_ = true, wasDevFlying_ = false;

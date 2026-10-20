@@ -108,11 +108,12 @@ int main()
 
         for (const bool captured : {false, true}) {
             const auto hud = game.statusText(0, 0, 0, 0, captured, true);
-            for (const auto prompt : {"WASD WALK", "SPACE JUMP", "SHIFT SPRINT", "MOUSE LOOK", "R RETURN"})
+            for (const auto prompt : {"WASD WALK", "SPACE JUMP", "SHIFT SPRINT", "MOUSE LOOK", "R RETURN",
+                                      "I INVENTORY", "E OPEN CHEST"})
                 check(hud.find(prompt) != std::string::npos, std::string("play help includes ") + prompt);
-            for (const auto prompt : {"SELECTED", "BACKPACK", "INVENTORY", "LEFT REMOVE", "LEFT MINE", "RIGHT PLACE", "RIGHT BUILD",
+            for (const auto prompt : {"SELECTED", "LEFT REMOVE", "LEFT MINE", "RIGHT PLACE", "RIGHT BUILD",
                                       "MIDDLE PICK", "1-9 MATERIAL", "F5", "F9", "UNDO", "REDO", "TARGET", "COAL:", "COPPER:"})
-                check(hud.find(prompt) == std::string::npos, std::string("play HUD excludes editor/inventory prompt ") + prompt);
+                check(hud.find(prompt) == std::string::npos, std::string("play HUD excludes editor prompt ") + prompt);
         }
 
         actions = {};
@@ -133,7 +134,8 @@ int main()
         actions = {};
         actions.active = actions.interact = actions.upgrade = true;
         game.update(actions);
-        check(!game.smithOpen() && game.equipment.pickaxeTier == 1 && game.equipment.copper == 12,
+        check(!game.smithOpen() && game.equipment.pickaxeTier == 1
+              && game.equipment.inventory.count(voxel::ItemId::CopperOre) == 12,
               "interaction and upgrade requests cannot reach the blacksmith from spawn");
         check(game.player.setFeetPosition(game.world, voxel::sceneBlacksmithApproach()), "blacksmith approach has player clearance");
         game.camera.setPosition(game.player.eyePosition());
@@ -164,15 +166,16 @@ int main()
               "blacksmith menu freezes walking, jumping and tool selection");
         actions.upgrade = true;
         game.update(actions);
-        check(game.equipment.pickaxeTier == 2 && game.equipment.copper == 4,
+        check(game.equipment.pickaxeTier == 2 && game.equipment.inventory.count(voxel::ItemId::CopperOre) == 4,
               "Enter upgrades the pickaxe and charges starter copper");
         const auto upgraded = game.equipment;
         game.update(actions);
         check(game.equipment == upgraded && game.status.find("Not enough") != std::string::npos,
               "another upgrade cannot spend missing iron or regrant copper");
-        game.equipment.iron = 8;
+        game.equipment.inventory.add(voxel::ItemId::IronOre, 8);
         game.update(actions);
-        check(game.equipment.pickaxeTier == 3 && game.equipment.iron == 0, "blacksmith supports the final iron tier");
+        check(game.equipment.pickaxeTier == 3 && game.equipment.inventory.count(voxel::ItemId::IronOre) == 0,
+              "blacksmith supports the final iron tier");
         const auto maximum = game.equipment;
         game.update(actions);
         check(game.equipment == maximum, "max-tier requests never charge ore");
@@ -208,10 +211,11 @@ int main()
         check(!std::filesystem::exists(persistentOptions.progressPath), "new profile is written on the first successful upgrade");
         openSmith(persistent);
         persistent.update(upgradeAction);
-        check(persistent.equipment.pickaxeTier == 2 && voxel::loadEquipment(persistentOptions.progressPath).copper == 4,
+        check(persistent.equipment.pickaxeTier == 2
+              && voxel::loadEquipment(persistentOptions.progressPath).inventory.count(voxel::ItemId::CopperOre) == 4,
               "successful upgrade persists its exact remaining balance");
         voxel::Game resumed(persistentOptions);
-        check(resumed.equipment.pickaxeTier == 2 && resumed.equipment.copper == 4
+        check(resumed.equipment.pickaxeTier == 2 && resumed.equipment.inventory.count(voxel::ItemId::CopperOre) == 4
               && resumed.status.find("STARTER") == std::string::npos,
               "restart restores the tier and never grants starter copper twice");
         { std::ofstream file(persistentOptions.progressPath); file << "damaged profile"; }
