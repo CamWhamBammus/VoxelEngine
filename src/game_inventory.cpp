@@ -21,19 +21,42 @@ void Game::closeInventory()
 void Game::endSectionLoot()
 {
     closeInventory();
+    discardSectionKeys();
     loot_.clear();
     lootPrompt_.clear();
+    sectionLootActive_ = false;
     if (playtestEquipment_) {
         equipment = *playtestEquipment_;
         playtestEquipment_.reset();
     }
 }
 
-void Game::beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std::uint32_t seed)
+void Game::discardSectionKeys()
+{
+    // Unused keys were never permanently claimed. Their original sources become
+    // available on the next visit, including after closing the game.
+    for (auto& slot : equipment.inventory.slots)
+        if (slot.item == ItemId::Key) slot = {};
+    heldKeys_.clear();
+}
+
+std::span<const HubAsset> Game::sectionSceneAssets() const
+{
+    if (sectionLootActive_) return loot_.sceneAssets();
+    if (devMode_) return sectionEditor_.assets();
+    if (levelController_.active()) return levelController_.assets();
+    return {};
+}
+
+void Game::beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std::string_view section)
 {
     endSectionLoot();
     if (playtest) playtestEquipment_ = equipment;
-    loot_.begin(assets, seed);
+    // Authoring always tests a fresh room without touching real collection history.
+    loot_.begin(assets, section, playtest ? std::map<std::string, LootProgress>{} : equipment.lootProgress);
+    sectionLootActive_ = true;
+    player.setAssetCollision(loot_.collision());
+    player.setFeetPosition(world, player.feetPosition());
     refreshLootPrompt();
 }
 
@@ -42,9 +65,84 @@ void Game::refreshLootPrompt()
     lootPrompt_.clear();
     const auto target = loot_.target(world, player.eyePosition(), camera.forward());
     if (!target) return;
+    if (loot_.pickup(*target)) {
+        lootPrompt_ = "E  COLLECT CAVE KEY / THIS SECTION ONLY";
+        return;
+    }
+    if (loot_.locked(*target)) {
+        lootPrompt_ = equipment.inventory.count(ItemId::Key) > 0
+            ? "E  UNLOCK IRONBOUND CHEST / USE 1 KEY"
+            : "LOCKED CHEST / FIND A CAVE KEY IN THIS SECTION";
+        return;
+    }
     const auto& contents = loot_.contents(*target);
     const bool empty = std::none_of(contents.begin(), contents.end(), [](const auto& stack) { return stack.count > 0; });
     lootPrompt_ = empty ? "E  EMPTY CHEST" : "E  OPEN " + std::string(loot_.name(*target));
+}
+
+bool Game::openLoot(std::size_t index)
+{
+    if (loot_.pickup(index)) {
+        takeLoot(index);
+        return false;
+    }
+    if (loot_.locked(index)) {
+        auto receipt = std::find_if(heldKeys_.begin(), heldKeys_.end(), [](const auto& key) { return key.count > 0; });
+        if (equipment.inventory.count(ItemId::Key) == 0 || receipt == heldKeys_.end()) {
+            inventoryMessage_ = "LOCKED / FIND A CAVE KEY IN THIS SECTION";
+            return false;
+        }
+        auto next = equipment;
+        next.inventory.remove(ItemId::Key, 1);
+        ++next.lootProgress[receipt->source].taken[receipt->slot];
+        next.lootProgress[loot_.recordKey(index)].unlocked = true;
+        if (!commitEquipment(next, "UNLOCKED / ONE CAVE KEY USED")) {
+            inventoryOpen_ = true;
+            return false;
+        }
+        --receipt->count;
+        loot_.unlock(index);
+    } else inventoryMessage_ = "CLICK LOOT TO TAKE / ENTER TAKES ALL THAT FITS";
+    openChest_ = index;
+    inventoryOpen_ = true;
+    chestName_ = loot_.name(index);
+    return true;
+}
+
+void Game::takeLoot(std::size_t index, std::optional<std::size_t> selected)
+{
+    if (loot_.locked(index)) return;
+    auto remaining = loot_.contents(index);
+    auto next = equipment;
+    auto keys = heldKeys_;
+    int taken = 0, keyCount = 0;
+    for (std::size_t i = 0; i < remaining.size(); ++i) {
+        if (selected && *selected != i) continue;
+        auto& stack = remaining[i];
+        if (stack.count <= 0) continue;
+        const int left = next.inventory.add(stack.item, stack.count);
+        const int collected = stack.count - left;
+        if (collected == 0) continue;
+        taken += collected;
+        stack.count = left;
+        if (stack.item == ItemId::Key) {
+            // Reserve keys in memory; only spending one permanently claims its source.
+            keys.push_back({loot_.recordKey(index), i, collected});
+            keyCount += collected;
+        } else next.lootProgress[loot_.recordKey(index)].taken[i] += collected;
+    }
+    const bool leftovers = std::any_of(remaining.begin(), remaining.end(), [](const auto& stack) { return stack.count > 0; });
+    if (!taken) {
+        inventoryMessage_ = leftovers ? "BAG FULL / REMAINING LOOT STAYS HERE" : "CHEST EMPTY";
+        if (loot_.pickup(index)) inventoryOpen_ = true;
+    } else if (commitEquipment(next, keyCount > 0 ? "KEY COLLECTED / USE IN THIS SECTION OR FIND IT AGAIN LATER"
+        : "COLLECTED " + std::to_string(taken) + " ITEMS / SAVED PERMANENTLY")) {
+        loot_.contents(index) = std::move(remaining);
+        heldKeys_ = std::move(keys);
+        const auto previousCollision = loot_.collision();
+        loot_.refreshAssets();
+        if (loot_.collision() != previousCollision) player.setAssetCollision(loot_.collision());
+    } else if (loot_.pickup(index)) inventoryOpen_ = true;
 }
 
 bool Game::commitEquipment(const Equipment& next, std::string_view action)
@@ -87,10 +185,7 @@ bool Game::updateInventory(const InputActions& actions)
         if (!actions.interact) return false;
         const auto target = loot_.target(world, player.eyePosition(), camera.forward());
         if (!target) return false;
-        openChest_ = target;
-        inventoryOpen_ = true;
-        chestName_ = loot_.name(*target);
-        inventoryMessage_ = "CLICK LOOT TO TAKE / ENTER TAKES ALL THAT FITS";
+        openLoot(*target);
         return true;
     }
     if (actions.interact && openChest_) { closeInventory(); return true; }
@@ -113,23 +208,8 @@ bool Game::updateInventory(const InputActions& actions)
                 inventorySelection_ = -1;
         }
     } else if (openChest_ && (actions.lootAll || actions.lootClick)) {
-        auto remaining = loot_.contents(*openChest_);
-        auto next = equipment;
-        int taken = 0;
-        for (std::size_t i = 0; i < remaining.size(); ++i) {
-            if (!actions.lootAll && (!actions.lootClick || *actions.lootClick != static_cast<int>(i))) continue;
-            auto& stack = remaining[i];
-            if (stack.count <= 0) continue;
-            const int left = next.inventory.add(stack.item, stack.count);
-            taken += stack.count - left;
-            stack.count = left;
-        }
-        const bool leftovers = std::any_of(remaining.begin(), remaining.end(), [](const auto& stack) { return stack.count > 0; });
-        if (!taken) inventoryMessage_ = leftovers ? "BAG FULL / REMAINING LOOT STAYS HERE" : "CHEST EMPTY";
-        else if (commitEquipment(next, "COLLECTED " + std::to_string(taken) + " ITEMS"
-            + (leftovers ? " / REMAINING LOOT STAYS HERE" : " / CHEST EMPTY"))) {
-            loot_.contents(*openChest_) = std::move(remaining);
-        }
+        if (actions.lootAll) takeLoot(*openChest_);
+        else if (*actions.lootClick >= 0) takeLoot(*openChest_, static_cast<std::size_t>(*actions.lootClick));
     }
     return true; // Inventory pauses movement, section timers and interactions.
 }

@@ -283,6 +283,7 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
     actions_.devLibrary = pressed(buttons.load, previous.load);
     actions_.save = pressed(buttons.save, previous.save);
     actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
+    actions_.sprint = keyDown(GLFW_KEY_LEFT_SHIFT) || keyDown(GLFW_KEY_RIGHT_SHIFT);
     if (!typing) actions_.returnToHub = pressed(buttons.returnToHub, previous.returnToHub);
     if (modal) {
         suppressDevMouse_ = true;

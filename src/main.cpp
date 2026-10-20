@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 
             input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen(),
                          game.devMode() || game.levelMenuOpen(), game.devFlying(),
-                         (game.devMode() && game.sectionEditor().screen() == voxel::SectionEditorScreen::Accept)
+                         (game.devMode() && game.sectionEditor().typing())
                              || game.levelController().typing(), game.inventoryOpen());
             auto actions = input.actions();
             if (game.inventoryOpen() && actions.inventoryPointerPressed) {
@@ -104,9 +104,7 @@ int main(int argc, char** argv)
                             static_cast<float>(now), !game.editorMode()
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
                             !game.rootCrossingActive() && !game.devMode() && !game.levelActive(),
-                            game.devMode() ? std::span<const voxel::HubAsset>(game.sectionEditor().assets())
-                                : game.levelActive() ? std::span<const voxel::HubAsset>(game.levelController().assets())
-                                           : std::span<const voxel::HubAsset>{});
+                            game.sectionSceneAssets());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {

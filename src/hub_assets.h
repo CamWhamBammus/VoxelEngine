@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mesh.h"
+#include "items.h"
 #include <array>
 #include <span>
 #include <vector>
@@ -23,18 +24,30 @@ enum class HubAssetKind {
     GlowMushroomColony, GiantMushroom, ShelfFungi, CaveLotus,
     WaterGrass, MossyLog, RootFan, MossyStones,
     CrystalFlower, SporeStalks, CaveOrchid, HangingPlanter,
-    LootChest
+    LootChest, CrystalChest, IronboundChest, KeyPickup
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::LootChest) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::KeyPickup) + 1;
 
 struct HubAsset {
     HubAssetKind kind;
     glm::vec3 position;
     int facing = 0;
     std::uint32_t variation = 0;
+    // Authored loot is independent of the chest's appearance. New chests are empty.
+    std::vector<ItemStack> chestItems{};
     bool operator==(const HubAsset&) const = default;
 };
+
+constexpr bool isChestAsset(HubAssetKind kind)
+{
+    return kind == HubAssetKind::LootChest || kind == HubAssetKind::CrystalChest
+        || kind == HubAssetKind::IronboundChest;
+}
+constexpr bool isKeyPickup(HubAssetKind kind) { return kind == HubAssetKind::KeyPickup; }
+std::string_view chestAssetName(HubAssetKind kind);
+// Chests hold up to 20 stacks of 1–99 items; other models have no contents.
+bool validChestItems(const HubAsset& asset);
 
 struct HubAssetLight {
     glm::vec3 position;

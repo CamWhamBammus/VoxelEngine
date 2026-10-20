@@ -181,19 +181,20 @@ void validateLootChest()
 {
     const auto original = buildHubAsset({HubAssetKind::LootChest, {}, 0, 0});
     check(original.indices.size() / 3 < 700, "the detailed chest retains a small model triangle budget");
-    for (std::uint32_t preset = 0; preset < 3; ++preset) {
-        const auto mesh = buildHubAsset({HubAssetKind::LootChest, {}, 0, preset});
+    for (const auto kind : {HubAssetKind::LootChest, HubAssetKind::CrystalChest, HubAssetKind::IronboundChest}) {
+        check(isChestAsset(kind) && !chestAssetName(kind).empty(), "each chest style has a readable independent asset name");
+        const auto mesh = buildHubAsset({kind, {}, 0, 0});
         validate(mesh, {-.79f,0,-.50f}, {.79f,1.12f,.56f});
-        check(same(mesh, buildHubAsset({HubAssetKind::LootChest, {}, 0, preset + 3})),
-              "chest colors repeat exactly with their three loot presets");
+        check(same(mesh, buildHubAsset({kind, {}, 0, 17, {{ItemId::Ruby, 99}}})),
+              "variation and authored rewards never change a chest's appearance");
         check(original.indices == mesh.indices && original.vertices.size() == mesh.vertices.size(),
               "changing chest contents preserves the standing and collision geometry");
         for (std::size_t i = 0; i < original.vertices.size() && i < mesh.vertices.size(); ++i)
             check(original.vertices[i].position == mesh.vertices[i].position,
-                  "chest preset changes do not move its surfaces");
-        if (preset) check(!same(original, mesh), "each chest loot preset has a distinct painted palette");
+                  "chest style changes do not move its surfaces");
+        if (kind != HubAssetKind::LootChest) check(!same(original, mesh), "each chest style has a distinct painted palette");
         for (int facing = 0; facing < 4; ++facing) {
-            const std::array<HubAsset, 1> placements{{{HubAssetKind::LootChest, {}, facing, preset}}};
+            const std::array<HubAsset, 1> placements{{{kind, {}, facing, 0}}};
             AssetCollision collision;
             collision.rebuild(placements);
             const auto top = collision.raycast({0,3,0}, {0,-1,0}, 4);
@@ -207,6 +208,22 @@ void validateLootChest()
             check(std::abs(collision.sweep({-.3f,2,-.3f}, {.3f,3.8f,.3f}, 1, -3) + .90f) < .001f,
                   "a falling player lands on the chest crown without tunneling");
         }
+    }
+    const auto key = buildHubAsset({HubAssetKind::KeyPickup, {}, 0, 0});
+    validate(key, {-.19f,0,-.06f}, {.20f,.79f,.06f});
+    check(!key.vertices.empty() && key.indices.size() / 3 < 100,
+          "the cave key has a small readable standalone mesh");
+    check(same(key, buildHubAsset({HubAssetKind::KeyPickup, {}, 0, 123})),
+          "key appearance does not depend on chest variation");
+    for (int facing = 0; facing < 4; ++facing) {
+        const std::array<HubAsset, 1> placements{{{HubAssetKind::KeyPickup, {}, facing, 0}}};
+        AssetCollision collision;
+        collision.rebuild(placements);
+        const auto shaft = collision.raycast(turn({0,.30f,1}, facing), turn({0,0,-1}, facing), 2);
+        check(shaft && std::abs(shaft->distance - .945f) < .001f,
+              "the small key shaft can be targeted in every rotation");
+        check(!collision.raycast(turn({0,.63f,1}, facing), turn({0,0,-1}, facing), 2),
+              "the key handle's visible hole remains open");
     }
 }
 
@@ -536,7 +553,7 @@ int main()
     const glm::vec3 anchor{-13.25f, 22.5f, 15.75f};
     for (const auto kind : kinds) {
         varyingKinds += !same(buildHubAsset({kind, anchor, 0, 0}), buildHubAsset({kind, anchor, 0, 1}));
-        if (isPathAsset(kind) || kind >= HubAssetKind::Boulder)
+        if ((isPathAsset(kind) || kind >= HubAssetKind::Boulder) && !isChestAsset(kind) && !isKeyPickup(kind))
             check(!same(buildHubAsset({kind, {}, 0, 0}), buildHubAsset({kind, {}, 0, 1})),
                   "each new model varies its handcrafted shape or painted palette");
         for (const auto variation : {0u, 1u, 42u, std::numeric_limits<std::uint32_t>::max()}) {

@@ -3,6 +3,7 @@
 #include <array>
 #include <cerrno>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <system_error>
@@ -11,11 +12,29 @@
 
 namespace voxel {
 namespace {
+constexpr std::size_t MaxProfileBytes = 16 * 1024 * 1024;
+constexpr std::size_t MaxLootRecords = 65536;
+constexpr std::size_t MaxLootKeyBytes = 1024;
+
+bool validLootKey(std::string_view key)
+{
+    if (key.empty() || key.size() > MaxLootKeyBytes) return false;
+    for (const unsigned char character : key)
+        if (character < 32 || character > 126) return false;
+    return true;
+}
+
 void validate(const Equipment& equipment)
 {
     if (equipment.pickaxeTier < 1 || equipment.pickaxeTier > 3
         || !equipment.inventory.valid()) {
         throw std::runtime_error("Invalid equipment tier or inventory");
+    }
+    if (equipment.lootProgress.size() > MaxLootRecords) throw std::runtime_error("Too many saved chest records");
+    for (const auto& [key, progress] : equipment.lootProgress) {
+        if (!validLootKey(key)) throw std::runtime_error("Invalid saved chest identifier");
+        for (const int count : progress.taken)
+            if (count < 0 || count > ChestStackLimit) throw std::runtime_error("Invalid saved chest count");
     }
 }
 } // namespace
@@ -63,17 +82,21 @@ Equipment loadEquipment(const std::filesystem::path& path)
     if (!std::filesystem::is_regular_file(path)) throw std::runtime_error("Progress file is not a regular file");
     std::ifstream input(path, std::ios::binary);
     if (!input) throw std::runtime_error("Cannot open progress file");
-    std::array<char, 4097> bytes{};
-    input.read(bytes.data(), bytes.size());
+    const auto fileSize = std::filesystem::file_size(path);
+    if (fileSize > MaxProfileBytes) throw std::runtime_error("Progress file is too large");
+    // One extra byte also catches a file that grows after the size check.
+    std::string bytes(static_cast<std::size_t>(fileSize) + 1, '\0');
+    input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     if (input.bad() || input.gcount() == static_cast<std::streamsize>(bytes.size()))
         throw std::runtime_error("Progress file is unreadable or too large");
-    std::istringstream fields(std::string(bytes.data(), static_cast<std::size_t>(input.gcount())));
+    bytes.resize(static_cast<std::size_t>(input.gcount()));
+    std::istringstream fields(std::move(bytes));
     std::string magic, tierLabel;
     int version = 0;
     Equipment equipment;
     equipment.inventory = {};
     if (!(fields >> magic >> version >> tierLabel >> equipment.pickaxeTier)
-        || magic != "VOXEL_PROGRESS" || (version != 1 && version != 2) || tierLabel != "TIER") {
+        || magic != "VOXEL_PROGRESS" || (version != 1 && version != 2 && version != 3) || tierLabel != "TIER") {
         throw std::runtime_error("Invalid progress format or version");
     }
     if (version == 1) {
@@ -97,9 +120,33 @@ Equipment loadEquipment(const std::filesystem::path& path)
             std::string slotLabel;
             int item = 0;
             if (!(fields >> slotLabel >> item >> slot.count) || slotLabel != "SLOT"
-                || item < 0 || item >= ItemCount)
+                || item < 0 || item >= (version == 2 ? static_cast<int>(ItemId::Key) : ItemCount)
+                || (item == static_cast<int>(ItemId::Key) && slot.count != 0))
                 throw std::runtime_error("Invalid inventory slot");
             slot.item = static_cast<ItemId>(item);
+        }
+    }
+    if (version == 3) {
+        std::string label;
+        int recordCount = 0;
+        if (!(fields >> label >> recordCount) || label != "LOOT" || recordCount < 0
+            || static_cast<std::size_t>(recordCount) > MaxLootRecords)
+            throw std::runtime_error("Invalid saved chest record count");
+        for (int record = 0; record < recordCount; ++record) {
+            std::string key;
+            LootProgress progress;
+            int unlocked = 0;
+            if (!(fields >> label) || label != "CHEST") throw std::runtime_error("Invalid saved chest record");
+            fields >> std::ws;
+            if (fields.peek() != '"' || !(fields >> std::quoted(key) >> unlocked)
+                || !validLootKey(key) || (unlocked != 0 && unlocked != 1))
+                throw std::runtime_error("Invalid saved chest identifier or lock state");
+            progress.unlocked = unlocked == 1;
+            for (int& count : progress.taken)
+                if (!(fields >> count) || count < 0 || count > ChestStackLimit)
+                    throw std::runtime_error("Invalid saved chest count");
+            if (!equipment.lootProgress.emplace(std::move(key), progress).second)
+                throw std::runtime_error("Duplicate saved chest identifier");
         }
     }
     fields >> std::ws;
@@ -114,10 +161,20 @@ void saveEquipment(const Equipment& equipment, const std::filesystem::path& path
     const auto parent = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
     if (!std::filesystem::is_directory(parent)) throw std::runtime_error("Progress folder does not exist");
     std::ostringstream output;
-    output << "VOXEL_PROGRESS 2\nTIER " << equipment.pickaxeTier
+    output << "VOXEL_PROGRESS 3\nTIER " << equipment.pickaxeTier
            << "\nINVENTORY " << Inventory::SlotCount << '\n';
-    for (const auto& slot : equipment.inventory.slots)
-        output << "SLOT " << static_cast<int>(slot.item) << ' ' << slot.count << '\n';
+    for (const auto& slot : equipment.inventory.slots) {
+        const auto persisted = slot.item == ItemId::Key ? ItemStack{} : slot;
+        output << "SLOT " << static_cast<int>(persisted.item) << ' ' << persisted.count << '\n';
+    }
+    output << "LOOT " << equipment.lootProgress.size() << '\n';
+    for (const auto& [key, progress] : equipment.lootProgress) {
+        output << "CHEST " << std::quoted(key) << ' ' << (progress.unlocked ? 1 : 0);
+        for (const int count : progress.taken) output << ' ' << count;
+        output << '\n';
+        if (output.tellp() > static_cast<std::streamoff>(MaxProfileBytes))
+            throw std::runtime_error("Progress file is too large");
+    }
     const auto bytes = output.str();
     const auto pattern = (parent / ".voxel-progress-XXXXXX").string();
     std::vector<char> temporary(pattern.begin(), pattern.end());

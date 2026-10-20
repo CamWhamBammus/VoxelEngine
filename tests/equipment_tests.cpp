@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -81,12 +83,21 @@ int main()
         for (int slot = 0; slot < Inventory::SlotCount; ++slot)
             equipment.inventory.slots[slot] = {static_cast<ItemId>(slot % ItemCount), slot * 4 + 1};
         equipment.selectedSlot = 2;
+        LootProgress firstChest; firstChest.unlocked = true; firstChest.taken[0] = 7; firstChest.taken[19] = 99;
+        LootProgress secondChest; secondChest.taken[4] = 12;
+        equipment.lootProgress["lush-caves/treasure/old \"mine\".vxs/asset-3"] = firstChest;
+        equipment.lootProgress["lush-caves/exploration/root\\path.vxs/asset-8"] = secondChest;
+        const auto beforeSave = equipment;
         saveEquipment(equipment, path);
+        check(equipment == beforeSave, "saving does not mutate transient key slots or session state");
         auto expected = equipment;
         expected.selectedSlot = 0;
-        check(loadEquipment(path) == expected, "profile restores tier and all twenty slots, leaving hotbar selection session-only");
+        for (auto& slot : expected.inventory.slots) if (slot.item == ItemId::Key) slot = {};
+        check(loadEquipment(path) == expected, "profile restores ordinary slots and chest ledger, leaving keys and hotbar selection session-only");
         const auto saved = contents(path);
-        check(saved.starts_with("VOXEL_PROGRESS 2"), "new profiles use the inventory format");
+        check(saved.starts_with("VOXEL_PROGRESS 3"), "new profiles use persistent chest format");
+        check(loadEquipment(path).inventory.count(ItemId::Key) == 0 && equipment.inventory.count(ItemId::Key) > 0,
+              "section keys serialize as empty slots and never return after restarting");
         equipment.inventory.slots[0].count = -1;
         rejects([&] { saveEquipment(equipment, path); }, "invalid balances cannot be saved");
         check(contents(path) == saved, "validation failure preserves the previous save bytes");
@@ -102,6 +113,69 @@ int main()
             temporaryRemains |= entry.path().filename().string().starts_with(".voxel-progress-");
         check(!temporaryRemains, "failed profile writes clean up their sibling temporary files");
 
+        auto versionTwo = saved.substr(0, saved.find("LOOT "));
+        versionTwo.replace(versionTwo.find("VOXEL_PROGRESS 3"), 16, "VOXEL_PROGRESS 2");
+        { std::ofstream file(path); file << versionTwo; }
+        auto oldInventory = expected;
+        oldInventory.lootProgress.clear();
+        check(loadEquipment(path) == oldInventory, "version two preserves every ordinary slot and starts an empty chest ledger");
+        check(contents(path) == versionTwo, "version two migration does not modify the original file");
+        saveEquipment(oldInventory, path);
+        check(loadEquipment(path) == oldInventory && contents(path).starts_with("VOXEL_PROGRESS 3"),
+              "version two upgrades to version three on the next successful save");
+        auto invalidVersionTwo = versionTwo;
+        invalidVersionTwo.replace(invalidVersionTwo.find("SLOT 0 1\n"), 9, "SLOT 18 1\n");
+        { std::ofstream file(path); file << invalidVersionTwo; }
+        rejects([&] { static_cast<void>(loadEquipment(path)); }, "version two cannot use the newly added cave key item ID");
+
+        saveEquipment(expected, path);
+        for (int badCase = 0; badCase < 5; ++badCase) {
+            auto bad = expected;
+            if (badCase == 0) bad.lootProgress[""] = {};
+            if (badCase == 1) bad.lootProgress[std::string(1025, 'a')] = {};
+            if (badCase == 2) bad.lootProgress["bad\nsection"] = {};
+            if (badCase == 3) bad.lootProgress["bad-count"].taken[0] = -1;
+            if (badCase == 4) bad.lootProgress["bad-count"].taken[19] = 100;
+            rejects([&] { saveEquipment(bad, path); }, "invalid chest ledgers cannot be saved");
+            check(contents(path) == saved, "invalid chest ledger leaves the previous profile unchanged");
+        }
+        {
+            Equipment tooMany;
+            for (int i = 0; i < 65537; ++i) tooMany.lootProgress["chest-" + std::to_string(i)] = {};
+            rejects([&] { saveEquipment(tooMany, path); }, "writer enforces the chest record bound");
+            check(contents(path) == saved, "oversized record count preserves the previous profile");
+        }
+        {
+            Equipment tooLarge;
+            for (int i = 0; i < 16500; ++i) tooLarge.lootProgress[std::string(1000, 'a') + std::to_string(i)] = {};
+            rejects([&] { saveEquipment(tooLarge, path); }, "writer enforces the serialized file byte bound");
+            check(contents(path) == saved, "oversized serialized profile preserves the previous file");
+        }
+        const auto chestRecord = [](std::string key, int unlocked = 0, int firstCount = 0, int slots = 20) {
+            std::ostringstream record;
+            record << "CHEST " << std::quoted(key) << ' ' << unlocked;
+            for (int slot = 0; slot < slots; ++slot) record << ' ' << (slot == 0 ? firstCount : 0);
+            return record.str() + '\n';
+        };
+        const auto inventoryPrefix = saved.substr(0, saved.find("LOOT "));
+        for (const auto& ledger : std::vector<std::string>{
+            "", "LOOT -1\n", "LOOT 65537\n", "LOOT 1\n",
+            "LOOT 1\n" + chestRecord("section", 2),
+            "LOOT 1\n" + chestRecord("section", 0, -1),
+            "LOOT 1\n" + chestRecord("section", 0, 100),
+            "LOOT 1\n" + chestRecord("section", 0, 0, 19),
+            "LOOT 1\n" + chestRecord(""),
+            "LOOT 1\n" + chestRecord(std::string(1025, 'x')),
+            "LOOT 1\n" + chestRecord("bad\nidentifier"),
+            "LOOT 2\n" + chestRecord("section") + chestRecord("section"),
+            "LOOT 1\nCHEST unquoted 0 0 0\n",
+            "LOOT 0\nextra\n"}) {
+            const auto malformed = inventoryPrefix + ledger;
+            { std::ofstream file(path); file << malformed; }
+            rejects([&] { static_cast<void>(loadEquipment(path)); }, "malformed chest ledger must be rejected");
+            check(contents(path) == malformed, "invalid ledger loading never writes to the profile");
+        }
+
         const std::string legacy = "VOXEL_PROGRESS 1\nTIER 2\nORE 205 103 7\n";
         { std::ofstream file(path); file << legacy; }
         auto migrated = loadEquipment(path);
@@ -112,7 +186,7 @@ int main()
               "legacy balances split into stacks without dropping any ore or adding starter copper");
         check(contents(path) == legacy, "loading a legacy profile does not alter it on disk");
         saveEquipment(migrated, path);
-        check(loadEquipment(path) == migrated && contents(path).starts_with("VOXEL_PROGRESS 2"),
+        check(loadEquipment(path) == migrated && contents(path).starts_with("VOXEL_PROGRESS 3"),
               "the next successful save upgrades the profile format");
         { std::ofstream file(path); file << "VOXEL_PROGRESS 1\nTIER 1\nORE 1980 0 0\n"; }
         check(loadEquipment(path).inventory.count(ItemId::CopperOre) == 1980,
@@ -141,7 +215,7 @@ int main()
             "VOXEL_PROGRESS 1\nTIER 1\nORE 0 0 99999999999999999\n",
             "VOXEL_PROGRESS 1\nTIER 1\nORE 1981 0 0\n",
             "VOXEL_PROGRESS 1\nTIER 1\nORE 990 990 1\n",
-            "VOXEL_PROGRESS 1\nTIER 1\nORE 12 0 0\nextra", std::string(4097, 'x'),
+            "VOXEL_PROGRESS 1\nTIER 1\nORE 12 0 0\nextra", std::string(16 * 1024 * 1024 + 1, 'x'),
             invalidCount, invalidId, negativeId, noncanonicalEmpty, wrongSize,
             saved.substr(0, saved.rfind("SLOT")), saved + "extra\n"}) {
             { std::ofstream file(path, std::ios::binary); file << malformed; }

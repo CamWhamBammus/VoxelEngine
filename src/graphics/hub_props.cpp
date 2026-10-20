@@ -218,11 +218,12 @@ void chestLid(AssetBuilder& out, float left, float right, float outset, Block ma
     }
 }
 
-void lootChest(AssetBuilder& out, std::uint32_t variation)
+void lootChest(AssetBuilder& out, HubAssetKind kind)
 {
-    // Match the three authored loot presets without changing geometry or
-    // collision when an artist changes the contents with Y.
-    const auto preset = variation % 3;
+    // Style is a distinct asset. Neither its variation nor its contents changes
+    // the model's silhouette or collision.
+    const auto preset = kind == HubAssetKind::CrystalChest ? 1
+                      : kind == HubAssetKind::IronboundChest ? 2 : 0;
     constexpr std::array<glm::vec3, 3> woods{{
         {.51f,.29f,.13f}, {.27f,.23f,.39f}, {.25f,.16f,.14f}
     }};
@@ -264,6 +265,20 @@ void lootChest(AssetBuilder& out, std::uint32_t variation)
     }
 }
 
+void caveKey(AssetBuilder& out)
+{
+    const glm::vec3 brass(.89f,.63f,.20f), edge(1.0f,.82f,.36f);
+    // A broad squared bow, short shaft and two teeth make the pickup readable
+    // without an animation or a collision box filling the hole in its handle.
+    out.box({-.18f,.48f,-.055f}, {-.10f,.78f,.055f}, Block::Slate, brass);
+    out.box({ .10f,.48f,-.055f}, { .18f,.78f,.055f}, Block::Slate, brass);
+    out.box({-.10f,.48f,-.055f}, { .10f,.56f,.055f}, Block::Slate, edge);
+    out.box({-.10f,.70f,-.055f}, { .10f,.78f,.055f}, Block::Slate, edge);
+    out.box({-.045f,0,-.055f}, {.045f,.50f,.055f}, Block::Slate, brass);
+    out.box({ .045f,.035f,-.055f}, {.19f,.12f,.055f}, Block::Slate, edge);
+    out.box({ .045f,.19f,-.055f}, {.14f,.27f,.055f}, Block::Slate, edge);
+}
+
 } // namespace
 
 void appendHubProp(MeshData& mesh, const HubAsset& asset)
@@ -292,7 +307,10 @@ void appendHubProp(MeshData& mesh, const HubAsset& asset)
         crate(out, {0,0,0}, 1.10f, 0.82f);
         if (asset.variation % 2 == 0) crate(out, {0.14f,0.82f,0.08f}, 0.74f, 0.65f);
         break;
-    case HubAssetKind::LootChest: lootChest(out, asset.variation); break;
+    case HubAssetKind::LootChest:
+    case HubAssetKind::CrystalChest:
+    case HubAssetKind::IronboundChest: lootChest(out, asset.kind); break;
+    case HubAssetKind::KeyPickup: caveKey(out); break;
     default: break; // Plant kinds are built by appendHubFoliage.
     }
 }

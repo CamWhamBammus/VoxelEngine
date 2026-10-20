@@ -53,6 +53,86 @@ std::size_t difference(const Pixels& a,const Pixels& b)
                            std::abs(int(a[i+2])-int(b[i+2]))})>20;
     return changed;
 }
+
+void verifyChestAuthoring(int width,int height,const std::filesystem::path& library,Hud& hud)
+{
+    World room; buildBlankSection(room);
+    const std::vector<HubAsset> chests{
+        {HubAssetKind::LootChest,{-6.5f,9,18.5f},0,0,{{ItemId::CopperOre,8}}},
+        {HubAssetKind::CrystalChest,{.5f,9,18.5f},0,0,{{ItemId::Amethyst,5}}},
+        {HubAssetKind::IronboundChest,{7.5f,9,18.5f},0,0,{{ItemId::MithrilOre,2}}},
+    };
+    saveSectionDraft(room,{},chests,library);
+    Options options;options.dev=true;options.smokeTest=true;options.sectionLibrary=library.string();
+    Game game(options);
+    const auto act=[&](int id) {InputActions a;a.active=true;a.devClick=id;game.update(a);};
+    const auto press=[&](bool InputActions::*key) {InputActions a;a.active=true;a.*key=true;game.update(a);};
+    const auto draw=[&](int w,int h,float dpi=1) {
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,w,h);glDisable(GL_SCISSOR_TEST);
+        glClearColor(.13f,.17f,.15f,1);glClear(GL_COLOR_BUFFER_BIT);
+        const auto before=state();hud.drawSection(game,w,h,dpi);
+        require(state()==before,"Chest contents editor changed OpenGL state");
+        Pixels pixels(static_cast<std::size_t>(w)*h*4);
+        glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        require(glGetError()==GL_NO_ERROR,"Chest contents editor generated an OpenGL error");
+        return pixels;
+    };
+    act(SectionUiWorldBase);act(SectionUiLibraryDraftBase);
+    for (std::size_t style=0;style<chests.size();++style) {
+        game.camera.setPosition(chests[style].position+glm::vec3(0,2,3));
+        const auto d=glm::normalize(chests[style].position+glm::vec3(0,.6f,0)-game.camera.position());
+        const auto old=game.camera.forward();
+        game.camera.rotate(glm::degrees(std::atan2(d.z,d.x)-std::atan2(old.z,old.x)),
+                           glm::degrees(std::asin(d.y)-std::asin(old.y)));
+        press(&InputActions::devPalette);
+        require(game.sectionEditor().screen()==SectionEditorScreen::ChestContents
+                && game.sectionEditor().editingChestKind()==chests[style].kind,
+                "A placed chest style did not open its own contents editor");
+        const auto before=draw(width,height);
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2 : 1;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            const auto hit=[&](float px,float py) {
+                return Hud::sectionClick(game,size.x,size.y,dpi,px*scale,py*scale);
+            };
+            for (int slot=0;slot<ChestSlotCount;++slot)
+                require(hit(x+354+(slot%5)*66,y+125+(slot/5)*66)==SectionUiChestSlotBase+slot,
+                        "Chest editor slot hit area disagrees with its DPI-scaled drawing");
+            for (int item=0;item<ItemCount;++item)
+                require(hit(x+92+(item%2)*146,y+109+(item/2)*30)==SectionUiChestItemBase+item,
+                        "Every catalog item, including the key, must be visible and clickable");
+            const std::array<std::pair<glm::vec2,int>,7> controls{{
+                {{341,397},SectionUiChestMinus},{{400,397},SectionUiChestQuantity},
+                {{458,397},SectionUiChestPlus},{{565,397},SectionUiChestRemove},
+                {{92,454},SectionUiChestClear},{{390,454},SectionUiChestCancel},
+                {{572,454},SectionUiChestApply}
+            }};
+            for (const auto& [point,id]:controls)
+                require(hit(x+point.x,y+point.y)==id,"Chest contents control disagrees with the scaled drawing");
+            draw(size.x,size.y,dpi);
+        }
+        for (int slot=0;slot<ChestSlotCount;++slot) {
+            act(SectionUiChestSlotBase+slot);act(SectionUiChestItemBase+slot%ItemCount);
+        }
+        act(SectionUiChestQuantity);
+        InputActions quantity;quantity.active=true;quantity.devText="99";game.update(quantity);
+        require(game.sectionEditor().chestSlots().back().count==99,"Typed quantity did not update the selected stack");
+        require(game.sectionEditor().assets()[style].chestItems==chests[style].chestItems,
+                "Chest HUD edits must remain staged until Save");
+        require(difference(before,draw(width,height))>500,"Chest editor did not display the selected contents and quantity");
+        draw(640,360,2);
+        if (style==0) {
+            act(SectionUiChestApply);
+            require(game.sectionEditor().assets()[style].chestItems.size()==ChestSlotCount,
+                    "Save did not preserve all twenty authored stacks");
+        } else {
+            act(SectionUiChestCancel);
+            require(game.sectionEditor().assets()[style].chestItems==chests[style].chestItems,
+                    "Cancel must leave the placed chest unchanged");
+        }
+    }
+}
 }
 
 void verifySectionHud(int width,int height)
@@ -305,8 +385,11 @@ void verifySectionHud(int width,int height)
         act(SectionUiPaletteNext);
         require(game.sectionEditor().paletteSelection()/24==2,"Lush assets cannot be reached on page three");
         require(difference(assetsLast,draw(width,height))>1000,"New lush model icons did not replace page two");
-        act(SectionUiPaletteItemBase+static_cast<int>(HubAssetCount)-1);
-        require(game.sectionEditor().hotbar()[8].asset==HubAssetKind::LootChest,"Loot chest cannot be equipped");
+        for (const auto kind:{HubAssetKind::LootChest,HubAssetKind::CrystalChest,HubAssetKind::IronboundChest,HubAssetKind::KeyPickup}) {
+            act(SectionUiPaletteItemBase+static_cast<int>(kind));
+            require(game.sectionEditor().hotbar()[8].asset==kind,"Each chest style and cave key must be equipable");
+            draw(width,height);draw(640,360,2);
+        }
         for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
             const float dpi=size.x==640 ? 2.0f : 1.0f;
             const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
@@ -353,6 +436,7 @@ void verifySectionHud(int width,int height)
         require(difference(library,draw(width,height))>400,"Library did not show its accepted section");
         const auto before=state(); hud.drawSection(game,0,0);
         require(state()==before,"Minimized section HUD changed OpenGL state");
+        verifyChestAuthoring(width,height,temporary/"chest-workshop",hud);
     } catch (...) { cleanup(); throw; }
     cleanup();
     std::cout << "Section HUD passed: world library, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";

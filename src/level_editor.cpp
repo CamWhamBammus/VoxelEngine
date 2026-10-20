@@ -182,7 +182,7 @@ bool LevelController::loadSectionAt(Game& game, std::size_t index)
         game.target.reset();
         position(game, meta_.spawn);
         screen_ = LevelScreen::Play;
-        game.beginSectionLoot(assets_, false, static_cast<std::uint32_t>(definition_.number * 131 + index));
+        game.beginSectionLoot(assets_, false, definition_.sections[index].generic_string());
         message_ = "REACH END TO CONTINUE | R CHECKPOINT | SHIFT+R RESTART LEVEL | B HUB";
         return true;
     } catch (const std::exception& error) {
@@ -381,6 +381,7 @@ void LevelController::updatePlay(Game& game, const InputActions& actions, float 
     if (game.player.feetPosition().y < SectionInteriorMin.y - 2.0f) { ++falls_; reset(game, false); return; }
     if (meta_.checkpoint && atMarker(game, *meta_.checkpoint)) checkpointReached_ = true;
     if (!atMarker(game, meta_.finish)) return;
+    game.discardSectionKeys();
     if (sectionIndex_ + 1 == definition_.sections.size()) {
         screen_ = LevelScreen::Complete;
         message_ = "LEVEL COMPLETE | RETURN TO THE VILLAGE OR REPLAY";

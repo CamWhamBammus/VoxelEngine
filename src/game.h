@@ -92,8 +92,13 @@ public:
     const std::string& inventoryMessage() const { return inventoryMessage_; }
     const std::string& lootPrompt() const { return lootPrompt_; }
     // Called by section mode transitions, never by a checkpoint respawn.
-    void beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std::uint32_t seed);
+    void beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std::string_view section = {});
     void endSectionLoot();
+    std::span<const HubAsset> sectionSceneAssets() const;
+    std::shared_ptr<const AssetCollision> sectionSceneCollision() const
+    {
+        return sectionLootActive_ ? loot_.collision() : sectionEditor_.assetCollision();
+    }
     bool nearBlacksmith() const;
     bool crossingMenuOpen() const { return crossingMenuOpen_; }
     bool rootCrossingActive() const { return rootCrossingIndex_ >= 0; }
@@ -134,6 +139,9 @@ private:
     bool commitEquipment(const Equipment& next, std::string_view action);
     void refreshLootPrompt();
     void closeInventory();
+    bool openLoot(std::size_t index);
+    void takeLoot(std::size_t index, std::optional<std::size_t> slot = {});
+    void discardSectionKeys();
     void openCrossingMenu();
     void startRootCrossing(int index);
     void leaveRootCrossing();
@@ -157,6 +165,9 @@ private:
     std::string progressPath_;
     std::string progressError_;
     LootSession loot_;
+    struct HeldKey { std::string source; std::size_t slot; int count; };
+    std::vector<HeldKey> heldKeys_;
+    bool sectionLootActive_ = false;
     std::optional<Equipment> playtestEquipment_;
     bool inventoryOpen_ = false;
     int inventorySelection_ = -1;

@@ -53,7 +53,23 @@ int main()
         SectionMetadata meta;
         meta.name = "Chest room"; meta.tested = true;
         meta.spawn = {.5f, 9, 4.5f}; meta.finish = {.5f, 9, -20.5f};
-        const HubAsset chest{HubAssetKind::LootChest, {.5f, 9, 1.5f}, 0, 1};
+        const HubAsset chest{HubAssetKind::LootChest, {.5f, 9, 1.5f}, 0, 1,
+                             {{ItemId::Ruby, 7}, {ItemId::CopperOre, 24}, {ItemId::IronOre, 8}}};
+        for (const auto kind : {HubAssetKind::LootChest, HubAssetKind::CrystalChest, HubAssetKind::IronboundChest}) {
+            auto styled = chest;
+            styled.kind = kind;
+            LootSession authored;
+            authored.begin(std::span(&styled, 1), "first-section");
+            require(authored.contents(0) == chest.chestItems && authored.name(0) == chestAssetName(kind),
+                    "all chest appearances contain exactly the creator's selected items and quantities");
+            styled.variation = 99;
+            authored.begin(std::span(&styled, 1), "other-section");
+            require(authored.contents(0) == chest.chestItems,
+                    "section identity and visual variation never randomize authored contents");
+            styled.chestItems.clear();
+            authored.begin(std::span(&styled, 1));
+            require(authored.contents(0).empty(), "an unconfigured chest starts empty without hidden rewards");
+        }
         const auto section = acceptSection(room, meta, std::span(&chest, 1), sections);
         SectionMetadata empty = meta; empty.name = "Empty room";
         const auto emptySection = acceptSection(room, empty, {}, sections);
@@ -88,7 +104,8 @@ int main()
         require(game.player.setFeetPosition(game.world, meta.spawn), "return to chest approach");
         aim(game, chest.position + glm::vec3(0, .65f, 0));
         press(game, &InputActions::interact);
-        require(game.chestOpen() && !game.chestContents().empty(), "E opens an aimed chest with generated loot");
+        require(game.chestOpen() && game.chestContents() == chest.chestItems,
+                "E opens an aimed chest with its exact saved contents");
         const auto initial = game.chestContents();
         const auto first = initial.front();
         const auto elapsed = game.levelController().elapsed();
@@ -114,10 +131,19 @@ int main()
         require(game.equipment == collected, "empty chest reopen does not change inventory");
         press(game, &InputActions::closeMenu);
 
-        require(game.levelController().start(game, level), "a fresh run prepares fresh chest contents");
+        require(game.levelController().start(game, level), "replaying the level keeps collected loot gone");
+        aim(game, chest.position + glm::vec3(0, .65f, 0));
+        press(game, &InputActions::interact);
+        require(total(game.chestContents()) == 0, "permanent chest claims survive a fresh run");
+        press(game, &InputActions::closeMenu);
+        const auto freshSection = acceptSection(room, meta, std::span(&chest, 1), sections);
+        auto freshLevel = level;
+        freshLevel.sections[0] = freshSection.lexically_relative(sections);
+        require(game.levelController().start(game, freshLevel), "an independently authored section has its own rewards");
         aim(game, chest.position + glm::vec3(0, .65f, 0));
         press(game, &InputActions::interact);
         const auto rolled = game.chestContents();
+        require(rolled == chest.chestItems, "fresh visits restore the same authored contents without rerolling");
         for (auto& slot : game.equipment.inventory.slots) slot = {ItemId::Coal, Inventory::StackLimit};
         game.equipment.inventory.slots[0] = {rolled[0].item, Inventory::StackLimit - 3};
         const int remainingBefore = total(rolled);

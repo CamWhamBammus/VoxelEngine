@@ -3,6 +3,7 @@
 #include "player.h"
 
 #include <cmath>
+#include <bit>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -55,6 +56,21 @@ void fixChecksum(std::string& bytes)
     for (std::size_t i = 8; i < bytes.size() - 4; ++i) checksum = (checksum ^ static_cast<unsigned char>(bytes[i])) * 16777619u;
     integer(bytes, bytes.size() - 4, checksum);
 }
+std::string versionOne(std::string_view bytes, std::size_t firstAsset, std::span<const voxel::HubAsset> assets)
+{
+    // Version 1 used the same metadata and voxel snapshot, but each model was
+    // exactly 24 bytes with no authored item count or stacks.
+    std::string old(bytes.substr(0, firstAsset));
+    std::size_t cursor = firstAsset;
+    for (const auto& asset : assets) {
+        old += bytes.substr(cursor, 24);
+        cursor += 28 + asset.chestItems.size() * 8;
+    }
+    old += bytes.substr(cursor);
+    integer(old, 8, 1);
+    fixChecksum(old);
+    return old;
+}
 } // namespace
 
 int main()
@@ -69,11 +85,16 @@ int main()
     check(sectionCategoryCatalog().size() == 5, "five section categories must be available");
     check(sectionAssetCatalog().size() == HubAssetCount, "every existing, lush, and loot asset must be exposed");
     check(static_cast<int>(HubAssetKind::HangingPlanter) == 53
-          && static_cast<int>(HubAssetKind::LootChest) == 54,
-          "the chest is appended without changing saved asset identifiers");
-    check(sectionAssetCatalog().back().kind == HubAssetKind::LootChest
-          && sectionAssetCatalog().back().name == "Loot chest",
-          "the creative menu exposes the placeable loot chest");
+          && static_cast<int>(HubAssetKind::LootChest) == 54
+          && static_cast<int>(HubAssetKind::CrystalChest) == 55
+          && static_cast<int>(HubAssetKind::IronboundChest) == 56
+          && static_cast<int>(HubAssetKind::KeyPickup) == 57,
+          "chest styles and the key append without changing earlier saved asset identifiers");
+    check(sectionAssetCatalog()[54].name == "Wooden chest"
+          && sectionAssetCatalog()[55].name == "Crystal chest"
+          && sectionAssetCatalog()[56].name == "Ironbound chest"
+          && sectionAssetCatalog()[57].name == "Cave key",
+          "the creative menu exposes three separate chest styles and a key pickup");
     std::set<HubAssetKind> uniqueAssets;
     for (const auto& info : sectionAssetCatalog()) {
         uniqueAssets.insert(info.kind);
@@ -144,15 +165,19 @@ int main()
               && restored.assets[i].facing == assets[i].facing && restored.assets[i].variation == assets[i].variation,
               "section must round trip every model and its orientation");
     }
-    const std::vector<HubAsset> chests{
+    std::vector<HubAsset> chests{
         {HubAssetKind::LootChest, {-12.5f,9,10.5f}, 0, 0},
-        {HubAssetKind::LootChest, {-8.5f,9,10.5f}, 1, 1},
-        {HubAssetKind::LootChest, {-4.5f,9,10.5f}, 3, 2},
+        {HubAssetKind::CrystalChest, {-8.5f,9,10.5f}, 1, 1},
+        {HubAssetKind::IronboundChest, {-4.5f,9,10.5f}, 3, 2,
+            {{ItemId::CopperOre, 19}, {ItemId::Key, 2}, {ItemId::CopperOre, 3}}},
+        {HubAssetKind::KeyPickup, {4.5f,9,10.5f}, 0, 0},
     };
-    const auto chestDocument = temp.path / "chest-presets.vxs";
+    for (int i = 0; i < ChestSlotCount; ++i)
+        chests[0].chestItems.push_back({static_cast<ItemId>(i % ItemCount), ChestStackLimit - i});
+    const auto chestDocument = temp.path / "authored-chests.vxs";
     saveSection(world, meta, chests, chestDocument);
     check(loadSection(chestDocument).assets == chests,
-          "all three chest loot presets and their rotations survive a section save");
+          "all styles, rotations, empty chests, keys and exact twenty-stack contents survive a section save");
     check(fails([&] { saveSection(world, meta, {}, document); }), "a new save cannot replace an existing document");
     check(readBytes(document) == originalBytes, "rejected overwrite must preserve the original document");
     SectionMetadata replacement = meta;
@@ -187,7 +212,7 @@ int main()
              {assetCountOffset, static_cast<std::uint32_t>(SectionMaxAssets + 1)},
              {firstAsset, 10000}, {firstAsset + 16, 4},
              {firstAsset + 4, 0x7fc00000u}, // NaN model X
-             {firstAsset + assets.size() * 24, 0xffffffffu}}) {
+             {firstAsset + assets.size() * 28, 0xffffffffu}}) {
         corrupt = originalBytes;
         integer(corrupt, offset, value);
         fixChecksum(corrupt);
@@ -202,6 +227,73 @@ int main()
     auto badAssets = assets;
     badAssets.front().position.x = 200;
     check(fails([&] { saveSection(world, meta, badAssets, malformed, true); }), "models outside the room cannot be saved");
+
+    const auto authoredBytes = readBytes(chestDocument);
+    for (const auto& [offset, value] : std::vector<std::pair<std::size_t, std::uint32_t>>{
+             {firstAsset + 24, ChestSlotCount + 1}, {firstAsset + 24, 0xffffffffu},
+             {firstAsset + 28, static_cast<std::uint32_t>(ItemId::Count)},
+             {firstAsset + 28, 0xffffffffu}, {firstAsset + 32, 0},
+             {firstAsset + 32, ChestStackLimit + 1}, {firstAsset + 32, 0xffffffffu},
+             {firstAsset, static_cast<std::uint32_t>(HubAssetKind::Fern)}}) {
+        corrupt = authoredBytes;
+        integer(corrupt, offset, value);
+        fixChecksum(corrupt);
+        check(rejects(corrupt), "malformed authored item counts, ids, quantities and non-chest containers are rejected");
+    }
+    auto truncatedItems = authoredBytes.substr(0, firstAsset + 32);
+    truncatedItems.resize(truncatedItems.size() + 4);
+    fixChecksum(truncatedItems);
+    check(rejects(truncatedItems), "truncated item stacks are rejected before loading a section");
+    auto invalidChest = chests;
+    for (const auto invalid : {ItemStack{ItemId::Ruby, 0}, ItemStack{ItemId::Ruby, -1},
+                               ItemStack{ItemId::Ruby, 100}, ItemStack{ItemId::Count, 1}}) {
+        invalidChest[0].chestItems[0] = invalid;
+        check(fails([&] { saveSection(world, meta, invalidChest, chestDocument, true); }),
+              "invalid in-memory chest items cannot overwrite a valid section");
+        check(readBytes(chestDocument) == authoredBytes, "failed chest validation preserves the saved file");
+    }
+    invalidChest = chests;
+    invalidChest[0].chestItems.push_back({ItemId::Coal, 1});
+    check(fails([&] { saveSection(world, meta, invalidChest, malformed, true); }),
+          "more than twenty authored stacks cannot be saved");
+    invalidChest = chests;
+    invalidChest.back().chestItems = {{ItemId::Key, 1}};
+    check(fails([&] { saveSection(world, meta, invalidChest, malformed, true); }),
+          "key pickup models cannot hold chest contents");
+
+    std::vector<HubAsset> oldAssets{
+        {HubAssetKind::LootChest, {-12.5f,9,10.5f}, 0, 0},
+        {HubAssetKind::LootChest, {-8.5f,9,10.5f}, 1, 4},
+        {HubAssetKind::LootChest, {-4.5f,9,10.5f}, 3, 8},
+        {HubAssetKind::Fern, {10.5f,9,10.5f}, 2, 2},
+    };
+    const auto oldFile = temp.path / "legacy-chests.vxs";
+    saveSection(world, meta, oldAssets, oldFile);
+    const auto legacy = versionOne(readBytes(oldFile), firstAsset, oldAssets);
+    writeBytes(oldFile, legacy);
+    const auto imported = loadSection(oldFile);
+    check(imported.world.sameContents(world) && imported.meta.name == meta.name
+          && imported.assets[0].kind == HubAssetKind::LootChest
+          && imported.assets[1].kind == HubAssetKind::CrystalChest
+          && imported.assets[2].kind == HubAssetKind::IronboundChest
+          && imported.assets[3] == oldAssets[3],
+          "version one imports preserve terrain, metadata and original chest appearances");
+    for (std::size_t i = 0; i < 3; ++i) {
+        std::uint32_t seed = 0;
+        for (int axis = 0; axis < 3; ++axis)
+            seed = (seed ^ std::bit_cast<std::uint32_t>(oldAssets[i].position[axis])) * 16777619u;
+        check(imported.assets[i].chestItems == legacyChestLoot(oldAssets[i].variation, seed),
+              "legacy presets materialize once using the original position-based roll with seed zero");
+    }
+    check(loadSection(oldFile).assets == imported.assets && readBytes(oldFile) == legacy,
+          "legacy migration is repeatable and never rewrites the source during load");
+    saveSection(imported.world, imported.meta, imported.assets, oldFile, true);
+    check(loadSection(oldFile).assets == imported.assets && readBytes(oldFile) != legacy,
+          "saving a migrated room writes stable explicit contents in version two");
+    auto invalidOldKind = legacy;
+    integer(invalidOldKind, firstAsset, static_cast<std::uint32_t>(HubAssetKind::CrystalChest));
+    fixChecksum(invalidOldKind);
+    check(rejects(invalidOldKind), "version one rejects asset ids that were introduced with version two");
 
     const auto library = temp.path / "sections";
     check(listSections(library).empty() && listSectionDrafts(library).empty(), "a missing library should be empty");

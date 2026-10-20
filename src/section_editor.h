@@ -17,7 +17,7 @@ namespace voxel {
 class Game;
 struct InputActions;
 
-enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept };
+enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents };
 enum class SectionBuildMode { Single, Select, Brush, Paste };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
@@ -49,6 +49,11 @@ inline constexpr int SectionUiCopy = 3333, SectionUiPaste = 3334, SectionUiPaste
 inline constexpr int SectionUiClearSelection = 3336, SectionUiHeightDown = 3337, SectionUiHeightUp = 3338;
 inline constexpr int SectionUiPasteSettings = 3340, SectionUiPasteModeBase = 3350;
 inline constexpr int SectionUiPasteResume = 3352;
+inline constexpr int SectionUiChestSlotBase = 3400;
+inline constexpr int SectionUiChestItemBase = 3500;
+inline constexpr int SectionUiChestMinus = 3600, SectionUiChestPlus = 3601;
+inline constexpr int SectionUiChestRemove = 3602, SectionUiChestClear = 3603;
+inline constexpr int SectionUiChestApply = 3604, SectionUiChestCancel = 3605, SectionUiChestQuantity = 3606;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.
@@ -63,6 +68,7 @@ public:
     SectionEditorScreen screen() const { return screen_; }
     bool menuOpen() const;
     bool flying() const { return screen_ == SectionEditorScreen::Build; }
+    bool typing() const { return screen_ == SectionEditorScreen::Accept || screen_ == SectionEditorScreen::ChestContents; }
     bool hasSection() const { return hasSection_; }
     SectionWorld selectedWorld() const { return selectedWorld_; }
     int selection() const { return selection_; }
@@ -107,6 +113,11 @@ public:
     std::uint64_t pastePreviewRevision() const { return pastePreviewRevision_; }
     const std::optional<SectionBox>& toolPreview() const { return toolPreview_; }
     bool toolPreviewValid() const { return toolPreviewValid_; }
+    const std::array<ItemStack, ChestSlotCount>& chestSlots() const { return chestSlots_; }
+    int chestSelection() const { return chestSelection_; }
+    const std::string& chestQuantityText() const { return chestQuantityText_; }
+    bool chestQuantitySelected() const { return chestQuantitySelected_; }
+    HubAssetKind editingChestKind() const;
 
 private:
     struct Edit {
@@ -144,6 +155,10 @@ private:
     void fillSelection(Game& game, SectionFillMode mode);
     void applyPlan(Game& game, SectionEditPlan plan, std::string_view label);
     void validateAssetEdit(const World& world, SectionEditPlan& plan) const;
+    void openChestContents(Game& game, std::size_t index);
+    void updateChestContents(Game& game, const InputActions& actions);
+    void closeChestContents();
+    void selectChestSlot(int slot);
 
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
@@ -190,5 +205,10 @@ private:
     std::optional<int> pasteFloorHeight_;
     std::optional<glm::ivec3> pinnedPasteOrigin_;
     std::uint64_t pastePreviewRevision_ = 0;
+    std::optional<std::size_t> editingChest_;
+    std::array<ItemStack, ChestSlotCount> chestSlots_{};
+    int chestSelection_ = 0;
+    std::string chestQuantityText_ = "1";
+    bool chestQuantitySelected_ = true;
 };
 } // namespace voxel

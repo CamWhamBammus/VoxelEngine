@@ -78,6 +78,7 @@ std::shared_ptr<const AssetCollision> SectionEditor::assetCollision() const
 }
 void SectionEditor::enter(Game& game)
 {
+    closeChestContents();
     screen_ = SectionEditorScreen::Worlds;
     selection_ = static_cast<int>(selectedWorld_);
     game.target.reset();
@@ -86,6 +87,7 @@ void SectionEditor::enter(Game& game)
 bool SectionEditor::leave(Game& game)
 {
     if (hasSection_ && dirty_ && !saveDraft(game)) return false;
+    closeChestContents();
     game.endSectionLoot();
     preview_.reset(); targetAsset_.reset();
     resetBuildTools();
@@ -218,6 +220,11 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
 {
     try {
         if (!actions.active && !actions.closeMenu) return;
+        if (screen_ == SectionEditorScreen::ChestContents) {
+            updateChestContents(game, actions);
+            game.status = message_;
+            return;
+        }
         if (actions.save && hasSection_) saveDraft(game);
         if (actions.devLibrary || (actions.devClick && *actions.devClick == SectionUiLibrary)) {
             if (hasSection_ && dirty_ && !saveDraft(game)) return;
@@ -368,7 +375,7 @@ void SectionEditor::refreshTarget(Game& game)
             const auto normal = game.target->normal;
             const int wallFacing = normal.x > 0 ? 1 : normal.x < 0 ? 3 : normal.z < 0 ? 2 : 0;
             const int rotation = (facing_ + (normal.y == 0 ? wallFacing : 0)) % 4;
-            HubAsset candidate{*item.asset, glm::vec3(0), rotation, variation_};
+            HubAsset candidate{*item.asset, glm::vec3(0), rotation, isChestAsset(*item.asset) ? 0 : variation_};
             glm::vec3 minimum(std::numeric_limits<float>::max()), maximum(std::numeric_limits<float>::lowest());
             const auto mesh = buildHubAsset(candidate);
             for (const auto& vertex : mesh.vertices) {
@@ -409,14 +416,23 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
     // Camera flight is applied by Input before this update; retain the protected room.
     game.camera.setPosition(glm::clamp(game.camera.position(), glm::vec3(SectionInteriorMin) + glm::vec3(.2f),
                                        glm::vec3(SectionInteriorMax) - glm::vec3(.2f)));
-    if (actions.devPalette) { screen_ = SectionEditorScreen::Palette; preview_.reset(); game.target.reset(); return; }
+    if (actions.devPalette) {
+        refreshTarget(game);
+        if (targetAsset_ && isChestAsset(assets_[*targetAsset_].kind)) openChestContents(game, *targetAsset_);
+        else { screen_ = SectionEditorScreen::Palette; preview_.reset(); game.target.reset(); }
+        return;
+    }
     if (actions.devSlot && *actions.devSlot >= 0 && *actions.devSlot < 9) selectedSlot_ = *actions.devSlot;
     else if (actions.materialStep || actions.toolStep) selectedSlot_ = wrap(selectedSlot_ + actions.materialStep % 9 + actions.toolStep % 9, 9);
     if (actions.devRotate) {
         if (buildMode_ == SectionBuildMode::Paste) pasteRotation_ = (pasteRotation_ + 1) % 4;
         else facing_ = (facing_ + 1) % 4;
     }
-    if (actions.devVariation) ++variation_;
+    if (actions.devVariation) {
+        if (hotbar_[selectedSlot_].asset && isChestAsset(*hotbar_[selectedSlot_].asset))
+            message_ = "CHEST STYLES ARE IN THE ASSET MENU | AIM AT A PLACED CHEST AND PRESS E TO SET ITEMS";
+        else ++variation_;
+    }
     if (actions.undo || actions.redo) undo(game, actions.redo && !actions.undo);
     refreshTarget(game);
     if (updateBuildTools(game, actions)) return;
@@ -501,9 +517,124 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         validateAssetEdit(game.world, plan);
         if (!plan.error.empty()) { message_ = plan.error; return; }
         assets_ = std::move(plan.assets); changed(std::move(edit));
-        message_ = "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
+        message_ = isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
+                                          : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
     }
     refreshTarget(game);
+}
+
+HubAssetKind SectionEditor::editingChestKind() const
+{
+    return editingChest_ && *editingChest_ < assets_.size() ? assets_[*editingChest_].kind : HubAssetKind::LootChest;
+}
+
+void SectionEditor::selectChestSlot(int slot)
+{
+    chestSelection_ = std::clamp(slot, 0, ChestSlotCount - 1);
+    chestQuantityText_ = std::to_string(std::max(1, chestSlots_[chestSelection_].count));
+    chestQuantitySelected_ = true;
+}
+
+void SectionEditor::openChestContents(Game& game, std::size_t index)
+{
+    if (index >= assets_.size() || !isChestAsset(assets_[index].kind)) return;
+    editingChest_ = index;
+    chestSlots_ = {};
+    const auto& items = assets_[index].chestItems;
+    std::copy_n(items.begin(), std::min(items.size(), chestSlots_.size()), chestSlots_.begin());
+    selectChestSlot(0);
+    screen_ = SectionEditorScreen::ChestContents;
+    preview_.reset(); game.target.reset();
+    message_ = "SELECT A CHEST SLOT, CHOOSE AN ITEM, THEN SET ITS QUANTITY | SAVE APPLIES / ESC CANCELS";
+}
+
+void SectionEditor::closeChestContents()
+{
+    editingChest_.reset();
+    chestSlots_ = {};
+    selectChestSlot(0);
+    if (screen_ == SectionEditorScreen::ChestContents) screen_ = SectionEditorScreen::Build;
+}
+
+void SectionEditor::updateChestContents(Game& game, const InputActions& actions)
+{
+    const int click = actions.devClick.value_or(-1);
+    if (actions.closeMenu || click == SectionUiChestCancel || click == SectionUiBack) {
+        closeChestContents();
+        message_ = "CHEST EDIT CANCELLED | ORIGINAL CONTENTS KEPT";
+        refreshTarget(game);
+        return;
+    }
+    if (!editingChest_ || *editingChest_ >= assets_.size() || !isChestAsset(assets_[*editingChest_].kind)) {
+        closeChestContents();
+        message_ = "CHEST NO LONGER EXISTS";
+        return;
+    }
+    if (actions.save || actions.devTest || actions.devAccept || actions.devLibrary
+        || click == SectionUiSave || click == SectionUiTest || click == SectionUiAccept || click == SectionUiLibrary
+        || actions.undo || actions.redo) {
+        message_ = "SAVE OR CANCEL THE CHEST EDIT FIRST";
+        return;
+    }
+    if (click >= SectionUiChestSlotBase && click < SectionUiChestSlotBase + ChestSlotCount)
+        selectChestSlot(click - SectionUiChestSlotBase);
+    else if (actions.devMenuStep.x || actions.devMenuStep.y)
+        selectChestSlot(wrap(chestSelection_ + actions.devMenuStep.x + actions.devMenuStep.y * 5, ChestSlotCount));
+    if (click == SectionUiChestQuantity || actions.devSelectAll) chestQuantitySelected_ = true;
+
+    auto& selected = chestSlots_[chestSelection_];
+    if (click >= SectionUiChestItemBase && click < SectionUiChestItemBase + ItemCount) {
+        selected = {static_cast<ItemId>(click - SectionUiChestItemBase), std::max(1, selected.count)};
+        selectChestSlot(chestSelection_);
+        message_ = "ITEM SET | TYPE A QUANTITY FROM 1 TO 99 / SHIFT +/- CHANGES TEN";
+    }
+    if (click == SectionUiChestRemove) {
+        selected = {};
+        selectChestSlot(chestSelection_);
+        message_ = "SLOT CLEARED | SAVE TO APPLY";
+    } else if (click == SectionUiChestClear) {
+        chestSlots_ = {};
+        selectChestSlot(0);
+        message_ = "ALL SLOTS CLEARED | SAVE TO APPLY OR CANCEL TO KEEP THE ORIGINAL";
+    }
+    if (actions.devBackspace && selected.count > 0) {
+        if (chestQuantitySelected_) chestQuantityText_.clear();
+        else if (!chestQuantityText_.empty()) chestQuantityText_.pop_back();
+        chestQuantitySelected_ = false;
+    }
+    for (const char character : actions.devText) if (selected.count > 0 && character >= '0' && character <= '9') {
+        if (chestQuantitySelected_) chestQuantityText_.clear();
+        chestQuantitySelected_ = false;
+        if (chestQuantityText_.size() < 2) chestQuantityText_ += character;
+    }
+    const auto quantity = [&] {
+        int count = 0;
+        for (const char character : chestQuantityText_) count = count * 10 + character - '0';
+        return count;
+    };
+    if ((click == SectionUiChestMinus || click == SectionUiChestPlus) && selected.count > 0) {
+        const int step = (actions.sprint ? 10 : 1) * (click == SectionUiChestPlus ? 1 : -1);
+        selected.count = std::clamp(quantity() + step, 1, ChestStackLimit);
+        selectChestSlot(chestSelection_);
+    }
+    const bool validQuantity = quantity() >= 1 && quantity() <= ChestStackLimit;
+    if (selected.count > 0 && validQuantity) selected.count = quantity();
+    if (selected.count > 0 && !validQuantity) message_ = "QUANTITY MUST BE FROM 1 TO 99";
+    if (actions.upgrade || click == SectionUiChestApply || click == SectionUiConfirm) {
+        if (selected.count > 0 && !validQuantity) return;
+        std::vector<ItemStack> items;
+        for (const auto& stack : chestSlots_) if (stack.count > 0) items.push_back(stack);
+        auto& chest = assets_[*editingChest_];
+        if (items != chest.chestItems) {
+            Edit edit;
+            edit.beforeMeta = meta_; edit.beforeAssets = assets_;
+            chest.chestItems = std::move(items);
+            changed(std::move(edit));
+            message_ = "CHEST CONTENTS APPLIED | CTRL/CMD+Z UNDO | F8 TEST LOOT";
+        } else message_ = "CHEST CONTENTS UNCHANGED";
+        closeChestContents();
+        refreshTarget(game);
+    }
 }
 
 std::optional<SectionBox> SectionEditor::buildSelection() const
@@ -823,7 +954,7 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
 
 void SectionEditor::faceMarker(Game& game, glm::vec3 position)
 {
-    game.player.setAssetCollision(assetCollision());
+    game.player.setAssetCollision(game.sectionSceneCollision());
     if (!game.player.setFeetPosition(game.world, position) || !game.player.grounded())
         throw std::runtime_error("Marker has no supported space for the player");
     game.camera.setPosition(game.player.eyePosition());
@@ -845,7 +976,7 @@ void SectionEditor::startTest(Game& game)
     checkpointReached_ = testComplete_ = false; testElapsed_ = 0; testFalls_ = 0;
     faceMarker(game, meta_.spawn);
     screen_ = SectionEditorScreen::Test; game.target.reset(); preview_.reset();
-    game.beginSectionLoot(assets_, true, 0x73574u);
+    game.beginSectionLoot(assets_, true);
     message_ = "WALK TO THE GOLD END | R RESET | F8 RETURN TO BUILD";
 }
 void SectionEditor::stopTest(Game& game)

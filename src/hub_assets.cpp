@@ -467,10 +467,26 @@ std::vector<HubAsset> planHubAssets(const World& world)
     return assets;
 }
 
+std::string_view chestAssetName(HubAssetKind kind)
+{
+    switch (kind) {
+    case HubAssetKind::LootChest: return "Wooden chest";
+    case HubAssetKind::CrystalChest: return "Crystal chest";
+    case HubAssetKind::IronboundChest: return "Ironbound chest";
+    default: return {};
+    }
+}
+
+bool validChestItems(const HubAsset& asset)
+{
+    if (!isChestAsset(asset.kind)) return asset.chestItems.empty();
+    return validChestItems(asset.chestItems);
+}
+
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (asset.kind == HubAssetKind::LootChest) appendHubProp(mesh, asset);
+    if (isChestAsset(asset.kind) || isKeyPickup(asset.kind)) appendHubProp(mesh, asset);
     else if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
     else if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
     else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);

@@ -654,7 +654,8 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     if (!items.empty()) {
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
-        const auto hint=item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
+        const auto hint=item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
+            : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
             : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE"
             : item.block && isLeafBlock(*item.block) ? "LEAF CUTOUTS / SOLID FOR WALKING"
@@ -791,6 +792,71 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
     out.centered("TYPE NAME / CTRL+A SELECT ALL / UP-DOWN CATEGORY",width*0.5f,y+h-13,0.8f,Muted);
 }
 
+void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale);
+
+void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=700,h=478;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    const bool locked=editor.editingChestKind()==HubAssetKind::IronboundChest;
+    sectionPanel(out,width,height,x,y,w,h,"CHEST CONTENTS",
+        std::string(chestAssetName(editor.editingChestKind()))
+            +(locked ? " / REQUIRES A CAVE KEY" : " / EXACT ITEMS SAVED WITH THIS CHEST"));
+    const auto& slots=editor.chestSlots();
+    const int selection=std::clamp(editor.chestSelection(),0,ChestSlotCount-1);
+    const auto& selected=slots[selection];
+    const bool occupied=selected.count>0 && validItem(selected.item);
+    const auto used=std::count_if(slots.begin(),slots.end(),[](const ItemStack& stack){return stack.count>0;});
+    out.text("ITEM CATALOG",x+22,y+73,1,Muted);
+    out.text("CHEST / "+std::to_string(used)+" OF 20 SLOTS",x+324,y+73,1,Gold);
+    // Two columns leave enough width for readable names even on small displays.
+    const auto catalog=itemCatalog();
+    for (std::size_t index=0;index<catalog.size();++index) {
+        const auto& item=catalog[index];
+        const float left=x+22+(index%2)*146,top=y+95+(index/2)*30;
+        const bool active=occupied && selected.item==item.id;
+        out.frame(left,top,140,28,active ? Gold : Edge,active ? Selected : Panel,4);
+        oreIcon(out,item.id,{left+15,top+14},.52f);
+        const auto split=item.name.find(' ');
+        if (split==std::string_view::npos)
+            fittedText(out,item.name,left+30,top+10,104,.9f,active ? Cream : Muted);
+        else {
+            fittedText(out,item.name.substr(0,split),left+30,top+4,104,.9f,active ? Cream : Muted);
+            fittedText(out,item.name.substr(split+1),left+30,top+16,104,.8f,Muted);
+        }
+        hits.push_back({left,top,140,28,SectionUiChestItemBase+static_cast<int>(item.id)});
+    }
+    for (int slot=0;slot<ChestSlotCount;++slot) {
+        const float left=x+324+(slot%5)*66,top=y+95+(slot/5)*66;
+        const auto& stack=slots[slot];
+        out.frame(left,top,60,60,slot==selection ? Gold : Edge,slot==selection ? Selected : Panel,4);
+        out.text(std::to_string(slot+1),left+5,top+5,1,Muted);
+        if (stack.count>0 && validItem(stack.item)) {
+            oreIcon(out,stack.item,{left+30,top+29},.82f);
+            const auto count=std::to_string(stack.count);
+            const float countWidth=(count.size()*6-1)*out.fontPixel(1);
+            out.quad(left+54-countWidth,top+45,countWidth+3,12,Panel);
+            out.text(count,left+54-countWidth,top+48,1,Cream);
+        } else {
+            out.text("+",left+27,top+27,1,Muted);
+        }
+        hits.push_back({left,top,60,60,SectionUiChestSlotBase+slot});
+    }
+    fittedText(out,occupied ? std::string(itemInfo(selected.item).name)+" / QUANTITY 1-99"
+                           : "EMPTY SLOT / CHOOSE AN ITEM",
+               x+324,y+363,324,1,occupied ? Gold : Muted);
+    sectionButton(out,hits,x+324,y+383,35,28,"-",SectionUiChestMinus,false,occupied);
+    sectionButton(out,hits,x+364,y+383,72,28,editor.chestQuantityText(),
+                  SectionUiChestQuantity,editor.chestQuantitySelected(),occupied);
+    sectionButton(out,hits,x+441,y+383,35,28,"+",SectionUiChestPlus,false,occupied);
+    sectionButton(out,hits,x+484,y+383,164,28,"REMOVE ITEM",SectionUiChestRemove,false,occupied);
+    fittedText(out,"SLOT / ITEM / TYPE AMOUNT",x+22,y+400,286,1,Muted);
+    sectionFeedback(out,editor,x+22,y+422,w-44);
+    sectionButton(out,hits,x+22,y+441,140,27,"CLEAR ALL",SectionUiChestClear,false,used>0);
+    sectionButton(out,hits,x+324,y+441,132,27,"ESC - CANCEL",SectionUiChestCancel);
+    sectionButton(out,hits,x+466,y+441,212,27,"ENTER - SAVE CONTENTS",SectionUiChestApply,true);
+}
+
 void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
 {
     const auto& editor=game.sectionEditor();
@@ -833,7 +899,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
             : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
-            : item.asset==HubAssetKind::LootChest ? "T ROTATE / Y LOOT: "+std::string(chestLootName(editor.variation()))
+            : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
         if (pasting) {
@@ -851,6 +917,10 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         } else fittedText(out,help,center-264,labelY+20,528,.9f,Muted);
         sectionHotbar(out,hits,editor,center,height-86,false);
         out.centered("G TOOLS / E ITEMS / F8 TEST / F10 ACCEPT / F5 SAVE / F9 LIBRARY",center,height-20,.9f,Cream);
+        if (const auto target=editor.targetedAsset(); target && isChestAsset(target->kind)) {
+            out.frame(center-180,height*.5f+31,360,30,Gold);
+            fittedText(out,"E EDIT "+std::string(chestAssetName(target->kind)),center-166,height*.5f+41,332,1,Gold);
+        }
         out.frame(15,97,264,119,Edge);
         fittedText(out,"WASD FLY / SPACE UP / CTRL DOWN",27,109,240,.95f,Cream);
         fittedText(out,"SHIFT FAST / ALT SLOW / 1-9 SLOTS",27,127,240,.9f,Muted);
@@ -873,6 +943,7 @@ void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float
     case SectionEditorScreen::Accept: sectionAcceptMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Tools: sectionToolsMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::PasteSettings: sectionPasteMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::ChestContents: sectionChestMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Build:
     case SectionEditorScreen::Test: sectionBuildHud(out,hits,game,width,height); break;
     }
@@ -1119,6 +1190,19 @@ void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale)
     const auto facet=[&](glm::vec2 a,glm::vec2 b,glm::vec2 c,float shade) {
         out.triangle(center+a*scale,center+b*scale,center+c*scale,glm::vec4(color*shade,1));
     };
+    if (item==ItemId::Key) {
+        const glm::vec4 brass(color,1),light(glm::mix(color,glm::vec3(1),.35f),1);
+        const std::array<glm::vec2,8> ring{{{-13,-14},{-5,-14},{0,-9},{0,-1},
+            {-5,4},{-13,4},{-18,-1},{-18,-9}}};
+        for (std::size_t i=0;i<ring.size();++i)
+            out.bar(p(ring[i].x,ring[i].y),p(ring[(i+1)%ring.size()].x,ring[(i+1)%ring.size()].y),4*scale,brass);
+        out.bar(p(-2,1),p(14,17),5*scale,brass);
+        out.bar(p(7,10),p(13,4),5*scale,brass);
+        out.bar(p(12,15),p(18,9),5*scale,brass);
+        out.bar(p(-13,-15),p(-5,-15),1.5f*scale,light);
+        out.bar(p(-2,0),p(13,15),1.3f*scale,light);
+        return;
+    }
     const int shape=static_cast<int>(item)%3;
     out.quad(center.x-15*scale,center.y+13*scale,31*scale,3*scale,{0,0,0,0.22f});
     if (shape==0) {
@@ -1230,19 +1314,18 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         fittedText(out,game.chestName(),cx,y+65,302,1.25f,Gold);
         const auto& contents=game.chestContents();
         const bool roomy=contents.size()<=6;
-        const int columns=roomy ? 2 : 3;
         bool hasItems=false;
-        for (std::size_t slot=0;slot<contents.size() && slot<18;++slot) {
+        for (std::size_t slot=0;slot<contents.size() && slot<ChestSlotCount;++slot) {
             const auto& stack=contents[slot];
             if (stack.count<=0 || !validItem(stack.item)) continue;
             hasItems=true;
-            const float sx=cx+(slot%columns)*(roomy ? 153 : 102);
-            const float sy=y+92+(slot/columns)*(roomy ? 89 : 45);
-            const float sw=roomy ? 145 : 94,sh=roomy ? 81 : 40;
+            const float sx=cx+(slot%2)*153;
+            const float sy=y+92+(slot/2)*(roomy ? 89 : 26);
+            const float sw=145,sh=roomy ? 81 : 24;
             packFrame(out,sx,sy,sw,sh,brass,{.20f,.145f,.081f,1},4);
-            oreIcon(out,stack.item,{sx+(roomy ? 45 : 22),sy+(roomy ? 34 : 16)},roomy ? 1.05f : .53f);
-            out.text("X"+std::to_string(stack.count),sx+(roomy ? 97 : 50),sy+(roomy ? 32 : 12),1,Cream);
-            fittedText(out,itemInfo(stack.item).name,sx+8,sy+(roomy ? 64 : 29),sw-16,1,Muted);
+            oreIcon(out,stack.item,{sx+(roomy ? 45 : 14),sy+(roomy ? 34 : 12)},roomy ? 1.05f : .48f);
+            fittedText(out,(roomy ? "X" : "")+std::to_string(stack.count),sx+(roomy ? 97 : 115),sy+(roomy ? 32 : 8),roomy ? 40 : 25,1,Cream);
+            fittedText(out,itemInfo(stack.item).name,sx+(roomy ? 8 : 29),sy+(roomy ? 64 : 8),roomy ? sw-16 : 82,1,Muted);
             hits.push_back({sx,sy,sw,sh,InventoryUiLootBase+static_cast<int>(slot)});
         }
         if (!hasItems) {

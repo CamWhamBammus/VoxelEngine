@@ -24,7 +24,8 @@ const std::array<ItemInfo, ItemCount> Items{{
     {ItemId::TitaniumOre, "Titanium Ore", "A light, tough metal with a cool silver sheen.", {0.59f, 0.78f, 0.91f}, "Rare"},
     {ItemId::MithrilOre, "Mithril Ore", "A rare turquoise metal from the deepest veins.", {0.31f, 1.00f, 0.88f}, "Epic"},
     {ItemId::Obsidian, "Obsidian", "Dark volcanic glass with violet edges.", {0.36f, 0.25f, 0.52f}, "Uncommon"},
-    {ItemId::GlowCrystal, "Glow Crystal", "A luminous crystal carrying the cave's blue light.", {0.29f, 0.91f, 1.00f}, "Rare"}
+    {ItemId::GlowCrystal, "Glow Crystal", "A luminous crystal carrying the cave's blue light.", {0.29f, 0.91f, 1.00f}, "Rare"},
+    {ItemId::Key, "Cave key", "Opens one ironbound chest in this section. Unused keys stay behind when you leave.", {0.96f, 0.75f, 0.26f}, "Common"}
 }};
 
 std::uint32_t nextRandom(std::uint32_t& state)
@@ -50,16 +51,15 @@ const ItemInfo& itemInfo(ItemId item)
     return Items[static_cast<std::size_t>(item)];
 }
 
-std::string_view chestLootName(std::uint32_t variation)
+bool validChestItems(std::span<const ItemStack> items)
 {
-    switch (variation % 3) {
-    case 0: return "Prospector's Chest";
-    case 1: return "Crystal Chest";
-    default: return "Deep Delve Chest";
-    }
+    return items.size() <= ChestSlotCount
+        && std::all_of(items.begin(), items.end(), [](const ItemStack& stack) {
+            return validItem(stack.item) && stack.count >= 1 && stack.count <= ChestStackLimit;
+        });
 }
 
-std::vector<ItemStack> chestLoot(std::uint32_t variation, std::uint32_t seed)
+std::vector<ItemStack> legacyChestLoot(std::uint32_t variation, std::uint32_t seed)
 {
     std::vector<ItemId> pool;
     switch (variation % 3) {

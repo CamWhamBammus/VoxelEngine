@@ -86,14 +86,17 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::SporeStalks, "Spore stalks", "Lush / ground / light"},
     SectionAssetInfo{HubAssetKind::CaveOrchid, "Cave orchid", "Lush / ground"},
     SectionAssetInfo{HubAssetKind::HangingPlanter, "Hanging planter", "Lush / ceiling"},
-    SectionAssetInfo{HubAssetKind::LootChest, "Loot chest", "Loot / Y changes contents"},
+    SectionAssetInfo{HubAssetKind::LootChest, "Wooden chest", "Chests / authored contents"},
+    SectionAssetInfo{HubAssetKind::CrystalChest, "Crystal chest", "Chests / authored contents"},
+    SectionAssetInfo{HubAssetKind::IronboundChest, "Ironbound chest", "Chests / authored contents"},
+    SectionAssetInfo{HubAssetKind::KeyPickup, "Cave key", "Loot / E collect in play"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
-constexpr std::uint32_t Version = 1;
+constexpr std::uint32_t Version = 2;
 constexpr std::size_t MaxNameLength = 64;
 constexpr std::size_t WorldBytes = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size + 40;
-constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * 24 + 256;
+constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (28 + ChestSlotCount * 8) + 256;
 
 bool validWorld(SectionWorld id)
 {
@@ -133,6 +136,8 @@ void validate(const SectionMetadata& meta, std::span<const HubAsset> assets)
             || !inside(asset.position)) {
             throw std::runtime_error("Invalid section asset kind, rotation or position");
         }
+        if (!validChestItems(asset))
+            throw std::runtime_error("Chest contents need at most 20 stacks of 1 to 99 valid items; other models cannot hold items");
     }
 }
 
@@ -207,6 +212,11 @@ std::string encode(const World& world, const SectionMetadata& meta, std::span<co
         append(bytes, asset.position);
         append(bytes, static_cast<std::uint32_t>(asset.facing));
         append(bytes, asset.variation);
+        append(bytes, static_cast<std::uint32_t>(asset.chestItems.size()));
+        for (const auto& stack : asset.chestItems) {
+            append(bytes, static_cast<std::uint32_t>(stack.item));
+            append(bytes, static_cast<std::uint32_t>(stack.count));
+        }
     }
     std::ostringstream snapshot(std::ios::binary);
     encodeWorld(world, snapshot);
@@ -238,7 +248,8 @@ ParsedSection read(const std::filesystem::path& path)
     if (trailer.integer() != checksum(std::string_view(bytes).substr(Magic.size(), bytes.size() - Magic.size() - 4))) {
         throw std::runtime_error("Section checksum mismatch");
     }
-    if (reader.integer() != Version) throw std::runtime_error("Unsupported section document version");
+    const auto version = reader.integer();
+    if (version != 1 && version != Version) throw std::runtime_error("Unsupported section document version");
     ParsedSection result;
     result.meta.world = static_cast<SectionWorld>(reader.integer());
     result.meta.category = static_cast<SectionCategory>(reader.integer());
@@ -258,13 +269,38 @@ ParsedSection read(const std::filesystem::path& path)
     result.assets.reserve(assetCount);
     for (std::uint32_t i = 0; i < assetCount; ++i) {
         HubAsset asset;
-        asset.kind = static_cast<HubAssetKind>(reader.integer());
+        const auto kind = reader.integer();
+        if (kind >= (version == 1 ? static_cast<std::uint32_t>(HubAssetKind::LootChest) + 1 : HubAssetCount))
+            throw std::runtime_error("Invalid section asset kind");
+        asset.kind = static_cast<HubAssetKind>(kind);
         asset.position = reader.point();
         const auto facing = reader.integer();
         if (facing > 3) throw std::runtime_error("Invalid section asset rotation");
         asset.facing = static_cast<int>(facing);
         asset.variation = reader.integer();
-        result.assets.push_back(asset);
+        if (version == 2) {
+            const auto count = reader.integer();
+            if (count > ChestSlotCount || (count != 0 && !isChestAsset(asset.kind)))
+                throw std::runtime_error("Invalid chest contents size");
+            asset.chestItems.reserve(count);
+            for (std::uint32_t stack = 0; stack < count; ++stack) {
+                const auto item = reader.integer();
+                const auto amount = reader.integer();
+                if (item >= ItemCount || amount == 0 || amount > ChestStackLimit)
+                    throw std::runtime_error("Invalid chest item or quantity");
+                asset.chestItems.push_back({static_cast<ItemId>(item), static_cast<int>(amount)});
+            }
+        } else if (asset.kind == HubAssetKind::LootChest) {
+            // Materialize old randomized presets once, with a stable seed, so
+            // opening a legacy room never silently removes its authored rewards.
+            std::uint32_t seed = 0;
+            for (int axis = 0; axis < 3; ++axis)
+                seed = (seed ^ std::bit_cast<std::uint32_t>(asset.position[axis])) * 16777619u;
+            asset.chestItems = legacyChestLoot(asset.variation, seed);
+            if (asset.variation % 3 == 1) asset.kind = HubAssetKind::CrystalChest;
+            else if (asset.variation % 3 == 2) asset.kind = HubAssetKind::IronboundChest;
+        }
+        result.assets.push_back(std::move(asset));
     }
     validate(result.meta, result.assets);
     const auto worldSize = reader.integer();

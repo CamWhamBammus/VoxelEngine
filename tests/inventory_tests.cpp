@@ -92,7 +92,7 @@ int main()
         }
 
         std::set<std::string_view> names;
-        check(itemCatalog().size() == 18, "the initial catalog includes eighteen collectible resources");
+        check(itemCatalog().size() == 19, "the catalog includes eighteen resources and a section key");
         for (const auto& item : itemCatalog()) {
             check(validItem(item.id) && &itemInfo(item.id) == &item
                   && !item.name.empty() && !item.description.empty() && !item.rarity.empty()
@@ -103,16 +103,27 @@ int main()
                   "catalog icon colors are within display range");
         }
         rejects([&] { static_cast<void>(itemInfo(ItemId::Count)); }, "unknown item metadata is rejected");
+        std::vector<ItemStack> authored;
+        check(validChestItems(authored), "new chests may be empty");
+        for (int slot = 0; slot < ChestSlotCount; ++slot)
+            authored.push_back({static_cast<ItemId>(slot % ItemCount), ChestStackLimit});
+        check(validChestItems(authored), "authored chests accept exactly twenty full stacks including repeated items");
+        authored.push_back({ItemId::Ruby, 1});
+        check(!validChestItems(authored), "a twenty-first authored stack is rejected");
+        authored.pop_back();
+        for (const auto bad : {ItemStack{ItemId::Coal, 0}, ItemStack{ItemId::Coal, -1},
+                               ItemStack{ItemId::Coal, ChestStackLimit + 1}, ItemStack{ItemId::Count, 1}}) {
+            authored[0] = bad;
+            check(!validChestItems(authored), "authored chest rows require valid ids and positive bounded amounts");
+        }
         std::set<ItemId> obtainable;
         for (std::uint32_t variation = 0; variation < 3; ++variation) {
-            check(!chestLootName(variation).empty() && chestLootName(variation) == chestLootName(variation + 3),
-                  "chest variants use three stable loot themes");
             bool varied = false;
-            const auto first = chestLoot(variation, 0);
+            const auto first = legacyChestLoot(variation, 0);
             for (std::uint32_t seed = 0; seed < 128; ++seed) {
-                const auto loot = chestLoot(variation, seed);
-                check(loot == chestLoot(variation, seed), "loot rolls are repeatable for the same chest");
-                check(loot.size() >= 4 && loot.size() <= 6, "chests contain four to six resource stacks");
+                const auto loot = legacyChestLoot(variation, seed);
+                check(loot == legacyChestLoot(variation, seed), "legacy migration rolls remain repeatable");
+                check(loot.size() >= 4 && loot.size() <= 6, "legacy migration preserves the old stack count");
                 std::set<ItemId> unique;
                 for (const auto& stack : loot) {
                     check(validItem(stack.item) && stack.count > 0 && stack.count <= Inventory::StackLimit
@@ -121,9 +132,10 @@ int main()
                 }
                 varied |= loot != first;
             }
-            check(varied, "different chest seeds vary the loot");
+            check(varied, "legacy seed differences remain compatible during migration");
         }
-        check(obtainable.size() == ItemCount, "all eighteen catalog resources can be found in chests");
+        check(obtainable.size() == 18 && !obtainable.contains(ItemId::Key),
+              "legacy migration supports all original resources without inventing new section keys");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n'; ++failures;
     }

@@ -58,7 +58,10 @@ void verifyInventoryHud(int width,int height)
         ("voxel-inventory-hud-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     World world;
     buildBlankSection(world);
-    const std::vector<HubAsset> assets{{HubAssetKind::LootChest,{.5f,9,21.5f},0,1}};
+    std::vector<ItemStack> authoredLoot;
+    for (int slot=0;slot<ChestSlotCount;++slot)
+        authoredLoot.push_back({static_cast<ItemId>(slot%ItemCount),3+slot});
+    const std::vector<HubAsset> assets{{HubAssetKind::LootChest,{.5f,9,21.5f},0,0,authoredLoot}};
     saveSectionDraft(world,{},assets,temporary);
     Options options; options.dev=true; options.smokeTest=true; options.sectionLibrary=temporary.string();
     Game game(options);
@@ -110,7 +113,9 @@ void verifyInventoryHud(int width,int height)
             require(hit(x+309,y+70)==InventoryUiSort,"Sort target disagrees with DPI layout");
             require(hit(x+(chest ? 748 : 396)-36,y+29)==InventoryUiClose,"Close target disagrees with DPI layout");
             if (chest) {
-                require(hit(x+440,y+120)==InventoryUiLootBase,"Chest stack target disagrees with DPI layout");
+                for (int slot=0;slot<ChestSlotCount;++slot)
+                    require(hit(x+396+72+(slot%2)*153,y+92+12+(slot/2)*26)==InventoryUiLootBase+slot,
+                            "Every authored chest stack needs a visible target at normal and high DPI");
                 require(hit(x+545,y+387)==InventoryUiTakeAll,"Take All target disagrees with DPI layout");
             }
             require(!hit(x-1,y-1),"Inventory accepts outside clicks");
@@ -133,7 +138,13 @@ void verifyInventoryHud(int width,int height)
                            glm::degrees(std::asin(direction.y)-std::asin(old.y)));
         press(&InputActions::interact);
         require(game.chestOpen(),"E action did not open test chest");
+        require(game.chestContents()==authoredLoot,"Playable chest did not preserve the authored 20 stacks");
         verifyHits(width,height,1,true); verifyHits(640,360,2,true);
+        const auto lastItem=authoredLoot.back().item;
+        const int beforeCount=game.equipment.inventory.count(lastItem);
+        InputActions takeLast; takeLast.active=true; takeLast.lootClick=ChestSlotCount-1;game.update(takeLast);
+        require(game.equipment.inventory.count(lastItem)==beforeCount+authoredLoot.back().count
+                && game.chestContents().back().count==0,"The twentieth loot stack cannot be taken");
         const auto chest=draw(width,height);
         // Fill every slot, making the full-pack message and retained loot visible.
         for (auto& stack:game.equipment.inventory.slots) stack={ItemId::Coal,99};
@@ -152,6 +163,6 @@ void verifyInventoryHud(int width,int height)
         require(state()==before,"Minimized inventory altered OpenGL state");
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout<<"Inventory HUD passed: 20 slots, 18 ore icons, selection, chest loot/full/empty, keyboard actions, DPI hit tests and GL state\n";
+    std::cout<<"Inventory HUD passed: 20 slots, ore/key icons, 20 authored chest stacks, full/empty states, DPI hit tests and GL state\n";
 }
 } // namespace voxel

@@ -297,6 +297,31 @@ int main()
           "fill gaps ignores copied model geometry and asset limits while retaining existing models");
     rejected(planSectionPaste(empty, floorModels, floor, {30, 20, 0}, 0, false, camera, true), floorModels,
              "fill gaps still rejects a stamp extending beyond the protected shell atomically");
+    const std::vector<HubAsset> rewardAssets{
+        {HubAssetKind::CrystalChest, {1, 15, 1}, 0, 0,
+            {{ItemId::Ruby, 7}, {ItemId::Key, 2}, {ItemId::CopperOre, 99}}},
+        {HubAssetKind::KeyPickup, {2.5f, 15, 1}, 0, 0}
+    };
+    auto rewards = copySectionBox(empty, rewardAssets, {{0, 15, 0}, {3, 17, 3}});
+    check(rewards.assets.size() == 2 && rewards.assets[0].chestItems == rewardAssets[0].chestItems,
+          "copy retains authored rewards and separate key pickups");
+    for (int rotation = 0; rotation < 4; ++rotation) {
+        auto rewardPaste = planSectionPaste(empty, {}, rewards, {-10, 20, -10}, rotation, false, camera);
+        check(rewardPaste.error.empty() && rewardPaste.assets.size() == 2
+              && rewardPaste.assets[0].chestItems == rewardAssets[0].chestItems,
+              "all paste rotations retain exact item IDs, quantities, and chest appearance");
+        if (rewardPaste.assets.empty()) continue;
+        rewardPaste.assets[0].chestItems[0].count = 1;
+        check(rewards.assets[0].chestItems[0].count == 7 && rewardAssets[0].chestItems[0].count == 7,
+              "pasted chests own independent reward lists");
+    }
+    rewards.assets[0].chestItems[0].count = ChestStackLimit + 1;
+    rejected(planSectionPaste(empty, existing, rewards, {-10, 20, -10}, 0, true, camera), existing,
+             "invalid copied chest counts fail before replacing any destination content");
+    rewards.assets[0].chestItems.clear();
+    rewards.assets[1].chestItems = {{ItemId::Key, 1}};
+    rejected(planSectionPaste(empty, existing, rewards, {-10, 20, -10}, 0, true, camera), existing,
+             "pickup assets cannot carry hidden chest reward lists");
     if (failures == 0) std::cout << "Section selection, bulk edits and clipboard tests passed\n";
     return failures ? 1 : 0;
 }

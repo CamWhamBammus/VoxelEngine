@@ -12,7 +12,7 @@ namespace voxel {
 enum class ItemId {
     Coal, CopperOre, TinOre, IronOre, SilverOre, GoldOre, Quartz, Amber, Jade,
     Amethyst, Ruby, Sapphire, Emerald, CobaltOre, TitaniumOre, MithrilOre,
-    Obsidian, GlowCrystal, Count
+    Obsidian, GlowCrystal, Key, Count
 };
 inline constexpr int ItemCount = static_cast<int>(ItemId::Count);
 
@@ -34,8 +34,12 @@ bool validItem(ItemId item);
 std::span<const ItemInfo> itemCatalog();
 const ItemInfo& itemInfo(ItemId item);
 
-// A placement's variation chooses its loot theme; the seed fixes its contents.
-std::string_view chestLootName(std::uint32_t variation);
-std::vector<ItemStack> chestLoot(std::uint32_t variation, std::uint32_t seed);
+inline constexpr int ChestSlotCount = 20;
+inline constexpr int ChestStackLimit = 99;
+bool validChestItems(std::span<const ItemStack> items);
+
+// Only used when importing a version 1 section that had randomized presets.
+// New sections store exact authored contents and never roll loot at runtime.
+std::vector<ItemStack> legacyChestLoot(std::uint32_t variation, std::uint32_t seed);
 
 } // namespace voxel

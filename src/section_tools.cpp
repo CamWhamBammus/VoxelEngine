@@ -44,7 +44,8 @@ std::size_t index(glm::ivec3 point, glm::ivec3 size)
 bool validAsset(const HubAsset& asset)
 {
     return static_cast<std::size_t>(asset.kind) < HubAssetCount
-        && finite(asset.position) && asset.facing >= 0 && asset.facing < 4;
+        && finite(asset.position) && asset.facing >= 0 && asset.facing < 4
+        && validChestItems(asset);
 }
 
 bool samePlacement(const HubAsset& a, const HubAsset& b)
