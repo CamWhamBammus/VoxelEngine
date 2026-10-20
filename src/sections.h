@@ -71,9 +71,10 @@ void buildBlankSection(World& world);
 // A marker needs full player clearance and support under the player's footprint.
 bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision* assets = nullptr);
 
-// Version 2 .vxs documents contain metadata, models and their authored chest
-// contents, and an entire voxel snapshot. Version 1 chest presets import once as
-// fixed contents. Writes are atomic; loading never rewrites a file.
+// Version 3 .vxs documents contain metadata, models, authored chest contents and
+// ground item stacks, plus a voxel snapshot. Versions 1 and 2 remain readable
+// without changing legacy key IDs or placement order. Version 1 chest presets
+// import once as fixed contents. Writes are atomic; loading never rewrites files.
 void saveSection(const World& world, const SectionMetadata& meta,
                  std::span<const HubAsset> assets, const std::filesystem::path& path,
                  bool overwrite = false);

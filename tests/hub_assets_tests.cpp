@@ -227,6 +227,49 @@ void validateLootChest()
     }
 }
 
+void validateItemPickups()
+{
+    const HubAsset oldKey{HubAssetKind::KeyPickup, {}, 0, 0};
+    check(isItemPickup(oldKey.kind) && itemPickupStack(oldKey) == ItemStack{ItemId::Key, 1}
+          && validChestItems(oldKey), "legacy key pickups keep their implicit one-key payload");
+    for (const auto& item : itemCatalog()) {
+        HubAsset pickup{HubAssetKind::ItemPickup, {}, 0, 0, {}, {item.id, 1}};
+        check(isItemPickup(pickup.kind) && !isKeyPickup(pickup.kind)
+              && validChestItems(pickup) && itemPickupStack(pickup) == pickup.pickupItem,
+              "generic item pickups expose the exact authored stack");
+        const auto mesh = buildHubAsset(pickup);
+        validate(mesh, {-.35f,0,-.28f}, {.33f,.80f,.27f});
+        check(!mesh.indices.empty() && mesh.indices.size() / 3 <= 100,
+              "all nineteen item types have small visible ground meshes");
+        float lowest = std::numeric_limits<float>::max();
+        for (const auto& vertex : mesh.vertices) lowest = std::min(lowest, vertex.position.y);
+        check(lowest == 0, "ground items rest directly on their authored support");
+        auto stack = pickup;
+        stack.pickupItem.count = 99;
+        stack.variation = 123;
+        check(same(mesh, buildHubAsset(stack)), "partial pickup quantities and variation never shift the model footprint");
+        if (item.id == ItemId::Key) {
+            check(same(mesh, buildHubAsset(oldKey)), "the Items-tab key uses the existing brass key mesh");
+        } else {
+            check(std::any_of(mesh.vertices.begin(), mesh.vertices.end(), [&](const auto& vertex) {
+                return vertex.color == item.color;
+            }), "each ore or gem uses the matching item catalog color");
+        }
+        for (int facing = 0; facing < 4; ++facing) {
+            pickup.facing = facing;
+            const std::array<HubAsset, 1> placed{pickup};
+            AssetCollision collision;
+            collision.rebuild(placed);
+            const auto hit = collision.raycast(turn({0,.20f,2}, facing), turn({0,0,-1}, facing), 3);
+            check(hit && hit->distance > 1.5f && hit->distance < 2,
+                  "each ground item can be targeted against its real surface in every rotation");
+            const auto top = collision.raycast({0,2,0}, {0,-1,0}, 3);
+            check(top && top->point.y > .2f && top->point.y < .8f && top->normal.y > 0,
+                  "ground item collision follows its modeled top surface");
+        }
+    }
+}
+
 void checkArchWalkingClearance(const World& world, const HubAsset& asset)
 {
     const auto mesh = buildHubAsset(asset);
@@ -553,7 +596,7 @@ int main()
     const glm::vec3 anchor{-13.25f, 22.5f, 15.75f};
     for (const auto kind : kinds) {
         varyingKinds += !same(buildHubAsset({kind, anchor, 0, 0}), buildHubAsset({kind, anchor, 0, 1}));
-        if ((isPathAsset(kind) || kind >= HubAssetKind::Boulder) && !isChestAsset(kind) && !isKeyPickup(kind))
+        if ((isPathAsset(kind) || kind >= HubAssetKind::Boulder) && !isChestAsset(kind) && !isItemPickup(kind))
             check(!same(buildHubAsset({kind, {}, 0, 0}), buildHubAsset({kind, {}, 0, 1})),
                   "each new model varies its handcrafted shape or painted palette");
         for (const auto variation : {0u, 1u, 42u, std::numeric_limits<std::uint32_t>::max()}) {
@@ -587,6 +630,7 @@ int main()
     }
     check(varyingKinds >= 7, "variants provide meaningful visual variation across the asset set");
     validateLootChest();
+    validateItemPickups();
 
     World world(1337);
     for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {

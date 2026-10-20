@@ -25,6 +25,7 @@ struct SectionPaletteItem {
     std::optional<Block> block;
     std::optional<HubAssetKind> asset;
     SectionMarker marker = SectionMarker::None;
+    std::optional<ItemId> pickup = std::nullopt;
 };
 
 // The HUD and controller share these IDs, so mouse and keyboard use the same actions.
@@ -54,6 +55,7 @@ inline constexpr int SectionUiChestItemBase = 3500;
 inline constexpr int SectionUiChestMinus = 3600, SectionUiChestPlus = 3601;
 inline constexpr int SectionUiChestRemove = 3602, SectionUiChestClear = 3603;
 inline constexpr int SectionUiChestApply = 3604, SectionUiChestCancel = 3605, SectionUiChestQuantity = 3606;
+inline constexpr int SectionUiPickupMinus = 3610, SectionUiPickupPlus = 3611;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.
@@ -79,6 +81,7 @@ public:
     int selectedSlot() const { return selectedSlot_; }
     int facing() const { return facing_; }
     std::uint32_t variation() const { return variation_; }
+    int pickupQuantity() const { return pickupQuantity_; }
     const SectionMetadata& meta() const { return meta_; }
     const std::vector<HubAsset>& assets() const { return assets_; }
     std::shared_ptr<const AssetCollision> assetCollision() const;
@@ -166,10 +169,11 @@ private:
     SectionMetadata meta_;
     std::vector<HubAsset> assets_;
     std::vector<SectionEntry> entries_, drafts_;
-    std::array<std::vector<SectionPaletteItem>, 3> palette_;
+    std::array<std::vector<SectionPaletteItem>, 4> palette_;
     std::array<SectionPaletteItem, 9> hotbar_;
     int selection_ = 0, paletteTab_ = 0, paletteSelection_ = 0, selectedSlot_ = 0, facing_ = 0;
     std::uint32_t variation_ = 0;
+    int pickupQuantity_ = 1;
     std::uint64_t revision_ = 0;
     std::uint64_t assetRevision_ = 0;
     mutable std::uint64_t collisionRevision_ = ~std::uint64_t(0);

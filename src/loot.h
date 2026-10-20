@@ -23,7 +23,7 @@ public:
     const std::vector<ItemStack>& contents(std::size_t index) const { return chests_.at(index).contents; }
     std::string_view name(std::size_t index) const;
     const std::string& recordKey(std::size_t index) const { return chests_.at(index).recordKey; }
-    bool pickup(std::size_t index) const { return isKeyPickup(chests_.at(index).kind); }
+    bool pickup(std::size_t index) const { return isItemPickup(chests_.at(index).kind); }
     bool locked(std::size_t index) const { return chests_.at(index).locked; }
     void unlock(std::size_t index) { chests_.at(index).locked = false; }
     void refreshAssets();

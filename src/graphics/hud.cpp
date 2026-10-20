@@ -476,9 +476,13 @@ const AssetThumbnail& assetThumbnail(HubAssetKind kind)
     return thumbnails[index];
 }
 
+void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale);
+
 void sectionItemIcon(Drawing& out,const SectionPaletteItem& item,glm::vec2 center,float size)
 {
-    if (item.asset) {
+    if (item.pickup) {
+        oreIcon(out,*item.pickup,center,size/38.0f);
+    } else if (item.asset) {
         for (const auto& face:assetThumbnail(*item.asset))
             out.triangle(center+face.points[0]*size,center+face.points[1]*size,
                          center+face.points[2]*size,face.color);
@@ -512,6 +516,7 @@ void sectionItemIcon(Drawing& out,const SectionPaletteItem& item,glm::vec2 cente
 
 std::string_view sectionItemGroup(const SectionPaletteItem& item)
 {
+    if (item.pickup) return "GROUND PICKUP";
     if (item.asset) for (const auto& entry:sectionAssetCatalog()) if (entry.kind==*item.asset) return entry.group;
     if (item.block) return "SOLID BUILDING BLOCK";
     return "SECTION MARKER";
@@ -529,6 +534,11 @@ void sectionHotbar(Drawing& out,std::vector<SectionHit>& hits,const SectionEdito
         sectionItemIcon(out,editor.hotbar()[index],{left+24,y+26},32);
         out.quad(left+4,y+4,9,10,Panel);
         out.text(std::to_string(index+1),left+6,y+5,1,selected ? Gold : Muted);
+        if (selected && editor.hotbar()[index].pickup) {
+            const auto quantity=std::to_string(editor.pickupQuantity());
+            out.quad(left+23,y+30,21,12,Panel);
+            out.text(quantity,left+43-(quantity.size()*6-1)*out.fontPixel(1),y+32,1,Gold);
+        }
         if (selected) out.quad(left+5,y+slot-5,slot-10,2,Gold);
         if (clickable) hits.push_back({left,y,slot,slot,SectionUiHotbarBase+index});
     }
@@ -622,10 +632,13 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     constexpr float w=700,h=478;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
     sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY","CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
-    const std::array<std::string,3> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
-        "ASSETS "+std::to_string(sectionAssetCatalog().size()),"MARKERS"};
-    for (int tab=0;tab<3;++tab)
-        sectionButton(out,hits,x+22+tab*134,y+62,126,26,tabs[tab],SectionUiPaletteTabBase+tab,editor.paletteTab()==tab);
+    const auto catalog=sectionAssetCatalog();
+    const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& entry){return !isItemPickup(entry.kind);});
+    const std::array<std::string,4> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
+        "ASSETS "+std::to_string(modelCount),"ITEMS "+std::to_string(ItemCount),"MARKERS"};
+    constexpr std::array tabIds{0,1,3,2};
+    for (int tab=0;tab<static_cast<int>(tabs.size());++tab)
+        sectionButton(out,hits,x+22+tab*134,y+62,126,26,tabs[tab],SectionUiPaletteTabBase+tabIds[tab],editor.paletteTab()==tabIds[tab]);
     sectionButton(out,hits,x+w-118,y+62,96,26,"ESC CLOSE",SectionUiBack);
     const auto& items=editor.paletteItems();
     const int selection=std::clamp(editor.paletteSelection(),0,std::max(0,static_cast<int>(items.size())-1));
@@ -654,7 +667,8 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     if (!items.empty()) {
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
-        const auto hint=item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
+        const auto hint=item.pickup ? "PLACE ON GROUND / E TO COLLECT IN PLAY"
+            : item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
             : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
             : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE"
@@ -662,9 +676,17 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
             : "BUILD WALKABLE SURFACES WITH BLOCKS";
         fittedText(out,hint,x+23,y+359,405,0.9f,Muted);
     }
-    sectionButton(out,hits,x+w-208,y+340,43,29,"<",SectionUiPalettePrevious,false,page>0);
-    out.centered(std::to_string(page+1)+" / "+std::to_string(std::max(1,(static_cast<int>(items.size())+23)/24)),x+w-118,y+350,1,Muted);
-    sectionButton(out,hits,x+w-65,y+340,43,29,">",SectionUiPaletteNext,false,(page+1)*24<static_cast<int>(items.size()));
+    if (editor.paletteTab()==3) {
+        sectionButton(out,hits,x+492,y+340,32,29,"-",SectionUiPickupMinus,false,editor.pickupQuantity()>1);
+        out.frame(x+530,y+340,108,29,Edge,Canvas);
+        out.centered("STACK "+std::to_string(editor.pickupQuantity()),x+584,y+350,1,Gold);
+        sectionButton(out,hits,x+646,y+340,32,29,"+",SectionUiPickupPlus,false,editor.pickupQuantity()<ChestStackLimit);
+        out.centered("SHIFT: +/- 10",x+584,y+374,.8f,Muted);
+    } else {
+        sectionButton(out,hits,x+w-208,y+340,43,29,"<",SectionUiPalettePrevious,false,page>0);
+        out.centered(std::to_string(page+1)+" / "+std::to_string(std::max(1,(static_cast<int>(items.size())+23)/24)),x+w-118,y+350,1,Muted);
+        sectionButton(out,hits,x+w-65,y+340,43,29,">",SectionUiPaletteNext,false,(page+1)*24<static_cast<int>(items.size()));
+    }
     sectionHotbar(out,hits,editor,width*0.5f,y+384,true);
     out.centered("TAB - CATEGORY / ARROWS - ITEM / ENTER - EQUIP / 1-9 - SLOT",width*0.5f,y+444,0.9f,Muted);
     sectionFeedback(out,editor,x+23,y+461,w-46);
@@ -792,8 +814,6 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
     out.centered("TYPE NAME / CTRL+A SELECT ALL / UP-DOWN CATEGORY",width*0.5f,y+h-13,0.8f,Muted);
 }
 
-void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale);
-
 void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
 {
     constexpr float w=700,h=478;
@@ -894,11 +914,13 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         const auto title=mode==SectionBuildMode::Select ? "SELECT AREA / PICK TWO CORNERS"
             : pasting ? std::string(editor.pasteFillGaps() ? "FILL GAPS / " : "PASTE / ")+sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
                 +" / "+std::to_string(editor.pasteRotation()*90)+" DEG"
-            : mode==SectionBuildMode::Brush ? std::string(editor.brushErasing() ? "CARVE " : "ADD ")+std::to_string(editor.brushSize())+" / "+item.name : item.name;
+            : mode==SectionBuildMode::Brush ? std::string(editor.brushErasing() ? "CARVE " : "ADD ")+std::to_string(editor.brushSize())+" / "+item.name
+            : item.pickup ? item.name+" / STACK "+std::to_string(editor.pickupQuantity()) : item.name;
         fittedText(out,title,center-264,labelY,528,1.4f,Gold);
         const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
             : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
+            : item.pickup ? "RIGHT PLACE PICKUP / E ITEMS / E COLLECT IN PLAY"
             : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
@@ -1696,7 +1718,8 @@ void Hud::drawInventory(const Game& game,int framebufferWidth,int framebufferHei
         packFrame(drawing,x,y,174,25,Edge,Panel,4);
         drawing.text("I  PACK "+std::to_string(game.equipment.inventory.occupiedSlots())+"/20",x+13,y+9,1,Muted);
         if (!game.lootPrompt().empty()) {
-            constexpr float promptWidth=330;
+            const float textWidth=(game.lootPrompt().size()*6-1)*drawing.fontPixel(1);
+            const float promptWidth=std::min(canvas.width-36,std::max(330.0f,textWidth+32));
             const float px=(canvas.width-promptWidth)*.5f,py=canvas.height*.5f+35;
             packFrame(drawing,px,py,promptWidth,30,Gold,Canvas,5);
             fittedText(drawing,game.lootPrompt(),px+14,py+11,promptWidth-28,1,Gold);

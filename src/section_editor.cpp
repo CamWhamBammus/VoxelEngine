@@ -53,10 +53,13 @@ SectionEditor::SectionEditor(std::filesystem::path libraryRoot) : libraryRoot_(s
     for (const Block block : PlaceableBlocks)
         palette_[0].push_back({std::string(blockName(block)), block, std::nullopt, SectionMarker::None});
     for (const auto& asset : sectionAssetCatalog())
-        palette_[1].push_back({std::string(asset.name), std::nullopt, asset.kind, SectionMarker::None});
+        if (!isItemPickup(asset.kind))
+            palette_[1].push_back({std::string(asset.name), std::nullopt, asset.kind, SectionMarker::None});
     palette_[2] = {{"Start", {}, {}, SectionMarker::Start},
                    {"Checkpoint", {}, {}, SectionMarker::Checkpoint},
                    {"End", {}, {}, SectionMarker::End}};
+    for (const auto& item : itemCatalog())
+        palette_[3].push_back({std::string(item.name), {}, HubAssetKind::ItemPickup, SectionMarker::None, item.id});
     const std::array blocks{Block::Stone, Block::Grass, Block::Timber, Block::Planks,
         Block::Water, Block::Leaves, Block::Lantern, Block::Crystal, Block::Path};
     for (std::size_t i = 0; i < hotbar_.size(); ++i)
@@ -123,7 +126,7 @@ void SectionEditor::newSection(Game& game)
     game.camera.reset();
     game.camera.setPosition(meta_.spawn + glm::vec3(0, 5, 1));
     pointCamera(game.camera, {0, -.25f, -1});
-    message_ = "NEW 64 X 48 X 64 ROOM | E BLOCKS / ASSETS | F8 WALK TEST";
+    message_ = "NEW 64 X 48 X 64 ROOM | E BLOCKS / ASSETS / ITEMS | F8 WALK TEST";
     saveDraft(game);
 }
 void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draft)
@@ -299,9 +302,18 @@ void SectionEditor::updateMenu(Game& game, const InputActions& actions)
     if (screen_ == SectionEditorScreen::Palette) {
         if (back || actions.devPalette) { screen_ = SectionEditorScreen::Build; return; }
         int tab = paletteTab_;
-        if (actions.devTabStep) tab = wrap(tab + actions.devTabStep, 3);
-        if (click >= SectionUiPaletteTabBase && click < SectionUiPaletteTabBase + 3) tab = click - SectionUiPaletteTabBase;
+        if (actions.devTabStep) {
+            constexpr std::array order{0, 1, 3, 2};
+            const int index = static_cast<int>(std::find(order.begin(), order.end(), tab) - order.begin());
+            tab = order[wrap(index + actions.devTabStep, static_cast<int>(order.size()))];
+        }
+        if (click >= SectionUiPaletteTabBase && click < SectionUiPaletteTabBase + 4) tab = click - SectionUiPaletteTabBase;
         if (tab != paletteTab_) { paletteTab_ = tab; paletteSelection_ = 0; }
+        if (paletteTab_ == 3 && (click == SectionUiPickupMinus || click == SectionUiPickupPlus)) {
+            const int direction = click == SectionUiPickupPlus ? 1 : -1;
+            pickupQuantity_ = std::clamp(pickupQuantity_ + direction * (actions.sprint ? 10 : 1), 1, ChestStackLimit);
+            message_ = "PICKUP STACK: " + std::to_string(pickupQuantity_) + " | SHIFT +/- CHANGES TEN";
+        }
         const int count = static_cast<int>(paletteItems().size());
         const int step = actions.devMenuStep.x + actions.devMenuStep.y * 6;
         if (step) paletteSelection_ = wrap(paletteSelection_ + step, count);
@@ -369,13 +381,17 @@ void SectionEditor::refreshTarget(Game& game)
     }
     preview_.reset();
     const auto& item = hotbar_[selectedSlot_];
-    if (item.asset && game.target && game.target->normal != glm::ivec3(0)) {
+    const bool supportedPickup = !item.pickup || (game.target && game.target->normal.y == 1
+        && !targetAsset_ && !targetSurface_ && isSolid(game.world.get(game.target->position)));
+    if (item.asset && game.target && game.target->normal != glm::ivec3(0) && supportedPickup) {
         const auto cell = game.target->position + game.target->normal;
         if (sectionInterior(cell)) {
             const auto normal = game.target->normal;
             const int wallFacing = normal.x > 0 ? 1 : normal.x < 0 ? 3 : normal.z < 0 ? 2 : 0;
             const int rotation = (facing_ + (normal.y == 0 ? wallFacing : 0)) % 4;
-            HubAsset candidate{*item.asset, glm::vec3(0), rotation, isChestAsset(*item.asset) ? 0 : variation_};
+            HubAsset candidate{*item.asset, glm::vec3(0), rotation,
+                               isChestAsset(*item.asset) || item.pickup ? 0 : variation_};
+            if (item.pickup) candidate.pickupItem = {*item.pickup, pickupQuantity_};
             glm::vec3 minimum(std::numeric_limits<float>::max()), maximum(std::numeric_limits<float>::lowest());
             const auto mesh = buildHubAsset(candidate);
             for (const auto& vertex : mesh.vertices) {
@@ -429,7 +445,9 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         else facing_ = (facing_ + 1) % 4;
     }
     if (actions.devVariation) {
-        if (hotbar_[selectedSlot_].asset && isChestAsset(*hotbar_[selectedSlot_].asset))
+        if (hotbar_[selectedSlot_].pickup)
+            message_ = "PICKUP STACKS ARE SET IN THE ITEMS MENU | E TO COLLECT IN PLAY";
+        else if (hotbar_[selectedSlot_].asset && isChestAsset(*hotbar_[selectedSlot_].asset))
             message_ = "CHEST STYLES ARE IN THE ASSET MENU | AIM AT A PLACED CHEST AND PRESS E TO SET ITEMS";
         else ++variation_;
     }
@@ -473,8 +491,19 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
     if (targetAsset_ && (actions.remove || actions.pick)) {
         const auto index = *targetAsset_;
         if (actions.pick) {
-            const auto item = std::find_if(palette_[1].begin(), palette_[1].end(), [&](const SectionPaletteItem& candidate) { return candidate.asset == assets_[index].kind; });
-            if (item != palette_[1].end()) hotbar_[selectedSlot_] = *item;
+            if (isItemPickup(assets_[index].kind)) {
+                const auto stack = itemPickupStack(assets_[index]);
+                const auto item = std::find_if(palette_[3].begin(), palette_[3].end(),
+                    [&](const SectionPaletteItem& candidate) { return candidate.pickup == stack.item; });
+                if (item != palette_[3].end()) {
+                    hotbar_[selectedSlot_] = *item;
+                    pickupQuantity_ = std::clamp(stack.count, 1, ChestStackLimit);
+                }
+            } else {
+                const auto item = std::find_if(palette_[1].begin(), palette_[1].end(),
+                    [&](const SectionPaletteItem& candidate) { return candidate.asset == assets_[index].kind; });
+                if (item != palette_[1].end()) hotbar_[selectedSlot_] = *item;
+            }
             facing_ = assets_[index].facing; variation_ = assets_[index].variation;
             message_ = "PICKED " + hotbar_[selectedSlot_].name;
         } else {
@@ -506,7 +535,11 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         edit.position = placement.position; edit.before = game.world.get(placement.position); edit.after = *item.block;
         if (game.world.set(placement.position, *item.block)) { changed(std::move(edit)); message_ = "PLACED " + item.name; }
     } else if (item.asset) {
-        if (!preview_) { message_ = "AIM AT A BLOCK FACE INSIDE THE ROOM"; return; }
+        if (!preview_) {
+            message_ = item.pickup ? "ITEMS NEED THE TOP OF A SOLID FLOOR INSIDE THE ROOM"
+                                   : "AIM AT A BLOCK FACE INSIDE THE ROOM";
+            return;
+        }
         if (assets_.size() >= SectionMaxAssets) { message_ = "ASSET LIMIT REACHED"; return; }
         const auto duplicate = std::find_if(assets_.begin(), assets_.end(), [&](const HubAsset& asset) {
             return asset.kind == preview_->kind && asset.position == preview_->position && asset.facing == preview_->facing;
@@ -517,8 +550,9 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         validateAssetEdit(game.world, plan);
         if (!plan.error.empty()) { message_ = plan.error; return; }
         assets_ = std::move(plan.assets); changed(std::move(edit));
-        message_ = isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
-                                          : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
+        message_ = item.pickup ? "PLACED " + std::to_string(pickupQuantity_) + " " + item.name + " | E TO COLLECT IN PLAY"
+            : isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
+                                       : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
     }
     refreshTarget(game);
 }

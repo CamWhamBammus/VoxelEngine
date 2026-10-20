@@ -56,18 +56,19 @@ void fixChecksum(std::string& bytes)
     for (std::size_t i = 8; i < bytes.size() - 4; ++i) checksum = (checksum ^ static_cast<unsigned char>(bytes[i])) * 16777619u;
     integer(bytes, bytes.size() - 4, checksum);
 }
-std::string versionOne(std::string_view bytes, std::size_t firstAsset, std::span<const voxel::HubAsset> assets)
+std::string olderVersion(std::string_view bytes, std::size_t firstAsset, std::span<const voxel::HubAsset> assets,
+                         std::uint32_t version)
 {
     // Version 1 used the same metadata and voxel snapshot, but each model was
-    // exactly 24 bytes with no authored item count or stacks.
+    // exactly 24 bytes. Version 2 added chest contents; neither had pickupItem.
     std::string old(bytes.substr(0, firstAsset));
     std::size_t cursor = firstAsset;
     for (const auto& asset : assets) {
-        old += bytes.substr(cursor, 24);
-        cursor += 28 + asset.chestItems.size() * 8;
+        old += bytes.substr(cursor, version == 1 ? 24 : 28 + asset.chestItems.size() * 8);
+        cursor += 36 + asset.chestItems.size() * 8;
     }
     old += bytes.substr(cursor);
-    integer(old, 8, 1);
+    integer(old, 8, version);
     fixChecksum(old);
     return old;
 }
@@ -88,8 +89,9 @@ int main()
           && static_cast<int>(HubAssetKind::LootChest) == 54
           && static_cast<int>(HubAssetKind::CrystalChest) == 55
           && static_cast<int>(HubAssetKind::IronboundChest) == 56
-          && static_cast<int>(HubAssetKind::KeyPickup) == 57,
-          "chest styles and the key append without changing earlier saved asset identifiers");
+          && static_cast<int>(HubAssetKind::KeyPickup) == 57
+          && static_cast<int>(HubAssetKind::ItemPickup) == 58,
+          "new item pickups append without changing earlier saved asset identifiers");
     check(sectionAssetCatalog()[54].name == "Wooden chest"
           && sectionAssetCatalog()[55].name == "Crystal chest"
           && sectionAssetCatalog()[56].name == "Ironbound chest"
@@ -148,6 +150,7 @@ int main()
         assets.push_back({info.kind, {-24.5f + static_cast<float>(index % 12) * 4.0f, 9.0f,
                                       -16.5f + static_cast<float>(index / 12) * 4.0f},
                           static_cast<int>(index % 4), static_cast<std::uint32_t>(100 + index)});
+        if (info.kind == HubAssetKind::ItemPickup) assets.back().pickupItem = {ItemId::Ruby, 3};
     }
     for (std::size_t i = 0; i < PlaceableBlocks.size(); ++i) world.set({static_cast<int>(i) - 10, 9, 4}, PlaceableBlocks[i]);
     const auto document = temp.path / "complete.vxs";
@@ -162,8 +165,9 @@ int main()
     check(restored.assets.size() == assets.size(), "section must preserve the model count");
     for (std::size_t i = 0; i < assets.size(); ++i) {
         check(restored.assets[i].kind == assets[i].kind && restored.assets[i].position == assets[i].position
-              && restored.assets[i].facing == assets[i].facing && restored.assets[i].variation == assets[i].variation,
-              "section must round trip every model and its orientation");
+              && restored.assets[i].facing == assets[i].facing && restored.assets[i].variation == assets[i].variation
+              && restored.assets[i].pickupItem == assets[i].pickupItem,
+              "section must round trip every model, orientation and pickup stack");
     }
     std::vector<HubAsset> chests{
         {HubAssetKind::LootChest, {-12.5f,9,10.5f}, 0, 0},
@@ -178,6 +182,14 @@ int main()
     saveSection(world, meta, chests, chestDocument);
     check(loadSection(chestDocument).assets == chests,
           "all styles, rotations, empty chests, keys and exact twenty-stack contents survive a section save");
+    std::vector<HubAsset> pickups;
+    for (const auto& item : itemCatalog())
+        pickups.push_back({HubAssetKind::ItemPickup, {-28.f + 3.f * static_cast<int>(item.id), 9, 16},
+                           static_cast<int>(item.id) % 4, 0, {}, {item.id, ChestStackLimit - static_cast<int>(item.id)}});
+    const auto pickupDocument = temp.path / "ground-items.vxs";
+    saveSection(world, meta, pickups, pickupDocument);
+    check(loadSection(pickupDocument).assets == pickups,
+          "every resource and key preserves its exact ground pickup quantity and order");
     check(fails([&] { saveSection(world, meta, {}, document); }), "a new save cannot replace an existing document");
     check(readBytes(document) == originalBytes, "rejected overwrite must preserve the original document");
     SectionMetadata replacement = meta;
@@ -212,7 +224,7 @@ int main()
              {assetCountOffset, static_cast<std::uint32_t>(SectionMaxAssets + 1)},
              {firstAsset, 10000}, {firstAsset + 16, 4},
              {firstAsset + 4, 0x7fc00000u}, // NaN model X
-             {firstAsset + assets.size() * 28, 0xffffffffu}}) {
+             {firstAsset + assets.size() * 36, 0xffffffffu}}) {
         corrupt = originalBytes;
         integer(corrupt, offset, value);
         fixChecksum(corrupt);
@@ -269,7 +281,7 @@ int main()
     };
     const auto oldFile = temp.path / "legacy-chests.vxs";
     saveSection(world, meta, oldAssets, oldFile);
-    const auto legacy = versionOne(readBytes(oldFile), firstAsset, oldAssets);
+    const auto legacy = olderVersion(readBytes(oldFile), firstAsset, oldAssets, 1);
     writeBytes(oldFile, legacy);
     const auto imported = loadSection(oldFile);
     check(imported.world.sameContents(world) && imported.meta.name == meta.name
@@ -289,11 +301,59 @@ int main()
           "legacy migration is repeatable and never rewrites the source during load");
     saveSection(imported.world, imported.meta, imported.assets, oldFile, true);
     check(loadSection(oldFile).assets == imported.assets && readBytes(oldFile) != legacy,
-          "saving a migrated room writes stable explicit contents in version two");
+          "saving a migrated room writes stable explicit contents in the current version");
     auto invalidOldKind = legacy;
     integer(invalidOldKind, firstAsset, static_cast<std::uint32_t>(HubAssetKind::CrystalChest));
     fixChecksum(invalidOldKind);
     check(rejects(invalidOldKind), "version one rejects asset ids that were introduced with version two");
+
+    const auto versionTwo = olderVersion(authoredBytes, firstAsset, chests, 2);
+    writeBytes(oldFile, versionTwo);
+    const auto oldKeys = loadSection(oldFile);
+    check(oldKeys.assets == chests && oldKeys.assets.back().kind == HubAssetKind::KeyPickup
+          && itemPickupStack(oldKeys.assets.back()) == ItemStack{ItemId::Key, 1}
+          && readBytes(oldFile) == versionTwo,
+          "version two retains legacy key kind, placement, quantity and asset order without rewriting the source");
+    saveSection(oldKeys.world, oldKeys.meta, oldKeys.assets, oldFile, true);
+    check(loadSection(oldFile).assets == oldKeys.assets,
+          "saving legacy keys in version three preserves their stable source identities");
+    corrupt = versionTwo;
+    integer(corrupt, firstAsset, static_cast<std::uint32_t>(HubAssetKind::ItemPickup));
+    fixChecksum(corrupt);
+    check(rejects(corrupt), "version two rejects the newer generic pickup kind");
+
+    const auto pickupBytes = readBytes(pickupDocument);
+    for (const auto& [offset, value] : std::vector<std::pair<std::size_t, std::uint32_t>>{
+             {firstAsset + 28, static_cast<std::uint32_t>(ItemId::Count)},
+             {firstAsset + 28, 0xffffffffu}, {firstAsset + 32, 0},
+             {firstAsset + 32, ChestStackLimit + 1}, {firstAsset + 32, 0xffffffffu},
+             {firstAsset, static_cast<std::uint32_t>(HubAssetKind::Fern)},
+             {firstAsset, static_cast<std::uint32_t>(HubAssetKind::KeyPickup)}}) {
+        corrupt = pickupBytes;
+        integer(corrupt, offset, value);
+        fixChecksum(corrupt);
+        check(rejects(corrupt), "invalid pickup ids, amounts and payloads on other asset kinds are rejected");
+    }
+    for (const auto invalid : {ItemStack{ItemId::Ruby, 0}, ItemStack{ItemId::Ruby, -1},
+                               ItemStack{ItemId::Ruby, 100}, ItemStack{ItemId::Count, 1}}) {
+        auto invalidPickups = pickups;
+        invalidPickups.front().pickupItem = invalid;
+        check(fails([&] { saveSection(world, meta, invalidPickups, pickupDocument, true); })
+              && readBytes(pickupDocument) == pickupBytes,
+              "invalid pickup stacks cannot replace a valid section file");
+    }
+    auto invalidPayload = pickups;
+    invalidPayload.front().chestItems = {{ItemId::Ruby, 1}};
+    check(fails([&] { saveSection(world, meta, invalidPayload, malformed, true); }),
+          "ground item pickups cannot also contain chest stacks");
+    invalidPayload = chests;
+    invalidPayload.back().pickupItem = {ItemId::Key, 0};
+    check(fails([&] { saveSection(world, meta, invalidPayload, malformed, true); }),
+          "non-pickup payloads require the canonical empty value even when count is zero");
+    corrupt = originalBytes;
+    integer(corrupt, firstAsset + 28, static_cast<std::uint32_t>(ItemId::Key));
+    fixChecksum(corrupt);
+    check(rejects(corrupt), "version three rejects typed zero-count pickup payloads on ordinary models");
 
     const auto library = temp.path / "sections";
     check(listSections(library).empty() && listSectionDrafts(library).empty(), "a missing library should be empty");

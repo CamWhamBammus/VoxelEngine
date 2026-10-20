@@ -90,7 +90,7 @@ if(BUILD_TESTING)
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
         root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools
-        levels levels_game inventory loot_game chest_editor key_loot
+        levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
         lush_hub
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)

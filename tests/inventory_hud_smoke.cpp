@@ -61,7 +61,10 @@ void verifyInventoryHud(int width,int height)
     std::vector<ItemStack> authoredLoot;
     for (int slot=0;slot<ChestSlotCount;++slot)
         authoredLoot.push_back({static_cast<ItemId>(slot%ItemCount),3+slot});
-    const std::vector<HubAsset> assets{{HubAssetKind::LootChest,{.5f,9,21.5f},0,0,authoredLoot}};
+    const std::vector<HubAsset> assets{
+        {HubAssetKind::LootChest,{.5f,9,21.5f},0,0,authoredLoot},
+        {HubAssetKind::ItemPickup,{1.5f,9,23.5f},0,0,{},{ItemId::Key,1}}
+    };
     saveSectionDraft(world,{},assets,temporary);
     Options options; options.dev=true; options.smokeTest=true; options.sectionLibrary=temporary.string();
     Game game(options);
@@ -158,6 +161,28 @@ void verifyInventoryHud(int width,int height)
                             [](const auto& stack) { return stack.count>0; }),"Take All did not empty chest");
         require(difference(chest,draw(width,height))>1000,"Empty chest state did not change visibly");
         draw(640,360,2);
+        press(&InputActions::closeMenu);
+        const auto keyDirection=glm::normalize(assets.back().position+glm::vec3(0,.3f,0)-game.camera.position());
+        const auto oldDirection=game.camera.forward();
+        game.camera.rotate(glm::degrees(std::atan2(keyDirection.z,keyDirection.x)-std::atan2(oldDirection.z,oldDirection.x)),
+                           glm::degrees(std::asin(keyDirection.y)-std::asin(oldDirection.y)));
+        InputActions active;active.active=true;game.update(active);
+        require(game.lootPrompt().ends_with("THIS SECTION ONLY"),"Ground key must explain its section-only lifetime");
+        const auto keyPrompt=draw(640,360,2);
+        // The final word must actually reach the framebuffer at small Retina size;
+        // shortening this prompt would hide the key's section-only lifetime.
+        constexpr float scale=360.0f/530.0f;
+        const float font=1/scale,canvasWidth=640/scale;
+        const float textWidth=(game.lootPrompt().size()*6-1)*font;
+        const float left=(canvasWidth-textWidth-32)*.5f+14;
+        const int startX=static_cast<int>(std::round((left+(game.lootPrompt().size()-4)*6*font)*scale));
+        const int startY=static_cast<int>(std::round((530*.5f+35+11)*scale));
+        int goldPixels=0;
+        for (int y=startY;y<startY+7;++y) for (int x=startX;x<startX+23;++x) {
+            const auto offset=(static_cast<std::size_t>(359-y)*640+x)*4;
+            goldPixels+=keyPrompt[offset]>210 && keyPrompt[offset+1]>145 && keyPrompt[offset+2]<120;
+        }
+        require(goldPixels>20,"Small Retina pickup prompt clipped the final word of THIS SECTION ONLY");
         const auto before=state();
         hud.drawInventory(game,0,0);
         require(state()==before,"Minimized inventory altered OpenGL state");

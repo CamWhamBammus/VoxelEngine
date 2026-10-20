@@ -92,7 +92,9 @@ int main()
         press(game, &voxel::InputActions::devPalette);
         check(editor.paletteItems().size() == voxel::PlaceableBlocks.size(), "palette includes every creative material");
         click(game, voxel::SectionUiPaletteTabBase + 1);
-        check(editor.paletteItems().size() == voxel::sectionAssetCatalog().size(), "palette includes every existing model asset");
+        const auto sceneryCount = std::count_if(voxel::sectionAssetCatalog().begin(), voxel::sectionAssetCatalog().end(),
+            [](const auto& asset) { return !voxel::isItemPickup(asset.kind); });
+        check(editor.paletteItems().size() == static_cast<std::size_t>(sceneryCount), "asset palette includes scenery and chests without item pickups");
         int fernIndex = 0;
         for (std::size_t i = 0; i < editor.paletteItems().size(); ++i)
             if (editor.paletteItems()[i].asset == voxel::HubAssetKind::Fern) fernIndex = static_cast<int>(i);

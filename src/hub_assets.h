@@ -24,10 +24,10 @@ enum class HubAssetKind {
     GlowMushroomColony, GiantMushroom, ShelfFungi, CaveLotus,
     WaterGrass, MossyLog, RootFan, MossyStones,
     CrystalFlower, SporeStalks, CaveOrchid, HangingPlanter,
-    LootChest, CrystalChest, IronboundChest, KeyPickup
+    LootChest, CrystalChest, IronboundChest, KeyPickup, ItemPickup
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::KeyPickup) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ItemPickup) + 1;
 
 struct HubAsset {
     HubAssetKind kind;
@@ -36,6 +36,9 @@ struct HubAsset {
     std::uint32_t variation = 0;
     // Authored loot is independent of the chest's appearance. New chests are empty.
     std::vector<ItemStack> chestItems{};
+    // Generic ground pickups hold one explicit stack. Older KeyPickup assets
+    // retain their implicit single key and keep this field empty.
+    ItemStack pickupItem{};
     bool operator==(const HubAsset&) const = default;
 };
 
@@ -45,8 +48,14 @@ constexpr bool isChestAsset(HubAssetKind kind)
         || kind == HubAssetKind::IronboundChest;
 }
 constexpr bool isKeyPickup(HubAssetKind kind) { return kind == HubAssetKind::KeyPickup; }
+constexpr bool isItemPickup(HubAssetKind kind)
+{
+    return isKeyPickup(kind) || kind == HubAssetKind::ItemPickup;
+}
+ItemStack itemPickupStack(const HubAsset& asset);
 std::string_view chestAssetName(HubAssetKind kind);
-// Chests hold up to 20 stacks of 1–99 items; other models have no contents.
+// Validate all item payloads: chest contents or one generic pickup stack.
+// Other models, including legacy KeyPickup, have a canonical empty pickupItem.
 bool validChestItems(const HubAsset& asset);
 
 struct HubAssetLight {

@@ -362,7 +362,13 @@ void verifySectionHud(int width,int height)
         require(game.sectionEditor().hotbar()[8].block==Block::GlowMoss,"Last lush material cannot be equipped");
         draw(width,height); draw(640,360,2);
         act(SectionUiPaletteTabBase+1);
-        require(game.sectionEditor().paletteItems().size()==sectionAssetCatalog().size(),"Asset palette omitted a model");
+        const auto catalog=sectionAssetCatalog();
+        const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& asset){return !isItemPickup(asset.kind);});
+        require(game.sectionEditor().paletteItems().size()==static_cast<std::size_t>(modelCount),
+                "Asset palette must contain models without ground pickups");
+        require(std::none_of(game.sectionEditor().paletteItems().begin(),game.sectionEditor().paletteItems().end(),
+                             [](const auto& item){return item.pickup || (item.asset && isItemPickup(*item.asset));}),
+                "Ground pickups belong in Items rather than Assets");
         const auto assetsFirst=draw(width,height);
         require(difference(blocks,assetsFirst)>1200,"Asset tab did not show model icons");
         // Selecting late in page one must still navigate to page two.
@@ -385,9 +391,9 @@ void verifySectionHud(int width,int height)
         act(SectionUiPaletteNext);
         require(game.sectionEditor().paletteSelection()/24==2,"Lush assets cannot be reached on page three");
         require(difference(assetsLast,draw(width,height))>1000,"New lush model icons did not replace page two");
-        for (const auto kind:{HubAssetKind::LootChest,HubAssetKind::CrystalChest,HubAssetKind::IronboundChest,HubAssetKind::KeyPickup}) {
+        for (const auto kind:{HubAssetKind::LootChest,HubAssetKind::CrystalChest,HubAssetKind::IronboundChest}) {
             act(SectionUiPaletteItemBase+static_cast<int>(kind));
-            require(game.sectionEditor().hotbar()[8].asset==kind,"Each chest style and cave key must be equipable");
+            require(game.sectionEditor().hotbar()[8].asset==kind,"Each chest style must be equipable");
             draw(width,height);draw(640,360,2);
         }
         for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
@@ -400,6 +406,41 @@ void verifySectionHud(int width,int height)
         }
         act(SectionUiPaletteTabBase+2); draw(width,height);
         require(game.sectionEditor().paletteItems().size()==3,"Section markers are missing from inventory");
+        act(SectionUiPaletteTabBase+3);
+        require(game.sectionEditor().paletteItems().size()==ItemCount,"Items palette omitted an ore, gem, or cave key");
+        for (const auto& item:itemCatalog()) {
+            act(SectionUiPaletteItemBase+static_cast<int>(item.id));
+            const auto& equipped=game.sectionEditor().hotbar()[8];
+            require(equipped.pickup==item.id && equipped.asset==HubAssetKind::ItemPickup,
+                    "Every item must equip its own generic ground pickup");
+        }
+        act(SectionUiPickupPlus);
+        require(game.sectionEditor().pickupQuantity()==2,"Pickup quantity + did not change the placed stack size");
+        InputActions more;more.active=true;more.devClick=SectionUiPickupPlus;more.sprint=true;game.update(more);
+        require(game.sectionEditor().pickupQuantity()==12,"Shift + did not change pickup quantity by ten");
+        act(SectionUiPickupMinus);
+        require(game.sectionEditor().pickupQuantity()==11,"Pickup quantity - did not change the placed stack size");
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.0f : 1.0f;
+            const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            constexpr std::array tabIds{0,1,3,2};
+            for (int tab=0;tab<4;++tab)
+                require(logicalHit(x+85+tab*134,y+75,size.x,size.y,dpi)==SectionUiPaletteTabBase+tabIds[tab],
+                        "One of the four creative tabs has an incorrect DPI-scaled click target");
+            require(logicalHit(x+630,y+75,size.x,size.y,dpi)==SectionUiBack,
+                    "Creative Items tab overlaps the Close target");
+            for (int item=0;item<ItemCount;++item)
+                require(logicalHit(x+74+(item%6)*110,y+124+(item/6)*60,size.x,size.y,dpi)==SectionUiPaletteItemBase+item,
+                        "Every ground pickup must have a visible, correctly scaled click target");
+            require(logicalHit(x+508,y+354,size.x,size.y,dpi)==SectionUiPickupMinus
+                    && logicalHit(x+662,y+354,size.x,size.y,dpi)==SectionUiPickupPlus,
+                    "Pickup stack controls disagree with their DPI-scaled drawing");
+            draw(size.x,size.y,dpi);
+        }
+        for (int step=0;step<9;++step) game.update(more);
+        require(game.sectionEditor().pickupQuantity()==ChestStackLimit,"Pickup quantity exceeds the 99-item stack limit");
+        draw(width,height);draw(640,360,2);
         act(SectionUiBack); act(SectionUiTest);
         require(game.sectionEditor().screen()==SectionEditorScreen::Test,"Section playtest did not start");
         const auto test=draw(width,height);

@@ -14,12 +14,12 @@ void LootSession::begin(std::span<const HubAsset> assets, std::string_view secti
     for (std::size_t i = 0; i < assets.size(); ++i) {
         const auto& asset = assets[i];
         if (!validChestItems(asset)) throw std::invalid_argument("Invalid authored chest contents");
-        if (!isChestAsset(asset.kind) && !isKeyPickup(asset.kind)) continue;
+        if (!isChestAsset(asset.kind) && !isItemPickup(asset.kind)) continue;
         const auto key = std::string(section.empty() ? "playtest" : section) + "/asset-" + std::to_string(i);
         const auto saved = progress.find(key);
         Chest chest{asset.kind, i, key, asset.kind == HubAssetKind::IronboundChest
             && (saved == progress.end() || !saved->second.unlocked), {},
-            isKeyPickup(asset.kind) ? std::vector<ItemStack>{{ItemId::Key, 1}} : asset.chestItems};
+            isItemPickup(asset.kind) ? std::vector<ItemStack>{itemPickupStack(asset)} : asset.chestItems};
         if (saved != progress.end())
             for (std::size_t slot = 0; slot < chest.contents.size(); ++slot)
                 chest.contents[slot].count = std::max(0, chest.contents[slot].count - saved->second.taken[slot]);
@@ -42,7 +42,7 @@ void LootSession::refreshAssets()
     auto visible = authoredAssets_;
     // Reverse placement order preserves document indices while removing pickups.
     for (auto i = chests_.rbegin(); i != chests_.rend(); ++i)
-        if (isKeyPickup(i->kind) && i->contents[0].count == 0)
+        if (isItemPickup(i->kind) && i->contents[0].count == 0)
             visible.erase(visible.begin() + static_cast<std::ptrdiff_t>(i->assetIndex));
     if (!obstacles_ || visible != sceneAssets_) {
         sceneAssets_ = std::move(visible);
@@ -72,6 +72,6 @@ std::optional<std::size_t> LootSession::target(const World& world, glm::vec3 eye
 
 std::string_view LootSession::name(std::size_t index) const
 {
-    return pickup(index) ? "Cave key" : chestAssetName(chests_.at(index).kind);
+    return pickup(index) ? itemInfo(chests_.at(index).contents[0].item).name : chestAssetName(chests_.at(index).kind);
 }
 } // namespace voxel

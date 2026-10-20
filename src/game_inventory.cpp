@@ -66,7 +66,9 @@ void Game::refreshLootPrompt()
     const auto target = loot_.target(world, player.eyePosition(), camera.forward());
     if (!target) return;
     if (loot_.pickup(*target)) {
-        lootPrompt_ = "E  COLLECT CAVE KEY / THIS SECTION ONLY";
+        const auto& stack = loot_.contents(*target)[0];
+        lootPrompt_ = "E  PICK UP " + std::to_string(stack.count) + " " + std::string(loot_.name(*target));
+        if (stack.item == ItemId::Key) lootPrompt_ += " / THIS SECTION ONLY";
         return;
     }
     if (loot_.locked(*target)) {

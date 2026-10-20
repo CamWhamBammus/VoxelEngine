@@ -479,14 +479,24 @@ std::string_view chestAssetName(HubAssetKind kind)
 
 bool validChestItems(const HubAsset& asset)
 {
-    if (!isChestAsset(asset.kind)) return asset.chestItems.empty();
-    return validChestItems(asset.chestItems);
+    if (asset.kind == HubAssetKind::ItemPickup) {
+        return asset.chestItems.empty() && validItem(asset.pickupItem.item)
+            && asset.pickupItem.count >= 1 && asset.pickupItem.count <= ChestStackLimit;
+    }
+    if (asset.pickupItem != ItemStack{}) return false;
+    return isChestAsset(asset.kind) ? validChestItems(asset.chestItems) : asset.chestItems.empty();
+}
+
+ItemStack itemPickupStack(const HubAsset& asset)
+{
+    if (isKeyPickup(asset.kind)) return {ItemId::Key, 1};
+    return asset.kind == HubAssetKind::ItemPickup ? asset.pickupItem : ItemStack{};
 }
 
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (isChestAsset(asset.kind) || isKeyPickup(asset.kind)) appendHubProp(mesh, asset);
+    if (isChestAsset(asset.kind) || isItemPickup(asset.kind)) appendHubProp(mesh, asset);
     else if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
     else if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
     else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);

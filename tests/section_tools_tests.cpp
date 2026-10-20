@@ -322,6 +322,19 @@ int main()
     rewards.assets[1].chestItems = {{ItemId::Key, 1}};
     rejected(planSectionPaste(empty, existing, rewards, {-10, 20, -10}, 0, true, camera), existing,
              "pickup assets cannot carry hidden chest reward lists");
+    rewards.assets[1] = {HubAssetKind::ItemPickup, {2.5f, 0, 1}, 0, 0, {}, {ItemId::Amethyst, 37}};
+    for (int rotation = 0; rotation < 4; ++rotation) {
+        auto pickupPaste = planSectionPaste(empty, {}, rewards, {-10, 20, -10}, rotation, false, camera);
+        check(pickupPaste.error.empty() && pickupPaste.assets.size() == 2
+              && pickupPaste.assets[1].pickupItem == ItemStack{ItemId::Amethyst, 37},
+              "rotated copies preserve exact ground pickup item and quantity");
+        if (pickupPaste.assets.size() != 2) continue;
+        pickupPaste.assets[1].pickupItem.count = 1;
+        check(rewards.assets[1].pickupItem.count == 37, "pasted pickups have independent quantities");
+    }
+    rewards.assets[1].pickupItem.count = 100;
+    rejected(planSectionPaste(empty, existing, rewards, {-10, 20, -10}, 0, true, camera), existing,
+             "invalid pickup quantities cannot enter a section through the clipboard");
     if (failures == 0) std::cout << "Section selection, bulk edits and clipboard tests passed\n";
     return failures ? 1 : 0;
 }

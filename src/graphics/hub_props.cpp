@@ -279,6 +279,42 @@ void caveKey(AssetBuilder& out)
     out.box({ .045f,.19f,-.055f}, {.14f,.27f,.055f}, Block::Slate, edge);
 }
 
+void pickupFragment(AssetBuilder& out, glm::vec3 center, float radius, float height,
+                    bool crystal, glm::vec3 color)
+{
+    std::array<glm::vec3, 8> base, shoulder;
+    for (int i = 0; i < 8; ++i) {
+        const float angle = i * 3.14159265f / 4;
+        const glm::vec3 radial(std::cos(angle), 0, std::sin(angle));
+        base[i] = center + radial * radius * (crystal ? .66f : .83f);
+        shoulder[i] = center + radial * radius
+                    + glm::vec3(0, height * (crystal ? .56f : .68f), 0);
+    }
+    const auto tip = center + glm::vec3(crystal ? radius * .16f : 0, height, 0);
+    for (int i = 0; i < 8; ++i) {
+        const int next = (i + 1) % 8;
+        out.quad(base[i], shoulder[i], shoulder[next], base[next], Block::Slate,
+                 color * (i % 3 == 0 ? .78f : 1.0f));
+        out.triangle(shoulder[i], tip, shoulder[next], Block::Slate,
+                     glm::mix(color, glm::vec3(1), i % 2 == 0 ? .30f : .12f));
+        out.triangle(center, base[i], base[next], Block::Slate, color * .65f);
+    }
+}
+
+void itemPickup(AssetBuilder& out, ItemId item)
+{
+    if (item == ItemId::Key) { caveKey(out); return; }
+    if (!validItem(item)) return;
+    const auto color = itemInfo(item).color;
+    const bool crystal = (item >= ItemId::Quartz && item <= ItemId::Emerald)
+        || item == ItemId::GlowCrystal;
+    // Each pile sits directly on its placement surface. The amount is inventory
+    // data, so partial collection never changes the remaining model's footprint.
+    pickupFragment(out, {0,0,0}, crystal ? .18f : .27f, crystal ? .64f : .40f, crystal, color);
+    pickupFragment(out, {-.22f,0,.12f}, .12f, crystal ? .38f : .23f, crystal, color * .91f);
+    pickupFragment(out, {.20f,0,.14f}, .11f, crystal ? .27f : .20f, crystal, color * .98f);
+}
+
 } // namespace
 
 void appendHubProp(MeshData& mesh, const HubAsset& asset)
@@ -311,6 +347,7 @@ void appendHubProp(MeshData& mesh, const HubAsset& asset)
     case HubAssetKind::CrystalChest:
     case HubAssetKind::IronboundChest: lootChest(out, asset.kind); break;
     case HubAssetKind::KeyPickup: caveKey(out); break;
+    case HubAssetKind::ItemPickup: itemPickup(out, asset.pickupItem.item); break;
     default: break; // Plant kinds are built by appendHubFoliage.
     }
 }
