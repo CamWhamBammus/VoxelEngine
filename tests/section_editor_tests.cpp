@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <unistd.h>
 
@@ -95,6 +96,17 @@ int main()
         const auto sceneryCount = std::count_if(voxel::sectionAssetCatalog().begin(), voxel::sectionAssetCatalog().end(),
             [](const auto& asset) { return !voxel::isItemPickup(asset.kind); });
         check(editor.paletteItems().size() == static_cast<std::size_t>(sceneryCount), "asset palette includes scenery and chests without item pickups");
+        for (int kind = static_cast<int>(voxel::HubAssetKind::TimberFence);
+             kind <= static_cast<int>(voxel::HubAssetKind::Barrel); ++kind) {
+            const auto entry = std::find_if(editor.paletteItems().begin(), editor.paletteItems().end(),
+                [&](const auto& item) { return item.asset == static_cast<voxel::HubAssetKind>(kind); });
+            check(entry != editor.paletteItems().end(), "every building kit model appears in the Assets tab");
+            if (entry != editor.paletteItems().end()) {
+                click(game, voxel::SectionUiPaletteItemBase + static_cast<int>(entry - editor.paletteItems().begin()));
+                check(editor.hotbar()[0].asset == static_cast<voxel::HubAssetKind>(kind),
+                      "building kit entries equip their own model in the creative hotbar");
+            }
+        }
         int fernIndex = 0;
         for (std::size_t i = 0; i < editor.paletteItems().size(); ++i)
             if (editor.paletteItems()[i].asset == voxel::HubAssetKind::Fern) fernIndex = static_cast<int>(i);
@@ -157,6 +169,40 @@ int main()
         check(editor.assets().size() == 1 && editor.assets()[0].kind == voxel::HubAssetKind::HangingRoots,
               "hanging roots can be placed and removed through editor history");
         press(game, &voxel::InputActions::undo);
+
+        // Structural models need to stack on their actual surfaces, including
+        // fractional stair heights, without temporary backing terrain blocks.
+        const auto stackBeam = [&](voxel::HubAssetKind baseKind, glm::vec3 localTop) {
+            game.camera.setPosition({10.5f,15,-15.5f}); aim(game.camera,{10.5f,8.5f,-18.5f});
+            equipAsset(baseKind);
+            press(game, &voxel::InputActions::place);
+            check(editor.assets().size() == 1 && editor.assets().front().kind == baseKind,
+                  "building kit base can be placed on the room floor");
+            if (editor.assets().size() != 1) return;
+            const auto base = editor.assets().front();
+            for (int i = 0; i < base.facing; ++i) localTop = {localTop.z,localTop.y,-localTop.x};
+            const auto surface = base.position + localTop;
+            game.camera.setPosition(surface + glm::vec3(0,4,.1f)); aim(game.camera,surface);
+            equipAsset(voxel::HubAssetKind::TimberBeam);
+            game.update(action);
+            check(editor.placementPreview() && std::abs(editor.placementPreview()->position.y - surface.y) < .001f,
+                  "timber beam previews on the actual top of another asset");
+            press(game, &voxel::InputActions::place);
+            check(editor.assets().size() == 2 && editor.assets().front() == base
+                  && editor.assets().back().kind == voxel::HubAssetKind::TimberBeam,
+                  "placing a beam above an asset retains both independent models");
+            if (editor.assets().size() == 2) {
+                float bottom = std::numeric_limits<float>::max();
+                for (const auto& vertex : voxel::buildHubAsset(editor.assets().back()).vertices)
+                    bottom = std::min(bottom,vertex.position.y);
+                check(std::abs(bottom - surface.y) < .001f,
+                      "beam geometry touches its supporting model with no floating or buried base");
+                press(game, &voxel::InputActions::undo);
+            }
+            press(game, &voxel::InputActions::undo);
+        };
+        stackBeam(voxel::HubAssetKind::TimberPillar,{0,3,0});
+        stackBeam(voxel::HubAssetKind::WoodenStairs,{0,1.5f,-1.25f});
 
         // Marker placement and undo use the same authored edit history.
         game.camera.setPosition({5.5f, 13, 18.5f}); aim(game.camera, {5.5f, 8.5f, 14.5f});

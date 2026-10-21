@@ -886,6 +886,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
             : item.pickup ? "RIGHT DROP ITEM / WALK OVER TO COLLECT IN PLAY"
             : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
+            : item.asset == HubAssetKind::GardenGate ? std::string("T ROTATE / Y OPEN-CLOSED / ")+(editor.variation()%2 ? "OPEN" : "CLOSED")
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
         if (pasting) {

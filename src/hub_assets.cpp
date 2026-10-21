@@ -516,6 +516,8 @@ MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
     if (isChestAsset(asset.kind) || isItemPickup(asset.kind)) appendHubProp(mesh, asset);
+    else if (isFenceAsset(asset.kind)) appendHubFence(mesh, asset);
+    else if (isBuildingKitAsset(asset.kind)) appendHubBuildingKit(mesh, asset);
     else if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
     else if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
     else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);

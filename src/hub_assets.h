@@ -26,10 +26,13 @@ enum class HubAssetKind {
     GlowMushroomColony, GiantMushroom, ShelfFungi, CaveLotus,
     WaterGrass, MossyLog, RootFan, MossyStones,
     CrystalFlower, SporeStalks, CaveOrchid, HangingPlanter,
-    LootChest, CrystalChest, IronboundChest, KeyPickup, ItemPickup
+    LootChest, CrystalChest, IronboundChest, KeyPickup, ItemPickup,
+    // Append new kinds: numeric IDs are stored in authored section files.
+    TimberFence, PicketFence, FenceCorner, GardenGate, IronRailing,
+    TimberPillar, TimberBeam, DiagonalBrace, StoneDoorway, WindowFrame, WoodenStairs, Barrel
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ItemPickup) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::Barrel) + 1;
 
 struct HubAsset {
     HubAssetKind kind;
@@ -84,6 +87,16 @@ constexpr bool isBlacksmithAsset(HubAssetKind kind)
 constexpr bool isLushAsset(HubAssetKind kind)
 {
     return kind >= HubAssetKind::TreeFern && kind <= HubAssetKind::HangingPlanter;
+}
+
+constexpr bool isFenceAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::TimberFence && kind <= HubAssetKind::IronRailing;
+}
+
+constexpr bool isBuildingKitAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::TimberPillar && kind <= HubAssetKind::Barrel;
 }
 
 // Lush ground models sit on their origin. HangingRoots/HangingPlanter grow

@@ -388,10 +388,16 @@ void SectionEditor::refreshTarget(Game& game)
     const auto& item = hotbar_[selectedSlot_];
     const bool supportedPickup = !item.pickup || (game.target && game.target->normal.y == 1
         && !targetAsset_ && !targetSurface_ && isSolid(game.world.get(game.target->position)));
-    if (item.asset && game.target && game.target->normal != glm::ivec3(0) && supportedPickup) {
-        const auto cell = game.target->position + game.target->normal;
+    // Flat model faces are building surfaces too: keep their exact height so
+    // beams meet pillar caps and props sit on fractional stair treads.
+    const bool modelSurface = !item.pickup && targetSurface_
+        && glm::max(glm::abs(targetSurface_->normal.x),
+                    glm::max(glm::abs(targetSurface_->normal.y), glm::abs(targetSurface_->normal.z))) > .999f;
+    if (item.asset && supportedPickup && (modelSurface || (game.target && game.target->normal != glm::ivec3(0)))) {
+        const auto normal = modelSurface ? glm::ivec3(glm::round(targetSurface_->normal)) : game.target->normal;
+        const auto cell = modelSurface ? glm::ivec3(glm::floor(targetSurface_->point + glm::vec3(normal) * .001f))
+                                       : game.target->position + normal;
         if (sectionInterior(cell)) {
-            const auto normal = game.target->normal;
             const int wallFacing = normal.x > 0 ? 1 : normal.x < 0 ? 3 : normal.z < 0 ? 2 : 0;
             const int rotation = (facing_ + (normal.y == 0 ? wallFacing : 0)) % 4;
             HubAsset candidate{*item.asset, glm::vec3(0), rotation,
@@ -405,19 +411,27 @@ void SectionEditor::refreshTarget(Game& game)
             }
             if (!mesh.vertices.empty()) {
                 candidate.position = glm::vec3(cell) + glm::vec3(.5f, 0, .5f);
-                const auto support = game.target->position;
                 // Attach the model's actual bounds to the selected surface:
                 // floor assets stand on it, hanging assets meet the underside,
                 // and wall attachments face away from the wall.
-                if (normal.y > 0 && game.world.get(support) == Block::Water
-                    && (candidate.kind == HubAssetKind::CaveLotus || candidate.kind == HubAssetKind::WaterGrass))
-                    candidate.position.y = support.y + 1.0f;
-                else if (normal.y > 0) candidate.position.y = support.y + 1.0f - minimum.y;
-                else if (normal.y < 0) candidate.position.y = support.y - maximum.y;
-                else {
-                    candidate.position.y = support.y + .5f;
-                    if (normal.x) candidate.position.x = support.x + (normal.x > 0 ? 1.0f - minimum.x : -maximum.x);
-                    if (normal.z) candidate.position.z = support.z + (normal.z > 0 ? 1.0f - minimum.z : -maximum.z);
+                if (modelSurface) {
+                    for (int axis = 0; axis < 3; ++axis) {
+                        if (normal[axis] > 0) candidate.position[axis] = targetSurface_->point[axis] - minimum[axis];
+                        if (normal[axis] < 0) candidate.position[axis] = targetSurface_->point[axis] - maximum[axis];
+                    }
+                    if (normal.y == 0) candidate.position.y = cell.y + .5f;
+                } else {
+                    const auto support = game.target->position;
+                    if (normal.y > 0 && game.world.get(support) == Block::Water
+                        && (candidate.kind == HubAssetKind::CaveLotus || candidate.kind == HubAssetKind::WaterGrass))
+                        candidate.position.y = support.y + 1.0f;
+                    else if (normal.y > 0) candidate.position.y = support.y + 1.0f - minimum.y;
+                    else if (normal.y < 0) candidate.position.y = support.y - maximum.y;
+                    else {
+                        candidate.position.y = support.y + .5f;
+                        if (normal.x) candidate.position.x = support.x + (normal.x > 0 ? 1.0f - minimum.x : -maximum.x);
+                        if (normal.z) candidate.position.z = support.z + (normal.z > 0 ? 1.0f - minimum.z : -maximum.z);
+                    }
                 }
                 candidate.position = glm::clamp(candidate.position, glm::vec3(SectionInteriorMin) + glm::vec3(.001f),
                                                  glm::vec3(SectionInteriorMax) - glm::vec3(.001f));
@@ -521,6 +535,28 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         }
         refreshTarget(game); return;
     }
+    if (actions.place && !actions.remove && !actions.pick && item.asset) {
+        if (!preview_) {
+            message_ = item.pickup ? "AIM AT A SOLID FLOOR TOP TO DROP ITEMS INSIDE THE ROOM"
+                                   : "AIM AT A BLOCK OR FLAT MODEL FACE INSIDE THE ROOM";
+            return;
+        }
+        if (assets_.size() >= SectionMaxAssets) { message_ = "ASSET LIMIT REACHED"; return; }
+        const auto duplicate = std::find_if(assets_.begin(), assets_.end(), [&](const HubAsset& asset) {
+            return asset.kind == preview_->kind && asset.position == preview_->position && asset.facing == preview_->facing;
+        });
+        if (duplicate != assets_.end()) { message_ = "THIS ASSET IS ALREADY HERE"; return; }
+        SectionEditPlan plan{{}, assets_, {}};
+        plan.assets.push_back(*preview_);
+        validateAssetEdit(game.world, plan);
+        if (!plan.error.empty()) { message_ = plan.error; return; }
+        assets_ = std::move(plan.assets); changed(std::move(edit));
+        message_ = item.pickup ? "DROPPED " + std::to_string(pickupQuantity_) + " " + item.name + " | WALK OVER TO COLLECT IN PLAY"
+            : isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
+                                       : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
+        refreshTarget(game);
+        return;
+    }
     if (!game.target) { message_ = "AIM AT A BLOCK WITHIN 24 BLOCKS"; return; }
     const auto hit = *game.target;
     if (actions.pick) {
@@ -539,25 +575,6 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         }
         edit.position = placement.position; edit.before = game.world.get(placement.position); edit.after = *item.block;
         if (game.world.set(placement.position, *item.block)) { changed(std::move(edit)); message_ = "PLACED " + item.name; }
-    } else if (item.asset) {
-        if (!preview_) {
-            message_ = item.pickup ? "AIM AT A SOLID FLOOR TOP TO DROP ITEMS INSIDE THE ROOM"
-                                   : "AIM AT A BLOCK FACE INSIDE THE ROOM";
-            return;
-        }
-        if (assets_.size() >= SectionMaxAssets) { message_ = "ASSET LIMIT REACHED"; return; }
-        const auto duplicate = std::find_if(assets_.begin(), assets_.end(), [&](const HubAsset& asset) {
-            return asset.kind == preview_->kind && asset.position == preview_->position && asset.facing == preview_->facing;
-        });
-        if (duplicate != assets_.end()) { message_ = "THIS ASSET IS ALREADY HERE"; return; }
-        SectionEditPlan plan{{}, assets_, {}};
-        plan.assets.push_back(*preview_);
-        validateAssetEdit(game.world, plan);
-        if (!plan.error.empty()) { message_ = plan.error; return; }
-        assets_ = std::move(plan.assets); changed(std::move(edit));
-        message_ = item.pickup ? "DROPPED " + std::to_string(pickupQuantity_) + " " + item.name + " | WALK OVER TO COLLECT IN PLAY"
-            : isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
-                                       : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
     }
     refreshTarget(game);
 }

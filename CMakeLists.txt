@@ -47,6 +47,8 @@ add_library(VoxelCore
     src/graphics/hub_nature.cpp
     src/graphics/hub_gardens.cpp
     src/graphics/hub_architecture.cpp
+    src/graphics/hub_fences.cpp
+    src/graphics/hub_building_kit.cpp
     src/graphics/hub_blacksmith.cpp
     src/graphics/hub_lush.cpp
     src/editing.cpp

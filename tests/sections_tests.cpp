@@ -2,6 +2,7 @@
 #include "asset_collision.h"
 #include "player.h"
 
+#include <array>
 #include <cmath>
 #include <bit>
 #include <filesystem>
@@ -84,14 +85,26 @@ int main()
     TemporaryDirectory temp;
     check(sectionWorldCatalog().size() == 3, "three world collections must be available");
     check(sectionCategoryCatalog().size() == 5, "five section categories must be available");
-    check(sectionAssetCatalog().size() == HubAssetCount, "every existing, lush, and loot asset must be exposed");
+    check(sectionAssetCatalog().size() == HubAssetCount, "every scenery, building, and loot asset must be exposed");
     check(static_cast<int>(HubAssetKind::HangingPlanter) == 53
           && static_cast<int>(HubAssetKind::LootChest) == 54
           && static_cast<int>(HubAssetKind::CrystalChest) == 55
           && static_cast<int>(HubAssetKind::IronboundChest) == 56
           && static_cast<int>(HubAssetKind::KeyPickup) == 57
           && static_cast<int>(HubAssetKind::ItemPickup) == 58,
-          "new item pickups append without changing earlier saved asset identifiers");
+          "new building pieces never change earlier saved asset identifiers");
+    constexpr std::array buildingKit{
+        HubAssetKind::TimberFence, HubAssetKind::PicketFence, HubAssetKind::FenceCorner,
+        HubAssetKind::GardenGate, HubAssetKind::IronRailing, HubAssetKind::TimberPillar,
+        HubAssetKind::TimberBeam, HubAssetKind::DiagonalBrace, HubAssetKind::StoneDoorway,
+        HubAssetKind::WindowFrame, HubAssetKind::WoodenStairs, HubAssetKind::Barrel
+    };
+    for (std::size_t i = 0; i < buildingKit.size(); ++i) {
+        check(static_cast<std::size_t>(buildingKit[i]) == 59 + i,
+              "building pieces append with stable document identifiers");
+        check(sectionAssetCatalog()[59 + i].kind == buildingKit[i],
+              "each new building piece is independently available in the creative catalog");
+    }
     check(sectionAssetCatalog()[54].name == "Wooden chest"
           && sectionAssetCatalog()[55].name == "Crystal chest"
           && sectionAssetCatalog()[56].name == "Ironbound chest"

@@ -1,4 +1,5 @@
 #include "asset_collision.h"
+#include "player.h"
 
 #include <array>
 #include <cmath>
@@ -112,6 +113,67 @@ void everyKindHasSurfaces()
         }
     }
 }
+
+void buildingPassages()
+{
+    const glm::vec3 origin{-13.5f, 9.25f, 17.5f};
+    for (int facing = 0; facing < 4; ++facing) {
+        // Sweep a normal player body across the module in its local +Z
+        // direction. Using the rotated bounds also catches sideways models.
+        const auto a = origin + rotate({-.3f,.02f,-2}, facing);
+        const auto b = origin + rotate({.3f,1.82f,-1.4f}, facing);
+        const auto low = glm::min(a,b), high = glm::max(a,b);
+        const auto forward = rotate({0,0,1}, facing);
+        const int axis = facing % 2 == 0 ? 2 : 0;
+        const float distance = 4 * forward[axis];
+        for (const auto kind : {HubAssetKind::TimberFence, HubAssetKind::PicketFence,
+                               HubAssetKind::IronRailing}) {
+            const auto fence = collisionFor({kind, origin, facing, 0});
+            check(std::abs(fence.sweep(low,high,axis,distance)) < 1.5f,
+                  "each fence and railing blocks a player crossing its visible rails in every rotation");
+        }
+        const auto shut = collisionFor({HubAssetKind::GardenGate, origin, facing, 0});
+        const auto open = collisionFor({HubAssetKind::GardenGate, origin, facing, 1});
+        check(std::abs(shut.sweep(low,high,axis,distance)) < 1.5f,
+              "the closed garden gate blocks travel between its posts");
+        check(near(open.sweep(low,high,axis,distance),distance),
+              "the open garden gate leaves full player clearance through its opening in every rotation");
+
+        const auto doorway = collisionFor({HubAssetKind::StoneDoorway, origin, facing, 0});
+        check(near(doorway.sweep(low,high,axis,distance),distance),
+              "stone doorway has a walkable opening with no invisible collision wall in every rotation");
+        check(!doorway.raycast(origin + rotate({0,1,-2},facing),forward,4),
+              "stone doorway center is visibly and physically empty");
+    }
+}
+
+void usableBuildingStairs()
+{
+    World world;
+    for (int z = -5; z <= 5; ++z) for (int x = -5; x <= 5; ++x)
+        world.set({x,39,z},Block::Stone);
+    const glm::vec3 origin{0,40,0};
+    for (int facing = 0; facing < 4; ++facing) {
+        auto stairs = std::make_shared<AssetCollision>(collisionFor(
+            {HubAssetKind::WoodenStairs, origin, facing, 0}));
+        for (int step = 0; step < 6; ++step) {
+            const auto center = origin + rotate({0,0,1.25f - .5f * step},facing);
+            const float height = origin.y + .25f * (step + 1);
+            const auto hit = stairs->raycast(center + glm::vec3(0,3,0),{0,-1,0},4);
+            check(hit && near(hit->point.y,height,.001f) && hit->normal.y > .999f,
+                  "each wooden stair tread is a flat supporting surface at its visible height");
+        }
+        Player player;
+        player.setAssetCollision(stairs);
+        check(player.setFeetPosition(world,origin + rotate({0,0,2.5f},facing)),
+              "a player can start at the foot of the building stairs");
+        for (int move = 0; move < 70; ++move)
+            player.move(world,rotate({0,-.02f,-.05f},facing));
+        check(player.grounded()
+              && glm::distance(player.feetPosition(),origin + rotate({0,1.5f,-1},facing)) < .001f,
+              "normal walking climbs the entire wooden stair flight without jumping in every rotation");
+    }
+}
 } // namespace
 
 int main()
@@ -159,6 +221,8 @@ int main()
 
     transformedSurfaces();
     everyKindHasSurfaces();
+    buildingPassages();
+    usableBuildingStairs();
 
     // Exercise negative bins, nearest-hit ordering, large sparse queries, and
     // replacing a populated index without keeping stale editor placements.

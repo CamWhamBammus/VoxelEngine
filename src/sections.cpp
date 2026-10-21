@@ -91,6 +91,18 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::IronboundChest, "Ironbound chest", "Chests / authored contents"},
     SectionAssetInfo{HubAssetKind::KeyPickup, "Cave key", "Loot / walk over to collect"},
     SectionAssetInfo{HubAssetKind::ItemPickup, "Item pickup", "Items / walk over to collect"},
+    SectionAssetInfo{HubAssetKind::TimberFence, "Timber fence", "Buildings / 2m fence / ground"},
+    SectionAssetInfo{HubAssetKind::PicketFence, "Picket fence", "Buildings / 2m fence / ground"},
+    SectionAssetInfo{HubAssetKind::FenceCorner, "Fence corner", "Buildings / 2m corner / ground"},
+    SectionAssetInfo{HubAssetKind::GardenGate, "Garden gate", "Buildings / 2m gate / Y open or closed"},
+    SectionAssetInfo{HubAssetKind::IronRailing, "Iron railing", "Buildings / 2m railing / ground"},
+    SectionAssetInfo{HubAssetKind::TimberPillar, "Timber pillar", "Buildings / 3m support / ground"},
+    SectionAssetInfo{HubAssetKind::TimberBeam, "Timber beam", "Buildings / 2m beam / wall or pillar"},
+    SectionAssetInfo{HubAssetKind::DiagonalBrace, "Diagonal brace", "Buildings / 1m support / wall"},
+    SectionAssetInfo{HubAssetKind::StoneDoorway, "Stone doorway", "Buildings / open doorway / ground"},
+    SectionAssetInfo{HubAssetKind::WindowFrame, "Window frame", "Buildings / open frame / wall"},
+    SectionAssetInfo{HubAssetKind::WoodenStairs, "Wooden stairs", "Buildings / six steps / ground"},
+    SectionAssetInfo{HubAssetKind::Barrel, "Barrel", "Buildings / storage prop / ground"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
