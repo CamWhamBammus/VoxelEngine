@@ -74,5 +74,43 @@ int main()
     check(!voxel::raycast(glm::vec3(0), {1, 0, 0}, 1.0f, {}), "empty sampler must be rejected");
     check(!voxel::raycast({static_cast<float>(std::numeric_limits<int>::min()), 0, 0},
                          {-1, 0, 0}, 1.0f, air), "traversal must stop at integer coordinate limits");
+    for (int facing = 0; facing < 4; ++facing) {
+        const auto rotatePoint = [facing](glm::vec3 point) {
+            for (int i = 0; i < facing; ++i) point = {point.z, point.y, 1.0f - point.x};
+            return point;
+        };
+        const auto rotateDirection = [facing](glm::vec3 direction) {
+            for (int i = 0; i < facing; ++i) direction = {direction.z, direction.y, -direction.x};
+            return direction;
+        };
+        const auto stair = [facing](glm::ivec3 position) {
+            return position == glm::ivec3(0) ? voxel::stairBlock(voxel::Block::Stone, facing) : voxel::Block::Air;
+        };
+        const auto lowTread = voxel::raycast(rotatePoint({.5f, 2, .75f}), {0, -1, 0}, 3, stair);
+        check(lowTread && lowTread->position == glm::ivec3(0) && lowTread->normal == glm::ivec3(0, 1, 0)
+              && std::abs(lowTread->distance - 1.5f) < .0001f,
+              "stair ray selection reaches the low half-height tread in every orientation");
+        const auto highTread = voxel::raycast(rotatePoint({.5f, 2, .25f}), {0, -1, 0}, 3, stair);
+        check(highTread && highTread->normal == glm::ivec3(0, 1, 0)
+              && std::abs(highTread->distance - 1.0f) < .0001f,
+              "stair ray selection reaches the high full-height tread in every orientation");
+        const auto riser = voxel::raycast(rotatePoint({.5f, .75f, 2}), rotateDirection({0, 0, -1}), 3, stair);
+        check(riser && riser->normal == glm::ivec3(rotateDirection({0, 0, 1}))
+              && std::abs(riser->distance - 1.5f) < .0001f,
+              "rays pass through the empty upper half before hitting the center riser");
+        check(!voxel::raycast(rotatePoint({.5f, .75f, 2}), rotateDirection({0, 0, -1}), 1.49f, stair),
+              "stair ray distance limit applies to its real face, not its voxel boundary");
+        check(!voxel::raycast(rotatePoint({-1, .75f, .75f}), rotateDirection({1, 0, 0}), 3, stair),
+              "rays crossing the stair's upper opening must not select an invisible cube face");
+        const auto inOpening = voxel::raycast(rotatePoint({.5f, .75f, .75f}), rotateDirection({0, 0, -1}), 1, stair);
+        check(inOpening && std::abs(inOpening->distance - .25f) < .0001f
+              && inOpening->normal == glm::ivec3(rotateDirection({0, 0, 1})),
+              "starting inside the voxel's empty half can still find its inner riser");
+        const auto inSolid = voxel::raycast(rotatePoint({.5f, .25f, .75f}), {0, 1, 0}, 0, stair);
+        check(inSolid && inSolid->distance == 0 && inSolid->normal == glm::ivec3(0),
+              "starting inside a solid stair half preserves the zero-distance hit contract");
+        check(!voxel::raycast(rotatePoint({.5f, .5f, .75f}), {0, 1, 0}, 1, stair),
+              "a ray leaving the low tread upward must not select the half block behind it");
+    }
     return failures == 0 ? 0 : 1;
 }

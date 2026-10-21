@@ -208,7 +208,8 @@ SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> a
         for (int y = 0; y < clipboard.size.y; ++y)
             for (int x = 0; x < clipboard.size.x; ++x) {
                 const glm::ivec3 local{x, y, z};
-                const Block after = clipboard.blocks.empty() ? Block::Air : clipboard.blocks[index(local, clipboard.size)];
+                const Block after = clipboard.blocks.empty() ? Block::Air
+                    : rotateBlock(clipboard.blocks[index(local, clipboard.size)], rotation);
                 if ((!includeAir || emptyOnly) && after == Block::Air) continue;
                 const auto position = origin + rotateCell(local, clipboard.size, rotation);
                 const auto before = world.get(position);

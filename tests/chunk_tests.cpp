@@ -1,4 +1,5 @@
 #include "world.h"
+#include "block_shapes.h"
 
 #include <iostream>
 #include <limits>
@@ -58,7 +59,8 @@ int main()
         voxel::Block::AgedPlanks, voxel::Block::Calcite, voxel::Block::Moss,
         voxel::Block::BlossomLeaves, voxel::Block::AmberCrystal, voxel::Block::GlowMoss
     };
-    check(voxel::BlockCount == expectedMaterials.size(), "block count covers every stored material");
+    check(expectedMaterials.size() == 33 && voxel::BlockCount == expectedMaterials.size() + 8 * 4,
+          "new stair IDs append after all original material IDs with four orientations each");
     for (std::size_t value = 0; value < expectedMaterials.size(); ++value) {
         const auto block = expectedMaterials[value];
         check(static_cast<std::size_t>(block) == value, "material IDs must remain save-compatible");
@@ -99,5 +101,41 @@ int main()
                   == (block != voxel::Block::Air && block != voxel::Block::Bedrock),
               "all materials except air and boundary bedrock can be placed");
     }
+    const std::array stairMaterials{voxel::Block::Planks, voxel::Block::Stone, voxel::Block::Brick,
+        voxel::Block::Limestone, voxel::Block::Slate, voxel::Block::MossStone,
+        voxel::Block::Path, voxel::Block::AgedPlanks};
+    check(voxel::PlaceableBlocks.size() == expectedMaterials.size() - 2 + stairMaterials.size(),
+          "the palette exposes one stair entry per material, not four rotation duplicates");
+    for (std::size_t material = 0; material < stairMaterials.size(); ++material) {
+        for (int facing = 0; facing < 4; ++facing) {
+            const auto block = voxel::stairBlock(stairMaterials[material], facing);
+            check(static_cast<std::size_t>(block) == 33 + material * 4 + facing,
+                  "stair IDs have stable material groups and stored orientation");
+            check(voxel::isValidBlock(block) && voxel::isSolid(block) && voxel::isRenderable(block)
+                  && !voxel::isOpaque(block), "partial stairs remain solid but cannot hide complete neighbor faces");
+            check(voxel::stairMaterial(block) == stairMaterials[material] && voxel::stairFacing(block) == facing,
+                  "stair helpers preserve the underlying material and facing");
+            check(voxel::blockColor(block) == voxel::blockColor(stairMaterials[material])
+                  && voxel::blockName(block) != "Unknown", "all stair rotations have a material name and color");
+            check(inPalette[static_cast<std::size_t>(block)] == (facing == 0),
+                  "only default-facing stairs have their own creative slot");
+            check(voxel::rotateBlock(block, 4) == block && voxel::rotateBlock(block, -1)
+                  == voxel::stairBlock(stairMaterials[material], facing + 3), "stair rotation wraps in both directions");
+            check(chunk.set(15, 15, 15, block) && chunk.get(15, 15, 15) == block,
+                  "all stair IDs survive chunk storage");
+            const auto shape = voxel::blockShape(block);
+            check(shape.count == 2 && shape.boxes[0].minimum == glm::vec3(0)
+                  && shape.boxes[0].maximum == glm::vec3(1, .5f, 1), "stairs start with a full half-height slab");
+            const auto& upper = shape.boxes[1];
+            const auto up = voxel::stairUpDirection(block);
+            const auto center = (upper.minimum + upper.maximum) * .5f - glm::vec3(.5f, .75f, .5f);
+            check(upper.minimum.y == .5f && upper.maximum.y == 1.0f
+                  && center == glm::vec3(up) * .25f, "the upper half box occupies the uphill side");
+        }
+    }
+    check(voxel::rotateBlock(voxel::Block::Stone, 1) == voxel::Block::Stone
+          && voxel::blockShape(voxel::Block::Water).count == 0 && voxel::blockShape(voxel::Block::Air).count == 0
+          && voxel::blockShape(voxel::Block::Stone).count == 1,
+          "ordinary blocks retain their cube shape and non-solid materials have no collision boxes");
     return failures == 0 ? 0 : 1;
 }

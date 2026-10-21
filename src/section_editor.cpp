@@ -53,7 +53,7 @@ SectionEditor::SectionEditor(std::filesystem::path libraryRoot) : libraryRoot_(s
     for (const Block block : PlaceableBlocks)
         palette_[0].push_back({std::string(blockName(block)), block, std::nullopt, SectionMarker::None});
     for (const auto& asset : sectionAssetCatalog())
-        if (!isItemPickup(asset.kind))
+        if (isCreativeAsset(asset.kind))
             palette_[1].push_back({std::string(asset.name), std::nullopt, asset.kind, SectionMarker::None});
     palette_[2] = {{"Start", {}, {}, SectionMarker::Start},
                    {"Checkpoint", {}, {}, SectionMarker::Checkpoint},
@@ -393,6 +393,7 @@ void SectionEditor::refreshTarget(Game& game)
     const bool modelSurface = !item.pickup && targetSurface_
         && glm::max(glm::abs(targetSurface_->normal.x),
                     glm::max(glm::abs(targetSurface_->normal.y), glm::abs(targetSurface_->normal.z))) > .999f;
+    const bool stairSurface = game.target && isStair(game.world.get(game.target->position));
     if (item.asset && supportedPickup && (modelSurface || (game.target && game.target->normal != glm::ivec3(0)))) {
         const auto normal = modelSurface ? glm::ivec3(glm::round(targetSurface_->normal)) : game.target->normal;
         const auto cell = modelSurface ? glm::ivec3(glm::floor(targetSurface_->point + glm::vec3(normal) * .001f))
@@ -414,10 +415,16 @@ void SectionEditor::refreshTarget(Game& game)
                 // Attach the model's actual bounds to the selected surface:
                 // floor assets stand on it, hanging assets meet the underside,
                 // and wall attachments face away from the wall.
-                if (modelSurface) {
+                if (modelSurface || stairSurface) {
+                    const auto point = modelSurface ? targetSurface_->point
+                        : game.camera.position() + game.camera.forward() * game.target->distance;
+                    if (!modelSurface && stairSurface && normal.y != 0) {
+                        candidate.position.x = point.x;
+                        candidate.position.z = point.z;
+                    }
                     for (int axis = 0; axis < 3; ++axis) {
-                        if (normal[axis] > 0) candidate.position[axis] = targetSurface_->point[axis] - minimum[axis];
-                        if (normal[axis] < 0) candidate.position[axis] = targetSurface_->point[axis] - maximum[axis];
+                        if (normal[axis] > 0) candidate.position[axis] = point[axis] - minimum[axis];
+                        if (normal[axis] < 0) candidate.position[axis] = point[axis] - maximum[axis];
                     }
                     if (normal.y == 0) candidate.position.y = cell.y + .5f;
                 } else {
@@ -461,6 +468,8 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
     else if (actions.materialStep || actions.toolStep) selectedSlot_ = wrap(selectedSlot_ + actions.materialStep % 9 + actions.toolStep % 9, 9);
     if (actions.devRotate) {
         if (buildMode_ == SectionBuildMode::Paste) pasteRotation_ = (pasteRotation_ + 1) % 4;
+        else if (auto& block = hotbar_[selectedSlot_].block; block && isStair(*block))
+            block = rotateBlock(*block, 1);
         else facing_ = (facing_ + 1) % 4;
     }
     if (actions.devVariation) {
@@ -496,7 +505,11 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
                                                 1, -2 * (Player::Width + .02f));
             feet = above + glm::vec3(0, drop, 0);
         } else if (!targetSurface_ && game.target && game.target->normal.y == 1) {
-            feet = glm::vec3(game.target->position + glm::ivec3(0, 1, 0)) + glm::vec3(.5f, 0, .5f);
+            if (isStair(game.world.get(game.target->position))) {
+                feet = game.camera.position() + game.camera.forward() * game.target->distance;
+                // A body straddling the riser stands on its higher tread.
+                if (!sectionMarkerSafe(game.world, *feet, collision.get())) feet->y += .5f;
+            } else feet = glm::vec3(game.target->position + glm::ivec3(0, 1, 0)) + glm::vec3(.5f, 0, .5f);
         }
         if (!feet || !sectionMarkerSafe(game.world, *feet, collision.get())) {
             message_ = "MARKERS NEED A CLEAR, SUPPORTED TOP SURFACE WITH HEADROOM"; return;

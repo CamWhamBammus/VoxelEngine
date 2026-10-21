@@ -282,7 +282,10 @@ int main()
             for (int z = 0; z < Chunk::Size; ++z)
                 for (int x = 0; x < Chunk::Size; ++x)
                     if (random() % 100 < density)
-                        chunk.set(x, y, z, sample % 2 ? Block::Stone : static_cast<Block>(1 + random() % (voxel::BlockCount - 1)));
+                        // This oracle describes full cube faces. Partial stairs
+                        // have independent half-cell coverage tests in mesh_tests.
+                        chunk.set(x, y, z, sample % 2 ? Block::Stone
+                            : static_cast<Block>(1 + random() % static_cast<unsigned>(Block::GlowMoss)));
         const auto outside = [](glm::ivec3 position) {
             return (position.x + 3 * position.y + 7 * position.z) % 4 == 0 ? Block::Stone : Block::Air;
         };

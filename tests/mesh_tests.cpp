@@ -4,6 +4,7 @@
 #include <glm/geometric.hpp>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <stdexcept>
 
 int main()
@@ -233,5 +234,102 @@ int main()
     const auto wetBank = voxel::buildMesh(boundary, origin,
         [](glm::ivec3) { return voxel::Block::Water; });
     verifySplit(wetBank, 36, 0);
+
+    // An independent half-cell oracle checks every exposed piece of a stair,
+    // including partial seams against cubes and differently oriented stairs.
+    const auto verifyStairs = [&](const voxel::Chunk& source,
+                                  const std::function<voxel::Block(glm::ivec3)>& outside = {}) {
+        using Face = std::array<int, 5>;
+        std::map<Face, int> expected, actual;
+        const auto blockAt = [&](glm::ivec3 p) {
+            return voxel::Chunk::inBounds(p.x, p.y, p.z) ? source.get(p.x, p.y, p.z)
+                : (outside ? outside(p) : voxel::Block::Air);
+        };
+        const auto occupied = [&](glm::ivec3 half) {
+            const glm::ivec3 p(glm::floor(glm::vec3(half) / 2.0f));
+            const auto part = half - p * 2;
+            const auto block = blockAt(p);
+            if (!voxel::isSolid(block)) return false;
+            if (!voxel::isStair(block) || part.y == 0) return true;
+            switch (voxel::stairFacing(block)) {
+            case 0: return part.z == 0;
+            case 1: return part.x == 0;
+            case 2: return part.z == 1;
+            default: return part.x == 1;
+            }
+        };
+        for (int y = 0; y < 32; ++y) {
+            for (int z = 0; z < 32; ++z) {
+                for (int x = 0; x < 32; ++x) {
+                    const glm::ivec3 cell(x, y, z);
+                    if (!occupied(cell)) continue;
+                    const auto material = static_cast<int>(voxel::stairMaterial(blockAt(cell / 2)));
+                    for (int axis = 0; axis < 3; ++axis) {
+                        for (const int sign : {-1, 1}) {
+                            auto beside = cell;
+                            beside[axis] += sign;
+                            if (!occupied(beside)) ++expected[{x, y, z, axis * 2 + (sign > 0), material}];
+                        }
+                    }
+                }
+            }
+        }
+        const auto mesh = voxel::buildMesh(source, {}, outside);
+        for (std::size_t first = 0; first < mesh.vertices.size(); first += 4) {
+            const auto& vertex = mesh.vertices[first];
+            int axis = 0;
+            while (axis < 2 && vertex.normal[axis] == 0) ++axis;
+            const int sign = vertex.normal[axis] > 0 ? 1 : -1;
+            const int u = (axis + 1) % 3, v = (axis + 2) % 3;
+            auto low = vertex.position, high = low;
+            for (int corner = 0; corner < 4; ++corner) {
+                const auto& point = mesh.vertices[first + corner];
+                low = glm::min(low, point.position);
+                high = glm::max(high, point.position);
+                check(point.material == vertex.material && !voxel::isStair(static_cast<voxel::Block>(point.material)),
+                      "stair faces reuse the underlying material shader and its world-aligned texture");
+            }
+            const auto a = mesh.vertices[first + 1].position - vertex.position;
+            const auto b = mesh.vertices[first + 2].position - vertex.position;
+            check(glm::dot(glm::cross(a, b), vertex.normal) > 0,
+                  "partial stair faces have outward triangle winding");
+            glm::ivec3 cell(low * 2.0f);
+            cell[axis] -= sign > 0 ? 1 : 0;
+            for (cell[u] = static_cast<int>(low[u] * 2); cell[u] < high[u] * 2; ++cell[u]) {
+                for (cell[v] = static_cast<int>(low[v] * 2); cell[v] < high[v] * 2; ++cell[v]) {
+                    ++actual[{cell.x, cell.y, cell.z, axis * 2 + (sign > 0), static_cast<int>(vertex.material)}];
+                }
+            }
+        }
+        check(actual == expected, "stair mesh must cover each exposed half-cell exactly once, without internal faces or holes");
+    };
+    for (const auto material : {voxel::Block::Planks, voxel::Block::Stone, voxel::Block::Brick,
+             voxel::Block::Limestone, voxel::Block::Slate, voxel::Block::MossStone,
+             voxel::Block::Path, voxel::Block::AgedPlanks}) {
+        for (int facing = 0; facing < 4; ++facing) {
+            voxel::Chunk stairs;
+            stairs.set(4, 4, 4, voxel::stairBlock(material, facing));
+            verifyStairs(stairs);
+            for (int axis = 0; axis < 3; ++axis) {
+                for (const int sign : {-1, 1}) {
+                    auto beside = glm::ivec3(4);
+                    beside[axis] += sign;
+                    stairs.set(beside.x, beside.y, beside.z, voxel::Block::Stone);
+                    verifyStairs(stairs);
+                    stairs.set(beside.x, beside.y, beside.z, voxel::stairBlock(material, facing + 1));
+                    verifyStairs(stairs);
+                    stairs.set(beside.x, beside.y, beside.z, voxel::Block::Air);
+                }
+            }
+        }
+    }
+    for (int facing = 0; facing < 4; ++facing) {
+        voxel::Chunk stairBoundary;
+        stairBoundary.set(15, 4, 4, voxel::stairBlock(voxel::Block::Stone, facing));
+        verifyStairs(stairBoundary, [facing](glm::ivec3 position) {
+            return position == glm::ivec3(16, 4, 4)
+                ? voxel::stairBlock(voxel::Block::Planks, facing + 1) : voxel::Block::Air;
+        });
+    }
     return failures == 0 ? 0 : 1;
 }

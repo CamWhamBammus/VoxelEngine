@@ -1,6 +1,7 @@
 #include "sections.h"
 #include "asset_collision.h"
 #include "player.h"
+#include "editing.h"
 #include "save.h"
 
 #include <algorithm>
@@ -483,17 +484,16 @@ bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision*
     // A sloped model supports the upright body at its highest contact. Nearby
     // footprint samples may sit below that height; require a surface under all
     // four corners, without forcing fractional model tops onto the voxel grid.
-    const float depth = assets && !assets->empty() ? Player::Width + .02f : .02f;
-    const int y = static_cast<int>(std::floor(feet.y - 0.01f));
+    const bool stair = isStair(world.get(glm::ivec3(glm::floor(feet - glm::vec3(0,.01f,0)))));
+    const float depth = (assets && !assets->empty()) || stair ? Player::Width + .02f : .02f;
     for (float dx : {-half + 0.01f, half - 0.01f}) {
         for (float dz : {-half + 0.01f, half - 0.01f}) {
             const glm::vec3 point = feet + glm::vec3(dx, .01f, dz);
-            bool supported = false;
-            for (int below = y; below >= static_cast<int>(std::floor(feet.y - depth)); --below) {
-                if (below + 1.f > feet.y + .01f || feet.y - (below + 1.f) > depth) continue;
-                if (isSolid(world.get({static_cast<int>(std::floor(point.x)), below,
-                                      static_cast<int>(std::floor(point.z))}))) { supported = true; break; }
-            }
+            const auto terrain = raycast(point, {0,-1,0}, depth + .01f, [&](glm::ivec3 cell) {
+                const auto block = world.get(cell);
+                return isSolid(block) ? block : Block::Air;
+            });
+            bool supported = terrain && terrain->normal.y > 0;
             if (!supported && assets) {
                 const auto surface = assets->raycast(point, {0, -1, 0}, depth + .01f);
                 supported = surface && surface->normal.y > .2f;

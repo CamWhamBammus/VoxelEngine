@@ -116,7 +116,8 @@ int main()
         check(!info.name.empty() && !info.group.empty(), "asset names and groups must be readable");
     }
     check(uniqueAssets.size() == sectionAssetCatalog().size(), "asset catalog must not contain duplicates");
-    check(PlaceableBlocks.size() == BlockCount - 2, "the builder exposes every material except air and protected bedrock");
+    check(PlaceableBlocks.size() == BlockCount - 2 - 8 * 3,
+          "the builder exposes each material with one entry per rotatable stair kind");
     check(sectionInterior({-32, 9, -32}) && sectionInterior({31, 56, 31}), "both interior corners must be editable");
     for (const auto cell : {glm::ivec3{-33, 9, 0}, {32, 9, 0}, {0, 8, 0}, {0, 57, 0}, {0, 9, -33}, {0, 9, 32}}) {
         check(!sectionInterior(cell), "the enclosing shell must be protected");

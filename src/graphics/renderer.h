@@ -62,7 +62,7 @@ public:
     Overlay(const Overlay&) = delete;
     Overlay& operator=(const Overlay&) = delete;
     void draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height,
-              float contentScale = 1.0f);
+              float contentScale = 1.0f, Block material = Block::Stone);
     void drawSection(const SectionMetadata& section, const std::optional<HubAsset>& preview,
                      const std::optional<HubAsset>& selectedAsset, const Camera& camera, int width, int height,
                      float timeSeconds = 0);

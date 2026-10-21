@@ -7,6 +7,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <utility>
 #include <glm/geometric.hpp>
 
@@ -302,7 +303,7 @@ void checkArchWalkingClearance(const World& world, const HubAsset& asset)
     for (int y = first.y; y <= last.y; ++y) for (int z = first.z; z <= last.z; ++z)
         for (int x = first.x; x <= last.x; ++x) {
             const glm::ivec3 floor{x,y,z};
-            const auto block = world.get(floor);
+            const auto block = stairMaterial(world.get(floor));
             if ((block != Block::Path && block != Block::Planks)
                 || world.get(floor + glm::ivec3(0,1,0)) != Block::Air
                 || world.get(floor + glm::ivec3(0,2,0)) != Block::Air) continue;
@@ -364,6 +365,14 @@ void checkPathPlacement(World& world)
         const auto mined = buildHubDressing(world);
         check(mined.meshes[upperOwner].indices.empty() && !mined.meshes[lowerOwner].indices.empty(),
               "mining an upper tread removes its owned geometry while preserving the lower chunk");
+        world.set(upper,stairBlock(Block::Path,facing));
+        const auto shaped=planHubAssets(world);
+        check(!hasPath(shaped,HubAssetKind::PathPaving,upper)
+              && !hasPath(shaped,HubAssetKind::PathStep,upper)
+              && !hasPath(shaped,HubAssetKind::PathEdging,upper)
+              && hasPath(shaped,HubAssetKind::PathPaving,lower),
+              "real stair treads stay open instead of receiving a full-height paving cap");
+        world.set(upper,Block::Air);
         world.set(lower, Block::Air);
     }
 
@@ -683,8 +692,12 @@ int main()
         check(World::contains(glm::ivec3(glm::floor(asset.position))), "asset origins have owning world chunks");
         expectedIndices += buildHubAsset(asset).indices.size();
     }
-    check(std::all_of(present.begin(), present.begin() + static_cast<std::size_t>(HubAssetKind::AnvilSign) + 1, [](bool found) { return found; }),
-          "the lush pass retains every existing hub asset family");
+    for (std::size_t kind=0;kind<=static_cast<std::size_t>(HubAssetKind::AnvilSign);++kind) {
+        if (kind==static_cast<std::size_t>(HubAssetKind::PathStep)) continue;
+        check(present[kind],("the lush pass retains supported hub asset family " + std::to_string(kind)).c_str());
+    }
+    check(!present[static_cast<std::size_t>(HubAssetKind::PathStep)],
+          "the hub uses real stair blocks instead of the old full-block step cladding");
     checkHubPlacement(world, plan);
     checkBlacksmith(world, plan);
     const auto dressing = buildHubDressing(world);

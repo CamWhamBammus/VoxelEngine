@@ -1,4 +1,5 @@
 #include "editing.h"
+#include "block_shapes.h"
 
 #include <algorithm>
 #include <array>
@@ -7,6 +8,49 @@
 #include <limits>
 
 namespace voxel {
+
+namespace {
+
+std::optional<RayHit> hitStair(glm::vec3 origin, const std::array<double, 3>& direction,
+                              glm::ivec3 position, Block block, double entered, double exits,
+                              glm::ivec3 entryNormal)
+{
+    std::optional<RayHit> closest;
+    const auto shape = blockShape(block);
+    for (int i = 0; i < shape.count; ++i) {
+        const auto& box = shape.boxes[i];
+        double near = -std::numeric_limits<double>::infinity();
+        double far = std::numeric_limits<double>::infinity();
+        glm::ivec3 normal(0);
+        bool misses = false;
+        for (int axis = 0; axis < 3; ++axis) {
+            const double coordinate = static_cast<double>(origin[axis]) - position[axis];
+            if (direction[axis] == 0.0) {
+                // A ray along a box's open edge does not hit its solid volume.
+                if (coordinate < box.minimum[axis] || coordinate >= box.maximum[axis]) misses = true;
+                continue;
+            }
+            double first = (box.minimum[axis] - coordinate) / direction[axis];
+            double last = (box.maximum[axis] - coordinate) / direction[axis];
+            const int sign = direction[axis] > 0.0 ? -1 : 1;
+            if (first > last) std::swap(first, last);
+            if (first > near) {
+                near = first;
+                normal = glm::ivec3(0);
+                normal[axis] = sign;
+            }
+            far = std::min(far, last);
+        }
+        const double distance = std::max(near, entered);
+        if (misses || near >= far || far <= entered || distance > exits) continue;
+        if (!closest || distance < closest->distance) {
+            closest = RayHit{position, near < entered ? entryNormal : normal, static_cast<float>(distance)};
+        }
+    }
+    return closest;
+}
+
+} // namespace
 
 std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDistance,
                               const std::function<Block(glm::ivec3)>& sample)
@@ -34,10 +78,6 @@ std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDi
     if (lengthSquared == 0.0) {
         return std::nullopt;
     }
-    if (isRenderable(sample(position))) {
-        return RayHit{position, glm::ivec3(0), 0.0f};
-    }
-
     const double length = std::sqrt(lengthSquared);
     std::array<int, 3> step{};
     std::array<double, 3> next{};
@@ -56,8 +96,18 @@ std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDi
 
     // DDA visits the next voxel boundary instead of sampling tiny steps.
     // next[] gives each axis's next crossing distance; delta[] is its spacing.
+    double entered = 0.0;
+    glm::ivec3 entryNormal(0);
     while (true) {
         const double distance = std::min({next[0], next[1], next[2]});
+        const auto block = sample(position);
+        if (isStair(block)) {
+            const auto hit = hitStair(origin, unit, position, block, entered,
+                                     std::min(distance, static_cast<double>(maxDistance)), entryNormal);
+            if (hit) return hit;
+        } else if (isRenderable(block)) {
+            return RayHit{position, entryNormal, static_cast<float>(entered)};
+        }
         if (distance > static_cast<double>(maxDistance)) {
             return std::nullopt;
         }
@@ -78,9 +128,8 @@ std::optional<RayHit> raycast(glm::vec3 origin, glm::vec3 direction, float maxDi
                 hasNormal = true;
             }
         }
-        if (isRenderable(sample(position))) {
-            return RayHit{position, normal, static_cast<float>(distance)};
-        }
+        entered = distance;
+        entryNormal = normal;
     }
 }
 

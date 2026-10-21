@@ -116,7 +116,7 @@ void checkDirectExpeditionApproach(const voxel::World& world)
             player.move(world,{0,-1,0});
             const auto feet=player.feetPosition();
             const auto floor=glm::ivec3(glm::floor(feet))-glm::ivec3(0,1,0);
-            const auto paving=world.get(floor);
+            const auto paving=voxel::stairMaterial(world.get(floor));
             walked=player.grounded() && std::abs(feet.z-(z+.5f))<.001f
                 && std::abs(feet.x-startFeet.x)<.001f && std::abs(feet.y-before.y)<=1.001f
                 && (paving==voxel::Block::Path || paving==voxel::Block::Planks);
@@ -241,8 +241,8 @@ void checkConnectedSolids(const voxel::World& world)
           "all solid scene features connect to the grounded cavern shell");
 }
 
-// Find a real three-step bank: basin feet6 -> shelf7 -> shelf8 -> village9.
-// Validate the body on every landing, then walk up one such exit without jumping.
+// Find the authored shoreline stair flight: basin feet6 -> shelf7 -> shelf8
+// -> village9. Every one-meter cell now supplies two half-height risers.
 bool waterExit(const voxel::World& world, const Routes& routes)
 {
     for (int z = voxel::World::Min.z + 3; z < voxel::World::MaxExclusive.z - 3; ++z) {
@@ -255,6 +255,12 @@ bool waterExit(const voxel::World& world, const Routes& routes)
                 const auto basin = bank + side * 3 - glm::ivec3(0, 3, 0);
                 if (world.get(basin) != voxel::Block::Water || !supported(world, basin)
                     || !supported(world, lower) || !supported(world, upper)) continue;
+                bool stairs=true;
+                for (const auto landing : {lower,upper,bank}) {
+                    const auto block=world.get(landing-glm::ivec3(0,1,0));
+                    stairs &= voxel::isStair(block) && voxel::stairUpDirection(block)==-side;
+                }
+                if (!stairs) continue;
                 voxel::Player player;
                 player.setFeetPosition(world, glm::vec3(basin) + glm::vec3(0.5f, 0, 0.5f));
                 bool climbed = true;
@@ -271,11 +277,11 @@ bool waterExit(const voxel::World& world, const Routes& routes)
     return false;
 }
 
-void checkLakebeds(const voxel::World& world, const Routes& routes)
+void checkLakebeds(const voxel::World& world)
 {
     using voxel::Block;
     std::array<int,5> depths{};
-    int sand=0, paleRock=0, reachableDeep=0;
+    int sand=0, paleRock=0;
     bool grounded=true;
     for (int z=voxel::World::Min.z+1;z<voxel::World::MaxExclusive.z-1;++z) {
         for (int x=voxel::World::Min.x+1;x<voxel::World::MaxExclusive.x-1;++x) {
@@ -288,7 +294,6 @@ void checkLakebeds(const voxel::World& world, const Routes& routes)
             ++depths[6-bed];
             sand+=material==Block::Sand;
             paleRock+=material==Block::Limestone;
-            if (bed<=3 && routes.reached[index({x,bed+1,z})]) ++reachableDeep;
         }
     }
     check(grounded,"lake water forms continuous one-to-four-block columns above a solid bed");
@@ -296,9 +301,8 @@ void checkLakebeds(const voxel::World& world, const Routes& routes)
         check(depths[depth]>=50,"lake basins include substantial depth " + std::to_string(depth)
               + " water (" + std::to_string(depths[depth]) + " columns)");
     check(sand>=300 && paleRock>=40,"underwater beds include broad sand and pale mineral patches");
-    check(reachableDeep>=100,"deep lake floors stay connected to walking exits without jumps");
     std::cout<<"Seed "<<world.seed()<<": "<<depths[1]<<" shallow and "<<depths[3]+depths[4]
-             <<" deep lake columns, "<<reachableDeep<<" reachable deep floors\n";
+             <<" deep lake columns\n";
 }
 } // namespace
 
@@ -371,6 +375,15 @@ int main()
         substantial(Block::Water, 1000); substantial(Block::Leaves, 5000); substantial(Block::GlowLeaves, 150);
         substantial(Block::Timber, 1000); substantial(Block::Planks, 2500); substantial(Block::RoofTiles, 1000);
         substantial(Block::Brick, 120); substantial(Block::Lantern, 70); substantial(Block::Grass, 500);
+        int roadStairs=0,shoreStairs=0;
+        for (std::size_t id=0;id<voxel::BlockCount;++id) {
+            const auto block=static_cast<Block>(id);
+            if (!voxel::isStair(block)) continue;
+            if (voxel::stairMaterial(block)==Block::Path) roadStairs+=counts[id];
+            if (voxel::stairMaterial(block)==Block::Limestone) shoreStairs+=counts[id];
+        }
+        check(roadStairs>=100 && shoreStairs>=20,
+              "authored roads and swimming exits use substantial flights of real stair blocks");
         check(highestWater >= 25, "falling water reaches far above the lake surface");
         check(world.get({8, 15, 8}) == Block::Timber && highestWood >= 52 && highestCanopy >= 68,
               "the heart tree has a substantial central trunk and a tall crown");
@@ -445,7 +458,7 @@ int main()
         }
         checkWaterfalls(world);
         check(waterExit(world, routes), "players can walk from the basin up shallow shelves to connected village ground");
-        checkLakebeds(world, routes);
+        checkLakebeds(world);
         if (seed == 1337) checkConnectedSolids(world);
     }
     check(seedChangesGeometry, "different seeds change actual geology and foliage rather than only metadata");

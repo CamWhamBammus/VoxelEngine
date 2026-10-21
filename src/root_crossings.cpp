@@ -32,8 +32,8 @@ struct Plan {
 
 Plan plan(int index)
 {
-    // Each point is a feet position. Gentle rises are ordinary one-block steps;
-    // breaks are deliberate jumps cut into selected spans after construction.
+    // Each point is a feet position. Rising roots need one-block jumps;
+    // breaks add deliberate gaps cut into selected spans after construction.
     switch (index) {
     case 0: return {{{0,18,32},{0,18,20},{0,18,8},{0,18,-8},{0,18,-20},{0,18,-32}}, {1,3}, 1.9f};
     case 1: return {{{0,18,32},{-8,18,24},{-8,18,12},{8,18,4},{8,18,-8},{-8,18,-16},{-8,18,-24},{0,18,-32}}, {1,3,5}};
@@ -220,7 +220,13 @@ RootCrossingCourse buildRootCrossing(World& world, int index)
         branch(world,{20,6,0},{13,16,0},2);
         cutBreak(world,shortcut[1],shortcut[2]);
     }
-    if (index==4) tree(world,{0,7,0},25,index);
+    if (index==4) {
+        tree(world,{0,7,0},25,index);
+        // The lower spiral passes underneath an upper root here. Its connecting
+        // growth must leave body clearance, rather than becoming a solid wall
+        // with a ceiling too low to jump over. Both root decks stay intact.
+        box(world,{6,21,-14},{7,23,-13},Block::Air);
+    }
     if (index==5) {
         for (const auto p : {layout.points[2],layout.points[3],layout.points[4]}) {
             branch(world,glm::vec3(p+glm::ivec3(4,0,0)),{float(p.x+7),39,float(p.z)},1.2f);

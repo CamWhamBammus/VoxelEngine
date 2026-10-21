@@ -28,7 +28,7 @@ public:
     // Teleport only when the entire body fits. Y may be outside the voxel world.
     bool setFeetPosition(const World& world, glm::vec3 position);
     // Sweep each axis to slide along walls. Grounded, non-rising movement can
-    // step onto one-voxel stairs when the full body has clearance and support.
+    // follow half-block stair treads; full-height blocks require a jump.
     void move(const World& world, glm::vec3 displacement);
     // Movement x is right and y is forward. Jump is held to swim up; descend
     // swims down. On land, a fresh jump press is still required for each jump.

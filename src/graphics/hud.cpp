@@ -597,7 +597,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
     sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY","CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
     const auto catalog=sectionAssetCatalog();
-    const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& entry){return !isItemPickup(entry.kind);});
+    const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& entry){return isCreativeAsset(entry.kind);});
     const std::array<std::string,4> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
         "ASSETS "+std::to_string(modelCount),"ITEMS "+std::to_string(ItemCount),"MARKERS"};
     constexpr std::array tabIds{0,1,3,2};
@@ -634,6 +634,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         const auto hint=item.pickup ? "DROP ON GROUND / WALK OVER TO COLLECT"
             : item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
             : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
+            : item.block && isStair(*item.block) ? "HALF-HEIGHT STEPS / T ROTATE / WALK UP WITHOUT JUMPING"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
             : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE"
             : item.block && isLeafBlock(*item.block) ? "LEAF CUTOUTS / SOLID FOR WALKING"
@@ -887,6 +888,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             : item.pickup ? "RIGHT DROP ITEM / WALK OVER TO COLLECT IN PLAY"
             : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
             : item.asset == HubAssetKind::GardenGate ? std::string("T ROTATE / Y OPEN-CLOSED / ")+(editor.variation()%2 ? "OPEN" : "CLOSED")
+            : item.block && isStair(*item.block) ? "T ROTATE "+std::to_string(stairFacing(*item.block)*90)+" DEG / RIGHT PLACE STAIR"
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
         if (pasting) {

@@ -27,13 +27,14 @@ bool supported(const voxel::World& world, glm::vec3 p)
 }
 
 bool traverse(const voxel::World& world, const voxel::RootCrossingCourse& course,
-              float frameTime, int& jumps, std::string& problem, bool jumping=true)
+              float frameTime, int& jumps, std::string& problem, bool jumping=true, bool jumpGaps=true)
 {
     voxel::Player player;
     if (!player.setFeetPosition(world,course.spawn) || !player.grounded()) {
         problem="invalid spawn"; return false;
     }
     jumps=0;
+    bool jumpHeld=false;
     for (std::size_t step=1;step<course.route.size();++step) {
         const auto target=course.route[step];
         bool arrived=false;
@@ -44,10 +45,20 @@ bool traverse(const voxel::World& world, const voxel::RootCrossingCourse& course
             if (distance<.035f && std::abs(feet.y-target.y)<.04f && player.grounded()) { arrived=true; break; }
             if (feet.y<course.resetY) break;
             const auto direction=distance>.001f?offset/distance:glm::vec3(0,0,-1);
-            const bool jump=jumping && player.grounded() && !supported(world,feet+direction*.65f);
+            // Natural root ledges are full blocks, so they now need a real
+            // jump just like gaps. Probe walking with the same player collider
+            // instead of granting the test driver the old one-meter auto-step.
+            voxel::Player ahead=player;
+            ahead.move(world,direction*std::min(.65f,distance));
+            const auto progress=ahead.feetPosition()-feet;
+            const bool ledge=glm::dot(glm::vec3(progress.x,0,progress.z),direction)
+                < std::min(.65f,distance)-.01f;
+            const bool jump=jumping && player.grounded() && !jumpHeld
+                && (ledge || (jumpGaps && !supported(world,feet+direction*.65f)));
             if (jump) ++jumps;
             const float movement=std::min(1.0f,distance/(4.5f*frameTime));
             player.update(world,{0,movement},direction,jump,false,frameTime);
+            jumpHeld=jump;
         }
         if (!arrived) {
             const auto p=player.feetPosition();
@@ -129,7 +140,9 @@ int main()
             check(jumps>0,name+" route contains a required jump");
         }
         int jumps=0; std::string problem;
-        check(!traverse(world,course,1.0f/60.0f,jumps,problem,false),name+" walking without jumping falls at a real gap");
+        check(!traverse(world,course,1.0f/60.0f,jumps,problem,false),name+" walking without jumping cannot complete the route");
+        check(!traverse(world,course,1.0f/60.0f,jumps,problem,true,false),
+              name+" still requires a gap jump even when full-block ledges are jumped normally");
         checkRootedLandings(world,course,name);
         if (index==2) {
             auto fork=course;

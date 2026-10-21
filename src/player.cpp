@@ -1,5 +1,6 @@
 #include "player.h"
 #include "asset_collision.h"
+#include "block_shapes.h"
 #include "world.h"
 
 #include <algorithm>
@@ -58,9 +59,11 @@ void visitSolidBlocks(const World& world, const Bounds& bounds, Visit visit)
     for (int y = first.y; y <= last.y; ++y) {
         for (int z = first.z; z <= last.z; ++z) {
             for (int x = first.x; x <= last.x; ++x) {
-                if (isSolid(world.get({x, y, z}))) {
-                    visit(Bounds{glm::dvec3(x, y, z), glm::dvec3(x + 1, y + 1, z + 1)});
-                }
+                const auto shape = blockShape(world.get({x, y, z}));
+                const glm::dvec3 origin(x, y, z);
+                for (int box = 0; box < shape.count; ++box)
+                    visit(Bounds{origin + glm::dvec3(shape.boxes[box].minimum),
+                                 origin + glm::dvec3(shape.boxes[box].maximum)});
             }
         }
     }
@@ -74,13 +77,6 @@ bool collides(const World& world, const AssetCollision* assets, glm::vec3 feet)
         collision |= overlaps(body, block);
     });
     return collision || (assets && assets->overlaps(glm::vec3(body.minimum), glm::vec3(body.maximum)));
-}
-
-bool supportedByAsset(const AssetCollision* assets, glm::vec3 feet)
-{
-    if (!assets || assets->empty()) return false;
-    const auto body = bodyBounds(feet - glm::vec3(0, 0.001f, 0));
-    return assets->overlaps(glm::vec3(body.minimum), glm::vec3(body.maximum));
 }
 
 bool supported(const World& world, const AssetCollision* assets, glm::vec3 feet)
@@ -122,47 +118,52 @@ bool Player::setFeetPosition(const World& world, glm::vec3 position)
 void Player::move(const World& world, glm::vec3 displacement)
 {
     if (!finite(displacement)) return;
-    const bool canStep = displacement.y <= 0.0f && supported(world, assetCollision_.get(), feet_);
-    float climbed = 0.0f;
+    // Half-block treads are walkable; full blocks require a jump. The extra
+    // five centimeters accommodates fitted paving and small model seams.
+    constexpr float maximumStep = 0.55f;
+    for (const int axis : {0, 2})
+        displacement[axis] = std::clamp(displacement[axis],
+            World::Min[axis] + Width / 2 - feet_[axis],
+            World::MaxExclusive[axis] - Width / 2 - feet_[axis]);
+    // A long sweep can cross both half treads of a stair. Resolve short pieces
+    // so every rise has its own supported landing, even during route checks.
     for (const int axis : {0, 2}) {
-        if (displacement[axis] == 0.0f) continue;
-        const bool onAsset = canStep && supportedByAsset(assetCollision_.get(), feet_);
-        const float stepBudget = (assetCollision_ && !assetCollision_->empty() ? 1.10f : 1.0f) - climbed;
-        const float before = feet_[axis];
-        moveAxis(world, axis, displacement[axis]);
-        const float remaining = displacement[axis] - (feet_[axis] - before);
-        if (onAsset && std::abs(feet_[axis] - before) > ContactTolerance
-            && !supported(world, assetCollision_.get(), feet_)) {
-            // Settle across small facets before testing the next stair, so a
-            // lower paving tile does not briefly remove permission to step up.
-            // At a real ledge there is no nearby landing, so ordinary gravity
-            // takes over instead of snapping to a distant floor.
-            Player lowered = *this;
-            const float drop = std::min(0.25f, std::abs(feet_[axis] - before) * 1.5f + 0.02f);
-            lowered.moveAxis(world, 1, -drop);
-            if (supported(world, assetCollision_.get(), lowered.feet_)) feet_ = lowered.feet_;
-        }
-        if (canStep && stepBudget > ContactTolerance && std::abs(remaining) > ContactTolerance
-            && supported(world, assetCollision_.get(), feet_)) {
-            // Sweep up, across, then down onto the actual surface. Partial
-            // headroom is enough for a thin prop; a full meter is not required.
-            Player raised = *this;
-            raised.moveAxis(world, 1, stepBudget);
-            const float lift = raised.feet_.y - feet_.y;
-            if (lift > ContactTolerance) {
-                raised.moveAxis(world, axis, remaining);
-                const float progress = (raised.feet_[axis] - feet_[axis])
-                    * (remaining > 0.0f ? 1.0f : -1.0f);
-                if (progress > ContactTolerance) {
-                    raised.moveAxis(world, 1, -lift);
-                    const float rise = raised.feet_.y - feet_.y;
-                    // Thin fitted paving can add a few centimeters to a
-                    // one-block stair. Only a model landing gets that allowance.
-                    const float maximumRise = supportedByAsset(assetCollision_.get(), raised.feet_) ? 1.10f : 1.0f;
-                    if (rise > ContactTolerance && climbed + rise <= maximumRise + ContactTolerance
-                        && supported(world, assetCollision_.get(), raised.feet_)) {
-                        feet_ = raised.feet_;
-                        climbed += rise; // Diagonal input cannot climb two full stairs.
+        double remainingDistance = std::abs(double(displacement[axis]));
+        const float sign = displacement[axis] < 0.f ? -1.f : 1.f;
+        while (remainingDistance > ContactTolerance) {
+            const bool canStep = displacement.y <= 0.0f && supported(world, assetCollision_.get(), feet_);
+            const float distance = static_cast<float>(canStep ? std::min(remainingDistance, .25) : remainingDistance) * sign;
+            remainingDistance -= std::abs(double(distance));
+            const float before = feet_[axis];
+            moveAxis(world, axis, distance);
+            const float remaining = distance - (feet_[axis] - before);
+            if (canStep && std::abs(feet_[axis] - before) > ContactTolerance
+                && !supported(world, assetCollision_.get(), feet_)) {
+                // Follow descending treads and small model facets. At a taller
+                // ledge there is no nearby landing, so gravity takes over.
+                Player lowered = *this;
+                lowered.moveAxis(world, 1, -maximumStep);
+                if (supported(world, assetCollision_.get(), lowered.feet_)) feet_ = lowered.feet_;
+            }
+            const float stepBudget = maximumStep;
+            if (canStep && stepBudget > ContactTolerance && std::abs(remaining) > ContactTolerance
+                && supported(world, assetCollision_.get(), feet_)) {
+                // Sweep up, across, then down onto the actual surface. Partial
+                // headroom is enough for a thin prop; a full step is not required.
+                Player raised = *this;
+                raised.moveAxis(world, 1, stepBudget);
+                const float lift = raised.feet_.y - feet_.y;
+                if (lift > ContactTolerance) {
+                    raised.moveAxis(world, axis, remaining);
+                    const float progress = (raised.feet_[axis] - feet_[axis])
+                        * (remaining > 0.0f ? 1.0f : -1.0f);
+                    if (progress > ContactTolerance) {
+                        raised.moveAxis(world, 1, -lift);
+                        const float rise = raised.feet_.y - feet_.y;
+                        if (rise > ContactTolerance && rise <= maximumStep + ContactTolerance
+                            && supported(world, assetCollision_.get(), raised.feet_)) {
+                            feet_ = raised.feet_;
+                        }
                     }
                 }
             }

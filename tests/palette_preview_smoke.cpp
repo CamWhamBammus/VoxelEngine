@@ -160,6 +160,13 @@ void verifyPalettePreviews()
         std::set<std::array<unsigned char,3>> colors;
         for (const auto& p:stone) if (p[3]>250) colors.insert({p[0],p[1],p[2]});
         require(colors.size()>32,"Stone preview lost its painted material and became a flat shaded cube");
+        for (const auto material:{Block::Planks,Block::Stone,Block::Brick,Block::Limestone,
+                                 Block::Slate,Block::MossStone,Block::Path,Block::AgedPlanks}) {
+            const auto cube=tile(pixels,PalettePreviews::blockId(material));
+            const auto stairs=tile(pixels,PalettePreviews::blockId(stairBlock(material,0)));
+            require(silhouetteDifference(cube,stairs)>stairs.size()/32,
+                    "Stair previews must show their missing upper half instead of a complete cube");
+        }
         for (const auto block:{Block::Leaves,Block::GlowLeaves,Block::BlossomLeaves}) {
             const auto count=coverage(tile(pixels,PalettePreviews::blockId(block)));
             require(count>coverage(grass)/10 && count<coverage(grass)*.95,
@@ -181,6 +188,6 @@ void verifyPalettePreviews()
         require(oreColorDifference>40,"Ore block previews must show their distinct mineral materials");
     } catch (...) {cleanup();throw;}
     cleanup();
-    std::cout<<"Palette previews passed: actual textured meshes, foliage cutouts, transparent padding, cache reuse and GL state\n";
+    std::cout<<"Palette previews passed: actual textured meshes, stair silhouettes, foliage cutouts, transparent padding, cache reuse and GL state\n";
 }
 } // namespace voxel

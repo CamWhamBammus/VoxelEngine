@@ -57,6 +57,11 @@ constexpr bool isItemPickup(HubAssetKind kind)
 {
     return isKeyPickup(kind) || kind == HubAssetKind::ItemPickup;
 }
+// Keep the old staircase readable in saved sections; new builds use voxel stairs.
+constexpr bool isCreativeAsset(HubAssetKind kind)
+{
+    return !isItemPickup(kind) && kind != HubAssetKind::WoodenStairs;
+}
 ItemStack itemPickupStack(const HubAsset& asset);
 // Pickups keep a floor anchor in the document. Their cached local mesh uses
 // this transform only while drawing; gameplay and selection use the envelope.

@@ -102,11 +102,11 @@ int main()
         openPalette(game);
         click(game, SectionUiPaletteTabBase + 1);
         const auto sceneryCount = std::count_if(sectionAssetCatalog().begin(), sectionAssetCatalog().end(),
-            [](const auto& entry) { return !isItemPickup(entry.kind); });
+            [](const auto& entry) { return isCreativeAsset(entry.kind); });
         require(editor.paletteItems().size() == static_cast<std::size_t>(sceneryCount)
                 && std::none_of(editor.paletteItems().begin(), editor.paletteItems().end(),
                     [](const auto& entry) { return entry.pickup || (entry.asset && isItemPickup(*entry.asset)); }),
-                "Assets contains every scenery/chest model but no legacy or generic pickups");
+                "Assets contains the current scenery/chest catalog but no legacy or generic pickups");
         InputActions tab; tab.active = true; tab.devTabStep = 1; game.update(tab);
         require(editor.paletteTab() == 3, "Tab follows the displayed Assets to Items order");
         require(editor.paletteItems().size() == itemCatalog().size(), "Items exposes every ore and cave key");

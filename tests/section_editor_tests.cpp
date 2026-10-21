@@ -92,12 +92,42 @@ int main()
         press(game, &voxel::InputActions::undo);
         press(game, &voxel::InputActions::devPalette);
         check(editor.paletteItems().size() == voxel::PlaceableBlocks.size(), "palette includes every creative material");
+        check(std::count_if(editor.paletteItems().begin(), editor.paletteItems().end(), [](const auto& item) {
+            return item.block && voxel::isStair(*item.block) && voxel::stairFacing(*item.block) == 0;
+        }) == 8, "Blocks exposes one rotatable stair entry for each of the eight materials");
+        const auto stairEntry = std::find_if(editor.paletteItems().begin(), editor.paletteItems().end(),
+            [](const auto& item) { return item.block == voxel::Block::StoneStairs; });
+        check(stairEntry != editor.paletteItems().end(), "stone stairs are blocks in the creative palette");
+        if (stairEntry != editor.paletteItems().end()) {
+            click(game, voxel::SectionUiPaletteItemBase + static_cast<int>(stairEntry - editor.paletteItems().begin()));
+            press(game, &voxel::InputActions::devPalette);
+            press(game, &voxel::InputActions::devRotate);
+            const auto orientedStair = voxel::stairBlock(voxel::Block::Stone, 1);
+            check(editor.hotbar()[0].block == orientedStair && game.selectedBlock == orientedStair,
+                  "T rotates the selected stair block and its placement preview together");
+            press(game, &voxel::InputActions::place);
+            check(game.world.get(newCell) == orientedStair, "placing stairs retains their material and facing");
+            press(game, &voxel::InputActions::devRotate);
+            press(game, &voxel::InputActions::pick);
+            check(editor.hotbar()[0].block == orientedStair,
+                  "middle-picking a stair restores the placed orientation instead of the default facing");
+            press(game, &voxel::InputActions::undo);
+            check(game.world.get(newCell) == voxel::Block::Air, "undo removes the oriented stair block");
+            press(game, &voxel::InputActions::redo);
+            check(game.world.get(newCell) == orientedStair, "redo restores the exact stair orientation");
+            press(game, &voxel::InputActions::undo);
+            press(game, &voxel::InputActions::devPalette);
+        }
         click(game, voxel::SectionUiPaletteTabBase + 1);
         const auto sceneryCount = std::count_if(voxel::sectionAssetCatalog().begin(), voxel::sectionAssetCatalog().end(),
-            [](const auto& asset) { return !voxel::isItemPickup(asset.kind); });
-        check(editor.paletteItems().size() == static_cast<std::size_t>(sceneryCount), "asset palette includes scenery and chests without item pickups");
+            [](const auto& asset) { return voxel::isCreativeAsset(asset.kind); });
+        check(editor.paletteItems().size() == static_cast<std::size_t>(sceneryCount)
+              && std::none_of(editor.paletteItems().begin(), editor.paletteItems().end(),
+                  [](const auto& item) { return item.asset == voxel::HubAssetKind::WoodenStairs; }),
+              "Assets includes scenery and chests while retiring the old staircase in favor of block stairs");
         for (int kind = static_cast<int>(voxel::HubAssetKind::TimberFence);
              kind <= static_cast<int>(voxel::HubAssetKind::Barrel); ++kind) {
+            if (!voxel::isCreativeAsset(static_cast<voxel::HubAssetKind>(kind))) continue;
             const auto entry = std::find_if(editor.paletteItems().begin(), editor.paletteItems().end(),
                 [&](const auto& item) { return item.asset == static_cast<voxel::HubAssetKind>(kind); });
             check(entry != editor.paletteItems().end(), "every building kit model appears in the Assets tab");
@@ -202,7 +232,41 @@ int main()
             press(game, &voxel::InputActions::undo);
         };
         stackBeam(voxel::HubAssetKind::TimberPillar,{0,3,0});
-        stackBeam(voxel::HubAssetKind::WoodenStairs,{0,1.5f,-1.25f});
+        // A narrow beam fits across the lower treads of three real stair blocks.
+        // Its anchor must follow the hit point instead of the voxel center,
+        // which would bury half the beam in the upper tread.
+        for (int x = 9; x <= 11; ++x) game.world.set({x,9,-18}, voxel::Block::StoneStairs);
+        const glm::vec3 lowerTread{10.5f,9.5f,-17.25f};
+        game.camera.setPosition(lowerTread + glm::vec3(0,4,.1f)); aim(game.camera,lowerTread);
+        equipAsset(voxel::HubAssetKind::TimberBeam);
+        for (int turn = 0; turn < 4 && editor.facing() != 0; ++turn)
+            press(game, &voxel::InputActions::devRotate);
+        game.update(action);
+        check(editor.placementPreview() && std::abs(editor.placementPreview()->position.y - 9.5f) < .001f,
+              "building models preview directly on a half-height stair tread");
+        press(game, &voxel::InputActions::place);
+        check(editor.assets().size() == 1 && editor.assets().front().kind == voxel::HubAssetKind::TimberBeam,
+              "a beam can be placed across real stair blocks without a full-height backing cube");
+        if (editor.assets().size() == 1) {
+            glm::vec3 minimum(std::numeric_limits<float>::max());
+            for (const auto& vertex : voxel::buildHubAsset(editor.assets().front()).vertices)
+                minimum = glm::min(minimum, vertex.position);
+            check(std::abs(minimum.y - lowerTread.y) < .001f && minimum.z > -17.5f,
+                  "the model touches the lower tread and stays clear of the raised half");
+            press(game, &voxel::InputActions::undo);
+        }
+        const glm::vec3 lowerMarker{10.5f,9.5f,-17.1f};
+        game.camera.setPosition(lowerMarker + glm::vec3(0,4,.1f)); aim(game.camera,lowerMarker);
+        press(game, &voxel::InputActions::devPalette);
+        click(game, voxel::SectionUiPaletteTabBase + 2);
+        click(game, voxel::SectionUiPaletteItemBase + 1);
+        press(game, &voxel::InputActions::devPalette);
+        press(game, &voxel::InputActions::place);
+        check(editor.meta().checkpoint && glm::distance(*editor.meta().checkpoint,lowerMarker) < .001f
+              && voxel::sectionMarkerSafe(game.world,*editor.meta().checkpoint),
+              "a checkpoint uses the actual lower stair tread when the whole player has clearance");
+        if (editor.meta().checkpoint) press(game, &voxel::InputActions::undo);
+        for (int x = 9; x <= 11; ++x) game.world.set({x,9,-18}, voxel::Block::Air);
 
         // Marker placement and undo use the same authored edit history.
         game.camera.setPosition({5.5f, 13, 18.5f}); aim(game.camera, {5.5f, 8.5f, 14.5f});

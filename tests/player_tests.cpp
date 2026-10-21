@@ -198,72 +198,113 @@ int main()
         check(player.feetPosition() == beforeInvalidUpdate, "invalid frame time does not move the player");
     }
 
-    // Stairs use the same movement entry point as normal physics and route tests.
+    // Full cubes now require jumping; actual stairs expose two half-height treads.
     const glm::ivec3 stairStart{39, 1, 40};
     const auto stairFeet = glm::vec3(stairStart) + glm::vec3(0.5f, 0, 0.5f);
-    for (const auto direction : {glm::ivec3(1,0,0), {-1,0,0}, {0,0,1}, {0,0,-1}}) {
+    for (int facing = 0; facing < 4; ++facing) {
+        const auto stair = voxel::stairBlock(Block::Stone, facing);
+        const auto direction = voxel::stairUpDirection(stair);
         const auto obstacle = stairStart + direction;
         world.set(obstacle, Block::Stone);
-        check(player.setFeetPosition(world, stairFeet), "stair approach is clear and supported");
+        check(player.setFeetPosition(world, stairFeet), "block approach is clear and supported");
         player.move(world, glm::vec3(direction));
-        check(glm::distance(player.feetPosition(), stairFeet + glm::vec3(direction) + glm::vec3(0,1,0)) < 0.0001f
-              && player.grounded() && !player.overlapsBlock(obstacle),
-              "grounded movement climbs a one-voxel stair in every horizontal direction");
+        check(glm::distance(player.feetPosition(), stairFeet + glm::vec3(direction) * .2f) < .0001f
+              && player.grounded(), "walking into a full block does not automatically climb it in any direction");
+        world.set(obstacle, stair);
+        player.setFeetPosition(world, stairFeet);
+        player.move(world, glm::vec3(direction));
+        check(glm::distance(player.feetPosition(), stairFeet + glm::vec3(direction) + glm::vec3(0,1,0)) < .0001f
+              && player.grounded(), "one-meter movement crosses both half treads in every stair rotation");
+        player.move(world, -glm::vec3(direction));
+        check(glm::distance(player.feetPosition(), stairFeet) < .0001f && player.grounded(),
+              "descending both stair treads returns smoothly to the floor");
+        player.setFeetPosition(world, stairFeet + glm::vec3(direction) * 2.f);
+        player.move(world, -glm::vec3(direction));
+        check(glm::distance(player.feetPosition(), stairFeet + glm::vec3(direction) * 1.8f) < .0001f,
+              "the full-height back of a stair cannot be climbed without jumping");
         world.set(obstacle, Block::Air);
     }
     const auto step = stairStart + glm::ivec3(1,0,0);
+    const auto eastStair = voxel::stairBlock(Block::Stone, 3);
     world.set(step, Block::Stone);
-    world.set(step + glm::ivec3(0,1,0), Block::Stone);
+    for (int x = 41; x <= 44; ++x) world.set({x,1,40}, Block::Stone);
     player.setFeetPosition(world, stairFeet);
-    player.move(world, {1,0,0});
-    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1),
-          "auto-step cannot climb a two-voxel wall");
-    world.set(step + glm::ivec3(0,1,0), Block::Air);
+    for (int frame = 0; frame < 60; ++frame)
+        player.update(world, {0,1}, {1,0,0}, false, false, 1.f/60);
+    check(near(player.feetPosition().x,39.7f) && near(player.feetPosition().y,1),
+          "continued walking against a full-block ledge cannot climb it over multiple frames");
+    for (int frame = 0; frame < 48; ++frame)
+        player.update(world, {0,1}, {1,0,0}, true, false, 1.f/60);
+    check(player.feetPosition().x > 42 && near(player.feetPosition().y,2) && player.grounded(),
+          "a deliberate jump still clears a full block and lands on its top");
+    for (int x = 41; x <= 44; ++x) world.set({x,1,40}, Block::Air);
+
+    world.set(step, eastStair);
     for (const auto ceiling : {stairStart + glm::ivec3(0,2,0), step + glm::ivec3(0,2,0)}) {
         world.set(ceiling, Block::Stone);
         player.setFeetPosition(world, stairFeet);
         player.move(world, {1,0,0});
         check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1)
-              && !player.overlapsBlock(ceiling), "auto-step checks headroom both before and above the stair");
+              && !player.overlapsBlock(ceiling), "half-step checks headroom before and above the stair");
         world.set(ceiling, Block::Air);
     }
-    player.setFeetPosition(world, stairFeet + glm::vec3(0,0.5f,0));
+    player.setFeetPosition(world, stairFeet + glm::vec3(0,.25f,0));
     player.move(world, {1,0,0});
-    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1.5f)
-          && !player.grounded(), "airborne movement cannot climb a nearby step");
+    check(near(player.feetPosition().x,39.7f) && near(player.feetPosition().y,1.25f)
+          && !player.grounded(), "airborne movement cannot climb a nearby half-step");
     player.setFeetPosition(world, stairFeet);
     world.set(stairStart - glm::ivec3(0,1,0), Block::Air);
     player.move(world, {1,0,0});
-    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1)
-          && !player.grounded(), "mined support cannot authorize a stale grounded step");
+    check(near(player.feetPosition().x,39.7f) && near(player.feetPosition().y,1)
+          && !player.grounded(), "mined support cannot authorize a stale grounded half-step");
     world.set(stairStart - glm::ivec3(0,1,0), Block::Stone);
     player.setFeetPosition(world, stairFeet);
-    player.move(world, {1,0.1f,0});
-    check(near(player.feetPosition().x, 39.7f) && near(player.feetPosition().y, 1.1f),
+    player.move(world, {1,.1f,0});
+    check(near(player.feetPosition().x,39.7f) && near(player.feetPosition().y,1.1f),
           "upward jump movement does not gain extra lift from auto-step");
-    world.set(step, Block::Air);
+    check(player.setFeetPosition(world,{40.15f,1.5f,40.5f}) && player.grounded(),
+          "the open space over a lower tread is empty and supports a fractional landing");
+    check(!player.setFeetPosition(world,{40.85f,1.5f,40.5f}),
+          "the upper half of the same stair remains solid");
+    world.set(step,Block::Air);
 
-    // A diagonal input may gain one level, but must still collide with the next.
-    world.set({40,1,39}, Block::Stone);
-    world.set({40,1,40}, Block::Stone);
-    world.set({40,2,40}, Block::Stone);
-    player.setFeetPosition(world, {39.5f,1,39.5f});
-    player.move(world, {1,0,1});
-    check(near(player.feetPosition().x, 40.5f) && near(player.feetPosition().z, 39.7f)
-          && near(player.feetPosition().y, 2), "one diagonal move cannot gain two stair levels");
-    for (const auto cell : {glm::ivec3(40,1,39), {40,1,40}, {40,2,40}}) world.set(cell, Block::Air);
+    // Diagonal movement must not turn a full-block corner into a staircase.
+    for (const auto cell : {glm::ivec3(40,1,39), {40,1,40}, {40,2,40}, {39,1,40}})
+        world.set(cell,Block::Stone);
+    player.setFeetPosition(world,{39.5f,1,39.5f});
+    player.move(world,{1,0,1});
+    check(near(player.feetPosition().x,39.7f) && near(player.feetPosition().z,39.7f)
+          && near(player.feetPosition().y,1), "diagonal input cannot climb full cubes at an inside corner");
+    for (const auto cell : {glm::ivec3(40,1,39), {40,1,40}, {40,2,40}, {39,1,40}})
+        world.set(cell,Block::Air);
 
-    for (int x = 40; x <= 45; ++x)
-        for (int y = 1; y <= x - 39; ++y) world.set({x,y,40}, Block::Stone);
-    player.setFeetPosition(world, stairFeet);
-    for (int frame = 0; frame < 120; ++frame)
-        player.update(world, {0,1}, {1,0,0}, false, false, 1.0f / 120.0f);
-    check(near(player.feetPosition().x, 44.0f, 0.001f) && near(player.feetPosition().y, 6)
-          && player.grounded(), "normal walking climbs consecutive stairs without jumping or losing support");
-    player.update(world, {}, {1,0,0}, true, false, 1.0f / 120.0f);
-    check(player.feetPosition().y > 6 && !player.grounded(), "jump still launches normally from a stair landing");
-    for (int x = 40; x <= 45; ++x)
-        for (int y = 1; y <= x - 39; ++y) world.set({x,y,40}, Block::Air);
+    for (int facing = 0; facing < 4; ++facing) {
+        const auto stair = voxel::stairBlock(Block::Planks, facing);
+        const auto direction = voxel::stairUpDirection(stair);
+        for (int index = 0; index < 6; ++index) {
+            const auto cell = stairStart + direction * (index + 1);
+            for (int y = 1; y <= index; ++y) world.set({cell.x,y,cell.z},Block::Stone);
+            world.set({cell.x,index+1,cell.z},stair);
+        }
+        for (const int fps : {30,60,120}) {
+            player.setFeetPosition(world,stairFeet);
+            for (int frame = 0; frame < fps; ++frame)
+                player.update(world,{0,1},glm::vec3(direction),false,false,1.f/fps);
+            check(glm::distance(player.feetPosition(),stairFeet + glm::vec3(direction)*4.5f + glm::vec3(0,4.5f,0)) < .001f
+                  && player.grounded(), "consecutive stairs climb consistently in all rotations at 30, 60 and 120 FPS");
+            for (int frame = 0; frame < fps; ++frame)
+                player.update(world,{0,1},-glm::vec3(direction),false,false,1.f/fps);
+            check(glm::distance(player.feetPosition(),stairFeet) < .001f && player.grounded(),
+                  "stair descent follows each tread in all rotations at 30, 60 and 120 FPS");
+        }
+        player.setFeetPosition(world,stairFeet + glm::vec3(direction)*3.f + glm::vec3(0,3,0));
+        player.update(world,{},glm::vec3(direction),true,false,1.f/120);
+        check(player.feetPosition().y > 4 && !player.grounded(), "jump launches normally from a stair landing");
+        for (int index = 0; index < 6; ++index) {
+            const auto cell = stairStart + direction * (index + 1);
+            for (int y = 1; y <= index+1; ++y) world.set({cell.x,y,cell.z},Block::Air);
+        }
+    }
 
     // A five-block-deep pool gives swimming room without touching the floor.
     for (int y = 1; y <= 5; ++y)
@@ -433,8 +474,8 @@ int main()
 
     player.setFeetPosition(world, assetBase + glm::vec3(-2,0,0));
     player.move(world, {2,0,0});
-    check(near(player.feetPosition().y, 1.82f) && player.grounded()
-        && near(player.feetPosition().x, 0), "grounded movement steps onto a low crate");
+    check(near(player.feetPosition().y,1) && player.grounded() && player.feetPosition().x < -.5f,
+        "a crate taller than a half-block step now requires a jump");
     setAssets({{HubAssetKind::CrateStack, assetBase, 0, 0}});
     player.setFeetPosition(world, assetBase + glm::vec3(-3,.2f,0));
     player.move(world, {20,0,1});
@@ -458,13 +499,13 @@ int main()
     for (const auto cell : {glm::ivec3(0,3,-46), {0,3,-45}, {1,3,-46}, {1,3,-45}})
         world.set(cell, Block::Air);
 
-    setAssets({{HubAssetKind::PathPaving, {11.5f,2,-44.5f}, 0, 7}});
-    world.set({11,1,-45}, Block::Stone);
+    setAssets({{HubAssetKind::PathPaving, {12.f,2,-44.5f}, 0, 7}});
+    world.set({11,1,-45},voxel::stairBlock(Block::Stone,3));
     player.setFeetPosition(world, {10.5f,1,-44.5f});
     player.move(world, {1,0,0});
     check(near(player.feetPosition().x,11.5f) && player.feetPosition().y > 2.01f
         && player.feetPosition().y < 2.05f && player.grounded(),
-        "one-block stair remains climbable with thin model paving fitted over the tread");
+        "two half-treads remain climbable with thin model paving fitted over the upper tread");
     world.set({11,1,-45}, Block::Air);
 
     setAssets({{HubAssetKind::GiantMushroom, assetBase, 0, 7}});
@@ -513,10 +554,10 @@ int main()
         player.move(world, through*4.0f);
         check(glm::distance(player.feetPosition(), assetBase + through*2.0f) < .001f,
             "rotated arch opening stays traversable instead of using one solid bounding box");
-        player.setFeetPosition(world, assetBase + across*3.3f - through*2.0f);
+        player.setFeetPosition(world, assetBase + across*3.3f - through*2.0f + glm::vec3(0,.1f,0));
         player.move(world, through*4.0f);
         check(glm::dot(player.feetPosition() - assetBase, through) < 0,
-            "the same arch still blocks movement through its solid side");
+            "the same arch blocks an airborne sweep through its solid side");
     }
 
     setAssets({{HubAssetKind::RockLedge, {-20,6,-18}, 0, 5}});

@@ -166,6 +166,26 @@ int main()
         }
     }
 
+    World stairSource;
+    stairSource.set({0,15,0}, stairBlock(Block::Stone,2));
+    stairSource.set({1,15,2}, stairBlock(Block::Planks,3));
+    const auto stairCopy = copySectionBox(stairSource, {}, {{0,15,0},{1,15,2}});
+    check(stairCopy.blocks.front() == stairBlock(Block::Stone,2)
+          && stairCopy.blocks.back() == stairBlock(Block::Planks,3),
+          "copying stair blocks preserves each material and authored facing");
+    const std::array<glm::ivec3,4> rotatedLast{{{1,0,2},{2,0,0},{0,0,0},{0,0,1}}};
+    for (int rotation = 0; rotation < 4; ++rotation) {
+        World stairDestination;
+        const auto stairs = planSectionPaste(stairDestination, {}, stairCopy, origin, rotation, false, camera);
+        check(stairs.error.empty() && stairs.blocks.size() == 2
+              && contains(stairs, origin + rotatedFirst[rotation], stairBlock(Block::Stone,2+rotation))
+              && contains(stairs, origin + rotatedLast[rotation], stairBlock(Block::Planks,3+rotation)),
+              "every clipboard quarter-turn rotates stair facing together with its position and material");
+    }
+    check(stairSource.get({0,15,0}) == stairBlock(Block::Stone,2)
+          && stairCopy.blocks.front() == stairBlock(Block::Stone,2),
+          "rotated stair pastes leave the original section and clipboard orientation unchanged");
+
     World empty;
     rejected(planSectionPaste(empty, existing, copied, origin, 1, true,
                              glm::vec3(origin) + glm::vec3(2.5f, .5f, .5f)), existing,

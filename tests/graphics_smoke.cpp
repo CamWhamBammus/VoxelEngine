@@ -1149,8 +1149,8 @@ void verifyGpuResources()
         const auto materialMesh = buildMesh(chunk);
         if (materialMesh.indices.empty()) throw std::runtime_error("Renderable material produced an empty mesh");
         for (const auto& vertex : materialMesh.vertices) {
-            if (vertex.material != static_cast<float>(id)) {
-                throw std::runtime_error("Voxel material ID was lost while meshing");
+            if (vertex.material != static_cast<float>(stairMaterial(static_cast<Block>(id)))) {
+                throw std::runtime_error("Voxel surface material was lost while meshing");
             }
         }
         mesh.upload(materialMesh);

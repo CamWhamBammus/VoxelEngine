@@ -17,10 +17,18 @@ enum class Block : std::uint8_t {
     Water = 16, Leaves = 17, GlowLeaves = 18, RoofTiles = 19, Path = 20,
     MossStone = 21, MossBrick = 22, RootedDirt = 23, Clay = 24, Silt = 25,
     RootWood = 26, AgedPlanks = 27, Calcite = 28, Moss = 29, BlossomLeaves = 30,
-    AmberCrystal = 31, GlowMoss = 32
+    AmberCrystal = 31, GlowMoss = 32,
+    PlankStairs = 33, PlankStairsWest, PlankStairsSouth, PlankStairsEast,
+    StoneStairs = 37, StoneStairsWest, StoneStairsSouth, StoneStairsEast,
+    BrickStairs = 41, BrickStairsWest, BrickStairsSouth, BrickStairsEast,
+    LimestoneStairs = 45, LimestoneStairsWest, LimestoneStairsSouth, LimestoneStairsEast,
+    SlateStairs = 49, SlateStairsWest, SlateStairsSouth, SlateStairsEast,
+    MossStoneStairs = 53, MossStoneStairsWest, MossStoneStairsSouth, MossStoneStairsEast,
+    PathStairs = 57, PathStairsWest, PathStairsSouth, PathStairsEast,
+    AgedPlankStairs = 61, AgedPlankStairsWest, AgedPlankStairsSouth, AgedPlankStairsEast
 };
 
-inline constexpr std::size_t BlockCount = 33;
+inline constexpr std::size_t BlockCount = 65;
 inline constexpr std::array PlaceableBlocks{
     Block::Grass, Block::Dirt, Block::Stone, Block::Sand,
     Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre, Block::IronOre,
@@ -28,7 +36,9 @@ inline constexpr std::array PlaceableBlocks{
     Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles, Block::Path,
     Block::MossStone, Block::MossBrick, Block::RootedDirt, Block::Clay, Block::Silt,
     Block::RootWood, Block::AgedPlanks, Block::Calcite, Block::Moss, Block::BlossomLeaves,
-    Block::AmberCrystal, Block::GlowMoss
+    Block::AmberCrystal, Block::GlowMoss,
+    Block::PlankStairs, Block::StoneStairs, Block::BrickStairs, Block::LimestoneStairs,
+    Block::SlateStairs, Block::MossStoneStairs, Block::PathStairs, Block::AgedPlankStairs
 };
 
 constexpr bool isValidBlock(Block block) noexcept
@@ -36,8 +46,58 @@ constexpr bool isValidBlock(Block block) noexcept
     return static_cast<std::uint8_t>(block) < BlockCount;
 }
 
+constexpr bool isStair(Block block) noexcept
+{
+    return block >= Block::PlankStairs && block <= Block::AgedPlankStairsEast;
+}
+
+// Facing zero rises toward -Z. Each quarter turn maps +Z to +X.
+constexpr int stairFacing(Block block) noexcept
+{
+    return isStair(block) ? (static_cast<int>(block) - static_cast<int>(Block::PlankStairs)) % 4 : 0;
+}
+
+constexpr Block stairMaterial(Block block) noexcept
+{
+    constexpr std::array materials{Block::Planks, Block::Stone, Block::Brick, Block::Limestone,
+        Block::Slate, Block::MossStone, Block::Path, Block::AgedPlanks};
+    return isStair(block)
+        ? materials[(static_cast<int>(block) - static_cast<int>(Block::PlankStairs)) / 4] : block;
+}
+
+constexpr Block stairBlock(Block material, int facing) noexcept
+{
+    material = stairMaterial(material);
+    constexpr std::array materials{Block::Planks, Block::Stone, Block::Brick, Block::Limestone,
+        Block::Slate, Block::MossStone, Block::Path, Block::AgedPlanks};
+    for (std::size_t i = 0; i < materials.size(); ++i) {
+        if (materials[i] == material) {
+            return static_cast<Block>(static_cast<int>(Block::PlankStairs) + static_cast<int>(i) * 4
+                + (facing % 4 + 4) % 4);
+        }
+    }
+    return material;
+}
+
+constexpr Block rotateBlock(Block block, int quarterTurns) noexcept
+{
+    return isStair(block) ? stairBlock(block, stairFacing(block) + quarterTurns % 4) : block;
+}
+
+constexpr glm::ivec3 stairUpDirection(Block block) noexcept
+{
+    constexpr std::array directions{glm::ivec3(0, 0, -1), glm::ivec3(-1, 0, 0),
+        glm::ivec3(0, 0, 1), glm::ivec3(1, 0, 0)};
+    return isStair(block) ? directions[stairFacing(block)] : glm::ivec3(0);
+}
+
 constexpr std::string_view blockName(Block block) noexcept
 {
+    if (isStair(block)) {
+        constexpr std::array<std::string_view, 8> names{"Plank stairs", "Stone stairs", "Brick stairs",
+            "Limestone stairs", "Slate stairs", "Mossy stone stairs", "Paving stairs", "Weathered plank stairs"};
+        return names[(static_cast<int>(block) - static_cast<int>(Block::PlankStairs)) / 4];
+    }
     switch (block) {
     case Block::Air: return "Air";
     case Block::Grass: return "Grass";
@@ -72,6 +132,7 @@ constexpr std::string_view blockName(Block block) noexcept
     case Block::BlossomLeaves: return "Blossom leaves";
     case Block::AmberCrystal: return "Amber crystal";
     case Block::GlowMoss: return "Glow moss";
+    default: break;
     }
     return "Unknown";
 }
@@ -95,7 +156,7 @@ constexpr bool isLeafBlock(Block block) noexcept
 // but cannot hide an adjacent trunk or cast a completely solid cube shadow.
 constexpr bool isOpaque(Block block) noexcept
 {
-    return isSolid(block) && !isLeafBlock(block);
+    return isSolid(block) && !isLeafBlock(block) && !isStair(block);
 }
 
 // Keep solid surfaces behind leaf gaps and water. Adjacent leaf cubes share
@@ -108,7 +169,7 @@ constexpr bool occludes(Block adjacent, Block faceMaterial) noexcept
 
 inline glm::vec3 blockColor(Block block) noexcept
 {
-    switch (block) {
+    switch (stairMaterial(block)) {
     case Block::Grass: return {0.32f, 0.66f, 0.22f};
     case Block::Dirt: return {0.46f, 0.29f, 0.16f};
     case Block::Stone: return {0.51f, 0.53f, 0.57f};
@@ -142,6 +203,7 @@ inline glm::vec3 blockColor(Block block) noexcept
     case Block::AmberCrystal: return {0.94f, 0.52f, 0.11f};
     case Block::GlowMoss: return {0.13f, 0.62f, 0.39f};
     case Block::Air: return {0.0f, 0.0f, 0.0f};
+    default: break;
     }
     return {1.0f, 0.0f, 1.0f};
 }

@@ -375,16 +375,16 @@ void verifySectionHud(int width,int height)
         act(SectionUiPaletteNext);
         require(game.sectionEditor().paletteSelection()/24==1,"New building materials cannot be reached on page two");
         act(SectionUiPaletteItemBase+static_cast<int>(PlaceableBlocks.size())-1);
-        require(game.sectionEditor().hotbar()[8].block==Block::GlowMoss,"Last lush material cannot be equipped");
+        require(game.sectionEditor().hotbar()[8].block==Block::AgedPlankStairs,"Last stair material cannot be equipped");
         draw(width,height); draw(640,360,2);
         act(SectionUiPaletteTabBase+1);
         const auto catalog=sectionAssetCatalog();
-        const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& asset){return !isItemPickup(asset.kind);});
+        const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& asset){return isCreativeAsset(asset.kind);});
         require(game.sectionEditor().paletteItems().size()==static_cast<std::size_t>(modelCount),
-                "Asset palette must contain models without ground pickups");
+                "Asset palette must contain creative models without pickups or obsolete stair props");
         require(std::none_of(game.sectionEditor().paletteItems().begin(),game.sectionEditor().paletteItems().end(),
-                             [](const auto& item){return item.pickup || (item.asset && isItemPickup(*item.asset));}),
-                "Ground pickups belong in Items rather than Assets");
+                             [](const auto& item){return item.pickup || (item.asset && !isCreativeAsset(*item.asset));}),
+                "Ground pickups and obsolete stair props must stay out of Assets");
         const auto assetsFirst=draw(width,height);
         require(difference(blocks,assetsFirst)>1200,"Asset tab did not show model icons");
         // Selecting late in page one must still navigate to page two.

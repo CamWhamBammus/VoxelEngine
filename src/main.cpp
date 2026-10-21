@@ -108,7 +108,8 @@ int main(int argc, char** argv)
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
-                selection.draw(game.target, game.camera, width, height, scaleY);
+                selection.draw(game.target, game.camera, width, height, scaleY,
+                               game.target ? game.world.get(game.target->position) : voxel::Block::Air);
             }
             if (game.devMode() && game.sectionEditor().hasSection() && !game.devMenuOpen())
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),

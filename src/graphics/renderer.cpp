@@ -5,6 +5,7 @@
 #include "graphics/materials.h"
 #include "graphics/water.h"
 #include "hub_assets.h"
+#include "block_shapes.h"
 #include "sections.h"
 #include "section_editor.h"
 #include "graphics/asset_builder.h"
@@ -83,10 +84,40 @@ vec4 lightData(int index, int part) {
     return texelFetch(lightSources, ivec2(address % width, address / width), 0);
 }
 
-bool solid(ivec3 cell) {
+int occupancyCode(ivec3 cell) {
     ivec3 local = cell - ivec3(worldMinimum);
-    if (any(lessThan(local, ivec3(0))) || any(greaterThanEqual(local, textureSize(occupancy, 0)))) return false;
-    return texelFetch(occupancy, local, 0).r > 0.5;
+    if (any(lessThan(local, ivec3(0))) || any(greaterThanEqual(local, textureSize(occupancy, 0)))) return 0;
+    return int(texelFetch(occupancy, local, 0).r * 255.0 + 0.5);
+}
+
+bool solid(ivec3 cell) { return occupancyCode(cell) >= 200; }
+
+bool crossesBox(vec3 start, vec3 ray, vec3 low, vec3 high) {
+    float near = 0.0, far = 1.0;
+    for (int axis = 0; axis < 3; ++axis) {
+        if (abs(ray[axis]) < 0.000001) {
+            if (start[axis] < low[axis] || start[axis] >= high[axis]) return false;
+        } else {
+            float a = (low[axis] - start[axis]) / ray[axis];
+            float b = (high[axis] - start[axis]) / ray[axis];
+            near = max(near, min(a, b)); far = min(far, max(a, b));
+        }
+    }
+    return far > near + 0.000001;
+}
+
+bool blocksLight(ivec3 cell, vec3 start, vec3 ray) {
+    int code = occupancyCode(cell);
+    if (code == 255) return true;
+    if (code < 200 || code > 203) return false;
+    vec3 local = start - vec3(cell);
+    if (crossesBox(local, ray, vec3(0), vec3(1, 0.5, 1))) return true;
+    vec3 low = vec3(0, 0.5, 0), high = vec3(1);
+    if (code == 200) high.z = 0.5;
+    else if (code == 201) high.x = 0.5;
+    else if (code == 202) low.z = 0.5;
+    else low.x = 0.5;
+    return crossesBox(local, ray, low, high);
 }
 
 float contactShade() {
@@ -120,7 +151,7 @@ float visibleLight(vec3 start, vec3 end) {
     // Sources reach at most eleven blocks: 32 crossings cover every direction.
     for (int step = 0; step < 32; ++step) {
         if (all(equal(cell, target))) return 1.0;
-        if (solid(cell)) return 0.0;
+        if (blocksLight(cell, start, ray)) return 0.0;
         if (next.x < next.y && next.x < next.z) { cell.x += advance.x; next.x += delta.x; }
         else if (next.y < next.z) { cell.y += advance.y; next.y += delta.y; }
         else { cell.z += advance.z; next.z += delta.z; }
@@ -377,7 +408,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                         // OpenGL 3D images run x, then y, then z (unlike Chunk).
                         // Cutout leaf holes transmit light; collision is independent.
                         // Keep water's distinct code for shoreline/refraction queries.
-                        voxels[local.x + size.x * (local.y + size.y * local.z)] = isOpaque(block) ? 255 : block == Block::Water ? 127 : 0;
+                        voxels[local.x + size.x * (local.y + size.y * local.z)] = isStair(block) ? 200 + stairFacing(block)
+                            : isOpaque(block) ? 255 : block == Block::Water ? 127 : 0;
                         if (block != Block::Lantern && block != Block::Crystal && block != Block::GlowLeaves
                             && block != Block::AmberCrystal && block != Block::GlowMoss) continue;
                         bool exposed = false;
@@ -604,7 +636,7 @@ MeshData clipboardPreviewMesh(const SectionClipboard& clipboard, int rotation)
         if (glm::any(glm::lessThan(point, glm::ivec3(0))) || glm::any(glm::greaterThanEqual(point, clipboard.size)))
             return Block::Air;
         const auto index = static_cast<std::size_t>(point.x + clipboard.size.x * (point.y + clipboard.size.y * point.z));
-        return index < clipboard.blocks.size() && clipboard.blocks[index] != Block::Air ? Block::Stone : Block::Air;
+        return index < clipboard.blocks.size() ? clipboard.blocks[index] : Block::Air;
     };
     const auto append = [&](const MeshData& piece) {
         if (mesh.vertices.size() + piece.vertices.size() > vertexBudget) return false;
@@ -715,7 +747,7 @@ Overlay::~Overlay()
 }
 
 void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int width, int height,
-                   float contentScale)
+                   float contentScale, Block material)
 {
     if (width <= 0 || height <= 0) return;
     if (!std::isfinite(contentScale) || contentScale <= 0.0f) contentScale = 1.0f;
@@ -736,12 +768,17 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
     glDepthMask(GL_FALSE);
     if (hit) {
         glEnable(GL_DEPTH_TEST);
-        const glm::mat4 model = glm::scale(glm::translate(glm::mat4(1.0f),
-            glm::vec3(hit->position) - glm::vec3(0.002f)), glm::vec3(1.004f));
-        shader_.setMat4("transform", camera.projectionMatrix(static_cast<float>(width) / height)
-                                   * camera.viewMatrix() * model);
         shader_.setVec3("color", {1.0f, 0.9f, 0.55f});
-        glDrawArrays(GL_LINES, 0, 24);
+        const auto shape = blockShape(isStair(material) ? material : Block::Stone);
+        for (int i = 0; i < shape.count; ++i) {
+            const auto& box = shape.boxes[i];
+            const glm::mat4 model = glm::scale(glm::translate(glm::mat4(1.0f),
+                glm::vec3(hit->position) + box.minimum - glm::vec3(.002f)),
+                box.maximum - box.minimum + glm::vec3(.004f));
+            shader_.setMat4("transform", camera.projectionMatrix(static_cast<float>(width) / height)
+                                       * camera.viewMatrix() * model);
+            glDrawArrays(GL_LINES, 0, 24);
+        }
     }
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);

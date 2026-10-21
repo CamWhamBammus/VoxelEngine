@@ -153,7 +153,7 @@ bool leavesRoutesClear(const World& world, Bounds bounds)
     const auto high = glm::ivec3(glm::floor(bounds.high + glm::vec3(.4f,0,.4f)));
     for (int y=std::max(1,low.y); y<=high.y; ++y) for (int z=low.z; z<=high.z; ++z)
         for (int x=low.x; x<=high.x; ++x) {
-            const auto block = world.get({x,y,z});
+            const auto block = stairMaterial(world.get({x,y,z}));
             if ((block == Block::Path || block == Block::Planks || block == Block::AgedPlanks)
                 && world.get({x,y+1,z}) == Block::Air) return false;
         }
@@ -352,7 +352,7 @@ void dressLushTerrain(World& world)
             bool exposed=world.get(cell+glm::ivec3(0,1,0))==Block::Air;
             bool wet=false, street=false;
             for (const auto side : Sides) {
-                const auto next=world.get(cell+side);
+                const auto next=stairMaterial(world.get(cell+side));
                 exposed |= next==Block::Air || next==Block::Water;
                 wet |= next==Block::Water;
                 street |= next==Block::Path || next==Block::Planks;

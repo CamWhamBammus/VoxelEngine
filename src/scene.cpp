@@ -131,7 +131,7 @@ int lakebed(int x, int z)
 }
 
 // Rounded highlands meet the low water garden. The shoulders form natural
-// ledges; streets later cut comfortable one-block stair flights through them.
+// ledges; streets later cut flights of half-height stair treads through them.
 int terrainHeight(int x, int z)
 {
     struct Highland { glm::vec2 center, radius; float height; };
@@ -577,6 +577,13 @@ void expeditionGateway(World& world)
     box(world,{12,30,-102},{12,30,-98},Block::Timber);
     box(world,{12,30,-102},{37,30,-102},Block::Timber);
     for (const int z : {-97,-87}) for (const int x : {-8,24}) lamp(world,x,z,30);
+    // The western civic street is three blocks below this raised forecourt.
+    // A dedicated side entrance joins it without relying on the grassy hills.
+    for (int x=-14;x<=-12;++x) for (int z=-71;z<=-69;++z) {
+        const int floor=x+42;
+        world.set({x,floor,z},Block::Path);
+        box(world,{x,floor+1,z},{x,35,z},Block::Air);
+    }
 }
 
 void smallTree(World& world,glm::ivec2 p,int height,int spread)
@@ -666,6 +673,33 @@ void neighborhoods(World& world)
         }
     }
     for (const auto& b : Buildings) buildHubBuilding(world,b);
+    // A few high porches meet a lower avenue too close for the original flat
+    // three-cell landing. Give these entrances enough run for real stair treads.
+    for (const auto& b : Buildings) {
+        const auto door=hubBuildingDoor(b)-glm::ivec3(0,1,0);
+        const auto direction=std::array<glm::ivec3,4>{{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}}}[b.facing];
+        const glm::ivec3 across(direction.z,0,-direction.x);
+        const auto roadHeight=[&](int step) {
+            const auto p=door+direction*step;
+            for (int y=door.y;y>=Ground;--y)
+                if (world.get({p.x,y,p.z})==Block::Path && world.get({p.x,y+1,p.z})==Block::Air) return y;
+            return -1;
+        };
+        const int nearRoad=roadHeight(4);
+        if (nearRoad<0 || door.y-nearRoad<2) continue;
+        for (int length=4;length<=12;++length) {
+            const int end=roadHeight(length);
+            if (end<0 || door.y-end>length-2) continue;
+            for (int step=2;step<=length;++step) for (int side=-1;side<=1;++side) {
+                const auto p=door+direction*step+across*side;
+                const int floor=int(std::round(glm::mix(float(door.y),float(end),float(step-2)/float(length-2))));
+                box(world,{p.x,1,p.z},{p.x,floor-1,p.z},Block::Stone);
+                world.set({p.x,floor,p.z},Block::Path);
+                box(world,{p.x,floor+1,p.z},{p.x,door.y+4,p.z},Block::Air);
+            }
+            break;
+        }
+    }
     // Sparse lights follow real street elevations and leave the centerline clear.
     for (int z=World::Min.z+4;z<World::MaxExclusive.z-4;z+=9) {
         for (int x=World::Min.x+4;x<World::MaxExclusive.x-4;x+=9) {
@@ -680,6 +714,55 @@ void neighborhoods(World& world)
             }
         }
     }
+}
+
+// Roads are authored as broad elevation bands first. Replace their uphill edge
+// with real stair blocks only after all junctions, bridges and doorways exist.
+// Read the unchanged world until every placement is chosen: a previous stair
+// must not change the facing selected for its neighbor.
+void finishStairs(World& world)
+{
+    struct Placement { glm::ivec3 cell; Block block; };
+    std::vector<Placement> stairs;
+    constexpr std::array<glm::ivec3,4> uphill{{{0,0,-1},{-1,0,0},{0,0,1},{1,0,0}}};
+    const auto paved=[](Block block) { return block==Block::Path || block==Block::Planks; };
+    for (std::size_t index=0;index<World::ChunkCount;++index) {
+        const auto origin=world.origin(index);
+        const auto& chunk=world.chunk(index);
+        for (int y=0;y<Chunk::Size;++y) for (int z=0;z<Chunk::Size;++z) for (int x=0;x<Chunk::Size;++x) {
+            const auto block=chunk.get(x,y,z);
+            const auto cell=origin+glm::ivec3(x,y,z);
+            const bool road=block==Block::Path;
+            // Southern swim landings join the limestone shelves to shore.
+            // Keep the northern reed beds and intervening banks grassy.
+            const bool shoreLane=cell.z>Center.y
+                && (std::abs(std::abs(cell.x-Center.x)-13)<=1
+                    || std::abs(std::abs(cell.z-Center.y)-13)<=1);
+            const bool shore=shoreLane && cell.y>=6 && cell.y<=8
+                && ((block==Block::Limestone && lake(cell.x,cell.z))
+                    || (cell.y==8 && (block==Block::Grass || block==Block::Dirt)));
+            if ((!road && !shore) || world.get(cell+glm::ivec3(0,1,0))!=Block::Air) continue;
+            int facing=-1,best=-1;
+            for (int direction=0;direction<4;++direction) {
+                const auto low=cell-uphill[direction];
+                const auto below=world.get(low-glm::ivec3(0,1,0));
+                if (road) {
+                    if (world.get(low)!=Block::Air || !paved(below)) continue;
+                } else {
+                    if ((world.get(low)!=Block::Air && world.get(low)!=Block::Water)
+                        || (cell.y==6 ? !isSolid(below) : below!=Block::Limestone)) continue;
+                    if (cell.y==8 && !lake(low.x,low.z)) continue;
+                }
+                // Prefer a continuing flight over a cross-slope at a junction.
+                const auto high=cell+uphill[direction];
+                const int score=(world.get(high+glm::ivec3(0,1,0))==block ? 2 : 0)
+                    +(world.get(high)==block ? 1 : 0);
+                if (score>best) { best=score; facing=direction; }
+            }
+            if (facing>=0) stairs.push_back({cell,stairBlock(road?Block::Path:Block::Limestone,facing)});
+        }
+    }
+    for (const auto& stair : stairs) world.set(stair.cell,stair.block);
 }
 
 } // namespace
@@ -730,6 +813,7 @@ void buildUndergroundScene(World& world)
                         {-57,5},{-54,-21},{-29,-52},{23,-58},{-44,76},{50,76},
                         {-88,18},{100,34},{-64,-73},{64,-34}})
         smallTree(world,p,9+int(hash(p.x,p.y,world.seed())%6),4+int(hash(p.y,p.x,world.seed())%2));
+    finishStairs(world);
     dressLushTerrain(world);
 }
 } // namespace voxel

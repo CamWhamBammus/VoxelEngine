@@ -104,7 +104,7 @@ int main()
         bool clear=true;
         for (int y=std::max(1,low.y);y<=high.y;++y) for (int z=low.z;z<=high.z;++z)
             for (int x=low.x;x<=high.x;++x) {
-                const auto block=world.get({x,y,z});
+                const auto block=stairMaterial(world.get({x,y,z}));
                 clear &= !((block==Block::Path || block==Block::Planks)
                     && world.get({x,y+1,z})==Block::Air);
             }
@@ -113,7 +113,7 @@ int main()
             ++groundCount;
             bool support=true;
             for (int z=low.z;z<=high.z;++z) for (int x=low.x;x<=high.x;++x) {
-                const auto block=world.get({x,int(asset.position.y)-1,z});
+                const auto block=stairMaterial(world.get({x,int(asset.position.y)-1,z}));
                 support &= isSolid(block) && block!=Block::Path && block!=Block::Planks;
             }
             check(support,"wide garden plants and logs have ground beneath their full footprint");
