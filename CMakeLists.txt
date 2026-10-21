@@ -69,12 +69,14 @@ if(VOXEL_BUILD_APP)
         src/graphics/post_process.cpp
         src/graphics/renderer.cpp
         src/graphics/hud.cpp
+        src/graphics/palette_previews.cpp
         tests/graphics_smoke.cpp
         tests/water_graphics_smoke.cpp
         tests/hud_play_smoke.cpp
         tests/inventory_hud_smoke.cpp
         tests/root_crossing_hud_smoke.cpp
         tests/section_hud_smoke.cpp
+        tests/palette_preview_smoke.cpp
         tests/level_hud_smoke.cpp
         tests/lush_material_smoke.cpp
     )

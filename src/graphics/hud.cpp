@@ -20,18 +20,36 @@ namespace {
 constexpr const char* vertexShader = R"glsl(#version 410 core
 layout(location = 0) in vec2 position;
 layout(location = 1) in vec4 color;
+layout(location = 2) in vec2 uv;
 out vec4 pixelColor;
+out vec2 pixelUv;
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
     pixelColor = color;
+    pixelUv = uv;
 }
 )glsl";
 
 constexpr const char* fragmentShader = R"glsl(#version 410 core
 in vec4 pixelColor;
 out vec4 fragmentColor;
+void main() { fragmentColor = pixelColor; }
+)glsl";
+
+constexpr const char* previewFragmentShader = R"glsl(#version 410 core
+in vec4 pixelColor;
+in vec2 pixelUv;
+uniform sampler2D previewAtlas;
+out vec4 fragmentColor;
 void main() {
     fragmentColor = pixelColor;
+    if (pixelUv.x >= 0.0) {
+        vec4 preview = texture(previewAtlas, pixelUv);
+        // Atlas coverage is premultiplied by transparent-border filtering.
+        // The HUD uses straight alpha, so keep antialiased edges free of halos.
+        if (preview.a > 0.0) preview.rgb /= preview.a;
+        fragmentColor *= preview;
+    }
 }
 )glsl";
 
@@ -112,6 +130,7 @@ struct Vertex {
     float x;
     float y;
     glm::vec4 color;
+    glm::vec2 uv{-1, -1};
 };
 
 // The field satchel palette is shared by play, authoring menus and the pack.
@@ -136,6 +155,7 @@ public:
         return physicalScale_>0 ? std::max(1.0f,std::round(pixel*physicalScale_))/physicalScale_ : pixel;
     }
     std::vector<Vertex> vertices;
+    std::vector<int> previews;
 
     void triangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, glm::vec4 color)
     {
@@ -146,6 +166,18 @@ public:
     {
         triangle({x,y}, {x+width,y}, {x+width,y+height}, color);
         triangle({x,y}, {x+width,y+height}, {x,y+height}, color);
+    }
+    void preview(int id, glm::vec2 center, float size)
+    {
+        previews.push_back(id);
+        const auto uv = PalettePreviews::uvBounds(id);
+        const auto low = center - size * .5f, high = center + size * .5f;
+        const std::array<glm::vec2,4> points{{low,{high.x,low.y},high,{low.x,high.y}}};
+        const std::array<glm::vec2,4> texels{{{uv.x,uv.w},{uv.z,uv.w},{uv.z,uv.y},{uv.x,uv.y}}};
+        for (const int corner : {0,1,2,0,2,3}) {
+            const auto p = points[corner];
+            vertices.push_back({2*p.x/width_-1,1-2*p.y/height_,glm::vec4(1),texels[corner]});
+        }
     }
     void bar(glm::vec2 a, glm::vec2 b, float width, glm::vec4 color)
     {
@@ -426,84 +458,16 @@ void sectionPanel(Drawing& out,float width,float height,float x,float y,float w,
     fittedText(out,subtitle,x+23,y+43,w-46,1,Muted);
 }
 
-struct AssetThumbnailTriangle {
-    std::array<glm::vec2,3> points;
-    glm::vec4 color;
-    float depth;
-};
-using AssetThumbnail=std::vector<AssetThumbnailTriangle>;
-
-const AssetThumbnail& assetThumbnail(HubAssetKind kind)
-{
-    // Project the real asset geometry once. This keeps the inventory recognizable
-    // without a second renderer or per-frame model builds.
-    static const auto thumbnails=[] {
-        std::array<AssetThumbnail,HubAssetCount> result;
-        const auto right=glm::normalize(glm::vec3(1,0,-1));
-        const auto up=glm::normalize(glm::vec3(-1,2,-1));
-        const auto toward=glm::normalize(glm::vec3(1,1,1));
-        const auto light=glm::normalize(glm::vec3(-0.3f,0.9f,0.6f));
-        for (int id=0;id<static_cast<int>(result.size());++id) {
-            const auto mesh=buildHubAsset({static_cast<HubAssetKind>(id),{0,0,0},0,0});
-            glm::vec2 low(1e9f),high(-1e9f);
-            for (std::size_t index=0;index+2<mesh.indices.size();index+=3) {
-                const auto& a=mesh.vertices[mesh.indices[index]];
-                const auto& b=mesh.vertices[mesh.indices[index+1]];
-                const auto& c=mesh.vertices[mesh.indices[index+2]];
-                if (glm::dot(a.normal,toward)<-0.01f) continue;
-                AssetThumbnailTriangle face;
-                float depth=0;
-                const std::array<const MeshVertex*,3> vertices{&a,&b,&c};
-                for (int corner=0;corner<3;++corner) {
-                    const auto position=vertices[corner]->position;
-                    face.points[corner]={glm::dot(position,right),-glm::dot(position,up)};
-                    low=glm::min(low,face.points[corner]); high=glm::max(high,face.points[corner]);
-                    depth+=glm::dot(position,toward);
-                }
-                const float shade=0.65f+0.35f*std::max(0.0f,glm::dot(a.normal,light));
-                face.color={glm::clamp((a.color+b.color+c.color)/3.0f*shade,glm::vec3(0),glm::vec3(1)),1};
-                face.depth=depth;
-                result[id].push_back(face);
-            }
-            const auto center=(low+high)*0.5f;
-            const float extent=std::max({high.x-low.x,high.y-low.y,0.001f});
-            for (auto& face:result[id]) for (auto& point:face.points) point=(point-center)/extent;
-            std::stable_sort(result[id].begin(),result[id].end(),[](const auto& a,const auto& b){return a.depth<b.depth;});
-        }
-        return result;
-    }();
-    const auto index=std::clamp(static_cast<int>(kind),0,static_cast<int>(thumbnails.size())-1);
-    return thumbnails[index];
-}
-
 void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale);
 
 void sectionItemIcon(Drawing& out,const SectionPaletteItem& item,glm::vec2 center,float size)
 {
     if (item.pickup) {
-        oreIcon(out,*item.pickup,center,size/38.0f);
+        out.preview(PalettePreviews::itemId(*item.pickup),center,size);
     } else if (item.asset) {
-        for (const auto& face:assetThumbnail(*item.asset))
-            out.triangle(center+face.points[0]*size,center+face.points[1]*size,
-                         center+face.points[2]*size,face.color);
+        out.preview(PalettePreviews::assetId(*item.asset),center,size);
     } else if (item.block) {
-        const auto color=glm::vec4(blockColor(*item.block),1);
-        const auto p=[&](float x,float y){return center+glm::vec2(x,y)*size;};
-        out.triangle(p(0,-0.47f),p(0.43f,-0.23f),p(0,0),color*glm::vec4(1.13f,1.13f,1.13f,1));
-        out.triangle(p(0,-0.47f),p(0,0),p(-0.43f,-0.23f),color*glm::vec4(1.13f,1.13f,1.13f,1));
-        out.triangle(p(-0.43f,-0.23f),p(0,0),p(0,0.47f),color*glm::vec4(0.70f,0.70f,0.70f,1));
-        out.triangle(p(-0.43f,-0.23f),p(0,0.47f),p(-0.43f,0.23f),color*glm::vec4(0.70f,0.70f,0.70f,1));
-        out.triangle(p(0,0),p(0.43f,-0.23f),p(0.43f,0.23f),color);
-        out.triangle(p(0,0),p(0.43f,0.23f),p(0,0.47f),color);
-        if (*item.block==Block::Grass || *item.block==Block::Timber || *item.block==Block::Planks
-            || *item.block==Block::Path || *item.block==Block::Brick)
-            out.bar(p(-0.35f,-0.17f),p(-0.35f,0.18f),1.2f,color*glm::vec4(0.45f,0.45f,0.45f,1));
-        if (*item.block==Block::CoalOre || *item.block==Block::CopperOre || *item.block==Block::IronOre) {
-            const glm::vec4 ore=*item.block==Block::CoalOre ? glm::vec4(0.09f,0.11f,0.12f,1)
-                : *item.block==Block::CopperOre ? glm::vec4(0.93f,0.52f,0.25f,1) : glm::vec4(0.82f,0.83f,0.76f,1);
-            out.triangle(p(0.10f,0.08f),p(0.22f,-0.03f),p(0.29f,0.17f),ore);
-            out.triangle(p(-0.29f,-0.08f),p(-0.13f,0.01f),p(-0.20f,0.17f),ore);
-        }
+        out.preview(PalettePreviews::blockId(*item.block),center,size);
     } else if (item.marker!=SectionMarker::None) {
         const auto color=item.marker==SectionMarker::Start ? Leaf
             : item.marker==SectionMarker::Checkpoint ? glm::vec4(0.28f,0.87f,0.93f,1) : Gold;
@@ -531,7 +495,7 @@ void sectionHotbar(Drawing& out,std::vector<SectionHit>& hits,const SectionEdito
         const float left=x+index*(slot+gap);
         const bool selected=index==editor.selectedSlot();
         out.frame(left,y,slot,slot,selected ? Gold : Edge,selected ? Selected : Panel);
-        sectionItemIcon(out,editor.hotbar()[index],{left+24,y+26},32);
+        sectionItemIcon(out,editor.hotbar()[index],{left+24,y+26},36);
         out.quad(left+4,y+4,9,10,Panel);
         out.text(std::to_string(index+1),left+6,y+5,1,selected ? Gold : Muted);
         if (selected && editor.hotbar()[index].pickup) {
@@ -652,7 +616,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         const bool selected=index==selection;
         out.frame(left,top,cellWidth,cellHeight,selected ? Gold : Edge,selected ? Selected : Panel);
         const bool compact=out.physicalScale()<0.9f;
-        sectionItemIcon(out,item,compact ? glm::vec2(left+52,top+14) : glm::vec2(left+24,top+27),compact ? 23 : 35);
+        sectionItemIcon(out,item,compact ? glm::vec2(left+52,top+14) : glm::vec2(left+24,top+27),compact ? 25 : 40);
         const float nameX=left+(compact ? 5 : 45),nameWidth=cellWidth-(compact ? 10 : 49);
         std::string_view name=item.name;
         auto split=name.size()>9 ? name.rfind(' ',10) : std::string_view::npos;
@@ -1384,6 +1348,11 @@ public:
         glGetIntegerv(GL_BLEND_DST_ALPHA, &blendDestinationAlpha_);
         glGetIntegerv(GL_BLEND_EQUATION_RGB, &blendEquationRgb_);
         glGetIntegerv(GL_BLEND_EQUATION_ALPHA, &blendEquationAlpha_);
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture_);
+        glActiveTexture(GL_TEXTURE0);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture_);
+        glGetIntegerv(GL_SAMPLER_BINDING, &sampler_);
+        glActiveTexture(static_cast<GLenum>(activeTexture_));
     }
 
     ~SavedState()
@@ -1401,6 +1370,10 @@ public:
         glUseProgram(static_cast<GLuint>(program_));
         glBindVertexArray(static_cast<GLuint>(vao_));
         glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(buffer_));
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(texture_));
+        glBindSampler(0, static_cast<GLuint>(sampler_));
+        glActiveTexture(static_cast<GLenum>(activeTexture_));
     }
 
 private:
@@ -1425,12 +1398,20 @@ private:
     GLint blendDestinationAlpha_ = 0;
     GLint blendEquationRgb_ = 0;
     GLint blendEquationAlpha_ = 0;
+    GLint activeTexture_ = GL_TEXTURE0, texture_ = 0, sampler_ = 0;
 };
 
-void render(const Drawing& drawing, const Shader& shader, GLuint vao, GLuint buffer)
+void render(const Drawing& drawing, const Shader& shader, GLuint vao, GLuint buffer,
+            PalettePreviews* previews = nullptr)
 {
     if (drawing.vertices.empty()) return;
     const SavedState savedState;
+    if (previews && !drawing.previews.empty()) {
+        previews->ensure(drawing.previews);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, previews->texture());
+        glBindSampler(0, 0);
+    }
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_SCISSOR_TEST);
@@ -1440,6 +1421,7 @@ void render(const Drawing& drawing, const Shader& shader, GLuint vao, GLuint buf
     glBlendEquation(GL_FUNC_ADD);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     shader.use();
+    if (previews) shader.setInt("previewAtlas", 0);
     glBindVertexArray(vao);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(drawing.vertices.size() * sizeof(Vertex)),
@@ -1449,7 +1431,7 @@ void render(const Drawing& drawing, const Shader& shader, GLuint vao, GLuint buf
 
 } // namespace
 
-Hud::Hud() : shader_(vertexShader, fragmentShader)
+Hud::Hud() : shader_(vertexShader, fragmentShader), previewShader_(vertexShader, previewFragmentShader)
 {
     glGenVertexArrays(1, &vao_);
     glGenBuffers(1, &buffer_);
@@ -1469,6 +1451,9 @@ Hud::Hud() : shader_(vertexShader, fragmentShader)
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex),
                           reinterpret_cast<const void*>(offsetof(Vertex, color)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
+                          reinterpret_cast<const void*>(offsetof(Vertex, uv)));
     glBindVertexArray(static_cast<GLuint>(previousVao));
     glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousBuffer));
 }
@@ -1662,7 +1647,8 @@ void Hud::drawSection(const Game& game,int framebufferWidth,int framebufferHeigh
     Drawing drawing(canvas.width,canvas.height,canvas.scale);
     std::vector<SectionHit> hits;
     sectionUi(drawing,hits,game,canvas.width,canvas.height);
-    render(drawing,shader_,vao_,buffer_);
+    if (drawing.previews.empty()) render(drawing,shader_,vao_,buffer_);
+    else render(drawing,previewShader_,vao_,buffer_,&previews_);
 }
 
 std::optional<int> Hud::sectionClick(const Game& game,int framebufferWidth,int framebufferHeight,

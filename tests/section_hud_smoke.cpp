@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -25,6 +26,8 @@ struct State {
     std::array<GLint,13> bindings{};
     std::array<GLint,4> viewport{},scissor{};
     std::array<GLint,2> polygon{};
+    std::array<GLint,4> textures{};
+    std::array<GLint,4> samplers{};
     std::array<GLboolean,5> enabled{};
     bool operator==(const State&) const = default;
 };
@@ -41,6 +44,12 @@ State state()
     glGetIntegerv(GL_POLYGON_MODE,result.polygon.data());
     result.enabled={glIsEnabled(GL_DEPTH_TEST),glIsEnabled(GL_CULL_FACE),glIsEnabled(GL_BLEND),glIsEnabled(GL_SCISSOR_TEST),GL_FALSE};
     glGetBooleanv(GL_DEPTH_WRITEMASK,&result.enabled[4]);
+    GLint active=0;glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
+    for (int unit=0;unit<4;++unit) {
+        glActiveTexture(GL_TEXTURE0+unit);glGetIntegerv(GL_TEXTURE_BINDING_2D,&result.textures[unit]);
+        glGetIntegerv(GL_SAMPLER_BINDING,&result.samplers[unit]);
+    }
+    glActiveTexture(active);
     return result;
 }
 using Pixels=std::vector<unsigned char>;
@@ -147,11 +156,17 @@ void verifySectionHud(int width,int height)
     Overlay overlay;
     Shader caller("#version 410 core\nvoid main(){gl_Position=vec4(0);}",
                   "#version 410 core\nout vec4 color;void main(){color=vec4(1);}");
-    GLuint vao=0,buffer=0;
+    GLuint vao=0,buffer=0,sampler=0;
+    std::array<GLuint,2> textures{};
     glGenVertexArrays(1,&vao); glGenBuffers(1,&buffer);
+    glGenTextures(2,textures.data());glGenSamplers(1,&sampler);
+    glSamplerParameteri(sampler,GL_TEXTURE_MIN_FILTER,GL_NEAREST_MIPMAP_LINEAR);
     const auto cleanup=[&] {
         glUseProgram(0); glBindVertexArray(0); glBindBuffer(GL_ARRAY_BUFFER,0);
         glDeleteVertexArrays(1,&vao); glDeleteBuffers(1,&buffer);
+        glBindSampler(0,0);glBindSampler(3,0);glDeleteSamplers(1,&sampler);
+        glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,0);
+        glActiveTexture(GL_TEXTURE3);glBindTexture(GL_TEXTURE_2D,0);glDeleteTextures(2,textures.data());
         glDisable(GL_SCISSOR_TEST); glDisable(GL_BLEND); glDisable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST); glDepthMask(GL_TRUE); glCullFace(GL_BACK);
         glPolygonMode(GL_FRONT_AND_BACK,GL_FILL); glBlendEquation(GL_FUNC_ADD); glActiveTexture(GL_TEXTURE0);
@@ -166,7 +181,8 @@ void verifySectionHud(int width,int height)
             glEnable(GL_BLEND); glBlendFuncSeparate(GL_ONE,GL_ONE,GL_ZERO,GL_ONE);
             glBlendEquationSeparate(GL_FUNC_REVERSE_SUBTRACT,GL_FUNC_ADD);
             glEnable(GL_SCISSOR_TEST); glScissor(3,5,1,1); glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-            glActiveTexture(GL_TEXTURE3);
+            glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,textures[0]);glBindSampler(0,sampler);
+            glActiveTexture(GL_TEXTURE3);glBindTexture(GL_TEXTURE_2D,textures[1]);glBindSampler(3,sampler);
             const auto before=state(); hud.drawSection(game,w,h,scale);
             require(state()==before,"Section HUD changed caller OpenGL state");
             Pixels pixels(static_cast<std::size_t>(w)*h*4);
@@ -403,6 +419,39 @@ void verifySectionHud(int width,int height)
             require(logicalHit(x+22+5*110+52,y+97+27,size.x,size.y,dpi)==SectionUiPaletteItemBase+53,
                     "Third-page lush asset target disagrees with scaled drawing");
             draw(size.x,size.y,dpi);
+        }
+        // Every real block/model preview must remain visible inside its original
+        // clickable cell, including the compact Retina layout and later pages.
+        for (const int tab:{0,1}) {
+            act(SectionUiPaletteTabBase+tab);
+            const int count=static_cast<int>(game.sectionEditor().paletteItems().size());
+            for (int page=0;page<(count+23)/24;++page) {
+                act(SectionUiPaletteItemBase+page*24);
+                for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+                    const float dpi=size.x==640 ? 2.0f : 1.0f;
+                    const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+                    const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+                    const bool compact=scale<.9f;
+                    const auto pixels=draw(size.x,size.y,dpi);
+                    for (int cell=0;cell<24 && page*24+cell<count;++cell) {
+                        const float left=x+22+(cell%6)*110,top=y+97+(cell/6)*60;
+                        require(logicalHit(left+52,top+27,size.x,size.y,dpi)==SectionUiPaletteItemBase+page*24+cell,
+                                "A textured palette entry lost its original clickable cell");
+                        const float centerX=(left+(compact ? 52 : 24))*scale;
+                        const float centerY=(top+(compact ? 14 : 27))*scale;
+                        const float half=(compact ? 25 : 40)*scale*.44f;
+                        std::set<std::array<unsigned char,3>> colors;
+                        for (int py=static_cast<int>(std::ceil(centerY-half));py<centerY+half;++py)
+                            for (int px=static_cast<int>(std::ceil(centerX-half));px<centerX+half;++px) {
+                                const auto offset=(static_cast<std::size_t>(size.y-1-py)*size.x+px)*4;
+                                colors.insert({pixels[offset],pixels[offset+1],pixels[offset+2]});
+                            }
+                        if (colors.size()<=3)
+                            throw std::runtime_error("Blank palette thumbnail: tab "+std::to_string(tab)
+                                +", entry "+std::to_string(page*24+cell)+", width "+std::to_string(size.x));
+                    }
+                }
+            }
         }
         act(SectionUiPaletteTabBase+2); draw(width,height);
         require(game.sectionEditor().paletteItems().size()==3,"Section markers are missing from inventory");

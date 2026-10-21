@@ -1,6 +1,7 @@
 #pragma once
 
 #include "graphics/opengl.h"
+#include "graphics/palette_previews.h"
 
 #include <string_view>
 #include <optional>
@@ -46,6 +47,8 @@ public:
 
 private:
     Shader shader_;
+    Shader previewShader_;
+    PalettePreviews previews_;
     GLuint vao_ = 0;
     GLuint buffer_ = 0;
 };
