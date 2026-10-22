@@ -464,6 +464,9 @@ void SectionEditor::refreshTarget(Game& game)
                         // Side placement uses the neighboring block cell, not
                         // the thin model bounds, and retains the chosen rotation.
                         candidate.position.y = support.y;
+                        const auto size = buildingGridSize(candidate.kind,candidate.facing);
+                        for (const int axis : {0,2})
+                            candidate.position[axis] += normal[axis]*(size[axis]-1)*.5f;
                     } else {
                         candidate.position.y = support.y + (gridModule ? 0.f : .5f);
                         if (normal.x) candidate.position.x = support.x + (normal.x > 0 ? 1.0f - minimum.x : -maximum.x);

@@ -234,6 +234,21 @@ int main()
         equipAsset(voxel::HubAssetKind::WindowFrame); game.update(action);
         check(editor.placementPreview() && std::abs(editor.placementPreview()->position.y-12.f)<.001f,
               "wall-mounted window frames start at block bottoms rather than half a block up");
+        equipAsset(voxel::HubAssetKind::StoneDoorway);
+        for (int facing=0; facing<4; ++facing) {
+            while (editor.facing()!=facing) press(game,&voxel::InputActions::devRotate);
+            for (const auto normal : {glm::ivec3(1,0,0),glm::ivec3(-1,0,0),
+                                      glm::ivec3(0,0,1),glm::ivec3(0,0,-1)}) {
+                const auto center=glm::vec3(support)+glm::vec3(.5f);
+                game.camera.setPosition(center+glm::vec3(normal)*4.f); aim(game.camera,center);
+                game.update(action);
+                const auto size=voxel::buildingGridSize(voxel::HubAssetKind::StoneDoorway,facing);
+                const auto expected=glm::vec3(support)+glm::vec3(.5f,0,.5f)
+                    +glm::vec3(normal)*glm::vec3(size+glm::ivec3(1))*.5f;
+                check(editor.placementPreview() && editor.placementPreview()->position==expected,
+                      "wide doorway footprint clears its supporting block on all sides and rotations");
+            }
+        }
         game.world.set(support,voxel::Block::Air);
 
         // Structural models need to stack on their actual surfaces, including
