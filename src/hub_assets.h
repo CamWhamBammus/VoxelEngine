@@ -104,6 +104,20 @@ constexpr bool isBuildingKitAsset(HubAssetKind kind)
     return kind >= HubAssetKind::TimberPillar && kind <= HubAssetKind::Barrel;
 }
 
+// Building modules occupy whole grid cells even when their visible rails or
+// beams are thin. Zero means free-form scenery with surface-based placement.
+// Anchors are centered in X/Z and sit at the bottom of the module.
+constexpr glm::ivec3 buildingGridSize(HubAssetKind kind, int facing = 0)
+{
+    if (kind == HubAssetKind::StoneDoorway)
+        return facing & 1 ? glm::ivec3(1,3,3) : glm::ivec3(3,3,1);
+    if (isFenceAsset(kind) || kind == HubAssetKind::TimberPillar
+        || kind == HubAssetKind::TimberBeam || kind == HubAssetKind::DiagonalBrace
+        || kind == HubAssetKind::WindowFrame || kind == HubAssetKind::Barrel)
+        return {1,1,1};
+    return {};
+}
+
 // Lush ground models sit on their origin. HangingRoots/HangingPlanter grow
 // down from a ceiling; BlossomVines/ShelfFungi/RootFan grow out of a local
 // Z=0 wall toward +Z. CaveLotus/WaterGrass use the water surface as their origin.

@@ -363,6 +363,10 @@ void SectionEditor::refreshTarget(Game& game)
     if (targetSurface_ && game.target && targetSurface_->distance > game.target->distance + .01f)
         targetSurface_.reset();
     float nearest = game.target ? game.target->distance + .01f : BuildReach;
+    if (targetSurface_) {
+        targetAsset_ = targetSurface_->assetIndex;
+        nearest = targetSurface_->distance;
+    }
     if (boundsRevision_ != revision_) {
         assetBounds_.clear();
         for (const auto& asset : assets_) {
@@ -381,6 +385,9 @@ void SectionEditor::refreshTarget(Game& game)
         boundsRevision_ = revision_;
     }
     for (std::size_t i = 0; i < assets_.size(); ++i) {
+        // Thin rails and open frames select only their visible geometry. A
+        // forgiving envelope remains useful for foliage and floating items.
+        if (buildingGridSize(assets_[i].kind).x) continue;
         const auto hit = assetHit(assetBounds_[i].minimum, assetBounds_[i].maximum, game.camera.position(), game.camera.forward());
         if (hit && *hit < nearest) { targetAsset_ = i; nearest = *hit; }
     }
@@ -400,7 +407,9 @@ void SectionEditor::refreshTarget(Game& game)
                                        : game.target->position + normal;
         if (sectionInterior(cell)) {
             const int wallFacing = normal.x > 0 ? 1 : normal.x < 0 ? 3 : normal.z < 0 ? 2 : 0;
-            const int rotation = (facing_ + (normal.y == 0 ? wallFacing : 0)) % 4;
+            const bool gridModule = buildingGridSize(*item.asset).x != 0;
+            const bool wallMount = *item.asset == HubAssetKind::WindowFrame;
+            const int rotation = (facing_ + (normal.y == 0 && (!gridModule || wallMount) ? wallFacing : 0)) % 4;
             HubAsset candidate{*item.asset, glm::vec3(0), rotation,
                                isChestAsset(*item.asset) || item.pickup ? 0 : variation_};
             if (item.pickup) candidate.pickupItem = {*item.pickup, pickupQuantity_};
@@ -426,7 +435,7 @@ void SectionEditor::refreshTarget(Game& game)
                         if (normal[axis] > 0) candidate.position[axis] = point[axis] - minimum[axis];
                         if (normal[axis] < 0) candidate.position[axis] = point[axis] - maximum[axis];
                     }
-                    if (normal.y == 0) candidate.position.y = cell.y + .5f;
+                    if (normal.y == 0) candidate.position.y = cell.y + (gridModule ? 0.f : .5f);
                 } else {
                     const auto support = game.target->position;
                     if (normal.y > 0 && game.world.get(support) == Block::Water
@@ -434,8 +443,12 @@ void SectionEditor::refreshTarget(Game& game)
                         candidate.position.y = support.y + 1.0f;
                     else if (normal.y > 0) candidate.position.y = support.y + 1.0f - minimum.y;
                     else if (normal.y < 0) candidate.position.y = support.y - maximum.y;
-                    else {
-                        candidate.position.y = support.y + .5f;
+                    else if (gridModule && !wallMount) {
+                        // Side placement uses the neighboring block cell, not
+                        // the thin model bounds, and retains the chosen rotation.
+                        candidate.position.y = support.y;
+                    } else {
+                        candidate.position.y = support.y + (gridModule ? 0.f : .5f);
                         if (normal.x) candidate.position.x = support.x + (normal.x > 0 ? 1.0f - minimum.x : -maximum.x);
                         if (normal.z) candidate.position.z = support.z + (normal.z > 0 ? 1.0f - minimum.z : -maximum.z);
                     }

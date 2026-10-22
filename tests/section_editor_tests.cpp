@@ -215,6 +215,27 @@ int main()
               "hanging roots can be placed and removed through editor history");
         press(game, &voxel::InputActions::undo);
 
+        // A thin fence placed against any block side belongs to the adjacent
+        // grid cell, rather than being pulled flush against the block wall.
+        const glm::ivec3 support{16,12,16};
+        game.world.set(support,voxel::Block::Stone);
+        equipAsset(voxel::HubAssetKind::TimberFence);
+        for (const auto normal : {glm::ivec3(1,0,0),glm::ivec3(-1,0,0),
+                                  glm::ivec3(0,0,1),glm::ivec3(0,0,-1)}) {
+            const auto center = glm::vec3(support) + glm::vec3(.5f);
+            game.camera.setPosition(center + glm::vec3(normal)*3.f); aim(game.camera,center);
+            game.update(action);
+            check(editor.placementPreview()
+                  && editor.placementPreview()->position == glm::vec3(support+normal)+glm::vec3(.5f,0,.5f)
+                  && editor.placementPreview()->facing == editor.facing(),
+                  "fence placement on every block side keeps the block grid and chosen rotation");
+        }
+        game.camera.setPosition({16.5f,12.5f,20}); aim(game.camera,{16.5f,12.5f,16.5f});
+        equipAsset(voxel::HubAssetKind::WindowFrame); game.update(action);
+        check(editor.placementPreview() && std::abs(editor.placementPreview()->position.y-12.f)<.001f,
+              "wall-mounted window frames start at block bottoms rather than half a block up");
+        game.world.set(support,voxel::Block::Air);
+
         // Structural models need to stack on their actual surfaces, including
         // fractional stair heights, without temporary backing terrain blocks.
         const auto stackBeam = [&](voxel::HubAssetKind baseKind, glm::vec3 localTop) {
@@ -246,7 +267,7 @@ int main()
             }
             press(game, &voxel::InputActions::undo);
         };
-        stackBeam(voxel::HubAssetKind::TimberPillar,{0,3,0});
+        stackBeam(voxel::HubAssetKind::TimberPillar,{0,1,0});
         // A narrow beam fits across the lower treads of three real stair blocks.
         // Its anchor must follow the hit point instead of the voxel center,
         // which would bury half the beam in the upper tread.
