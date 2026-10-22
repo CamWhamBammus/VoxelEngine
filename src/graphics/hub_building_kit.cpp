@@ -21,41 +21,45 @@ glm::vec3 timber(std::uint32_t variant)
 void pillar(AssetBuilder& out, std::uint32_t variant)
 {
     const auto wood=timber(variant);
-    out.box({-0.30f,0,-0.30f},{0.30f,0.18f,0.30f},Block::Limestone,{0.45f,0.49f,0.44f});
-    out.box({-0.23f,0.18f,-0.23f},{0.23f,0.32f,0.23f},Block::Slate,Iron);
-    out.box({-0.19f,0.28f,-0.19f},{0.19f,2.84f,0.19f},Block::Timber,wood);
-    for (const float y : {0.50f,2.49f}) {
-        out.box({-0.21f,y,-0.21f},{0.21f,y+0.12f,0.21f},Block::Slate,Iron);
+    // Matching end caps make this a repeatable one-block column segment.
+    // Stack three for a tall porch instead of hiding a three-block height in
+    // a single menu item.
+    out.box({-0.25f,0,-0.25f},{0.25f,0.08f,0.25f},Block::Timber,wood*1.10f);
+    out.box({-0.21f,0.08f,-0.21f},{0.21f,0.16f,0.21f},Block::Timber,wood*0.82f);
+    out.box({-0.18f,0.14f,-0.18f},{0.18f,0.86f,0.18f},Block::Timber,wood);
+    for (const float y : {0.18f,0.74f}) {
+        out.box({-0.20f,y,-0.20f},{0.20f,y+0.08f,0.20f},Block::Slate,Iron);
         for (const float side : {-1.0f,1.0f}) {
-            const float z=side*0.21f;
-            out.box({-0.033f,y+0.03f,z-0.012f},{0.033f,y+0.09f,z+0.012f},Block::Slate,Rivet);
-            const float x=side*0.21f;
-            out.box({x-0.012f,y+0.03f,-0.033f},{x+0.012f,y+0.09f,0.033f},Block::Slate,Rivet);
+            const float z=side*0.20f;
+            out.box({-0.025f,y+0.02f,z-0.008f},{0.025f,y+0.06f,z+0.008f},Block::Slate,Rivet);
+            const float x=side*0.20f;
+            out.box({x-0.008f,y+0.02f,-0.025f},{x+0.008f,y+0.06f,0.025f},Block::Slate,Rivet);
         }
     }
-    out.box({-0.25f,2.78f,-0.25f},{0.25f,2.89f,0.25f},Block::Timber,wood*0.82f);
-    out.box({-0.30f,2.89f,-0.30f},{0.30f,3.0f,0.30f},Block::Timber,wood*1.10f);
+    out.box({-0.21f,0.84f,-0.21f},{0.21f,0.92f,0.21f},Block::Timber,wood*0.82f);
+    out.box({-0.25f,0.92f,-0.25f},{0.25f,1,0.25f},Block::Timber,wood*1.10f);
 }
 
 void timberBeam(AssetBuilder& out, std::uint32_t variant)
 {
     const auto wood=timber(variant);
-    out.box({-1,0.015f,-0.14f},{1,0.285f,0.14f},Block::Timber,wood);
-    for (const float x : {-0.79f,0.69f}) {
-        out.box({x,0,-0.155f},{x+0.10f,0.30f,0.155f},Block::Slate,Iron);
-        for (const float z : {-0.155f,0.155f})
-            out.box({x+0.027f,0.12f,z-0.008f},{x+0.073f,0.18f,z+0.008f},Block::Slate,Rivet);
+    out.box({-0.5f,0,-0.14f},{0.5f,0.25f,0.14f},Block::Timber,wood);
+    for (const float x : {-0.36f,0.28f}) {
+        out.box({x,0,-0.15f},{x+0.08f,0.25f,0.15f},Block::Slate,Iron);
+        for (const float z : {-0.15f,0.15f})
+            out.box({x+0.02f,0.10f,z-0.008f},{x+0.06f,0.15f,z+0.008f},Block::Slate,Rivet);
     }
 }
 
 void diagonalBrace(AssetBuilder& out, std::uint32_t variant)
 {
     const auto wood=timber(variant);
-    // Its left plate attaches to a pillar and its top plate to a beam.
-    out.box({0,0,-0.13f},{0.16f,1,0.13f},Block::Timber,wood*0.83f);
-    out.box({0,0.84f,-0.13f},{1,1,0.13f},Block::Timber,wood*0.92f);
-    out.beam({0.12f,0.14f,0},{0.86f,0.88f,0},0.18f,Block::Timber,wood*1.12f);
-    for (const glm::vec2 p : {glm::vec2(0.08f,0.18f),glm::vec2(0.82f,0.92f)}) {
+    // The brace occupies the same centered cell as a straight beam; turning it
+    // changes its direction without shifting it half a block off the grid.
+    out.box({-0.5f,0,-0.13f},{-0.34f,1,0.13f},Block::Timber,wood*0.83f);
+    out.box({-0.5f,0.84f,-0.13f},{0.5f,1,0.13f},Block::Timber,wood*0.92f);
+    out.beam({-0.38f,0.14f,0},{0.36f,0.88f,0},0.18f,Block::Timber,wood*1.12f);
+    for (const glm::vec2 p : {glm::vec2(-0.42f,0.18f),glm::vec2(0.32f,0.92f)}) {
         for (const float z : {-0.13f,0.13f})
             out.box({p.x-0.027f,p.y-0.027f,z-0.005f},
                     {p.x+0.027f,p.y+0.027f,z+0.005f},Block::Slate,Rivet);

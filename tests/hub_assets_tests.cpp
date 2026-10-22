@@ -160,6 +160,35 @@ void validateFenceCorners()
     }
 }
 
+void validateStructuralModules()
+{
+    const glm::vec3 origin{-4.5f,7,-8.5f};
+    for (int facing=0;facing<4;++facing) {
+        for (const auto kind : {HubAssetKind::TimberPillar,HubAssetKind::TimberBeam,HubAssetKind::DiagonalBrace})
+            validate(buildHubAsset({kind,origin,facing,0}),origin+glm::vec3(-0.5f,0,-0.5f),
+                     origin+glm::vec3(0.5f,1,0.5f));
+        const std::array<HubAsset,2> pillars{{{HubAssetKind::TimberPillar,origin,facing,0},
+            {HubAssetKind::TimberPillar,origin+glm::vec3(0,1,0),facing,0}}};
+        AssetCollision column;
+        column.rebuild(pillars);
+        const auto top=column.raycast(origin+glm::vec3(0,3,0),{0,-1,0},4);
+        check(top && std::abs(top->point.y-origin.y-2.0f)<0.0001f,
+              "two pillar modules stack to exactly two blocks high");
+        for (const float seam : {0.999f,1.0f,1.001f})
+            check(column.raycast(origin+glm::vec3(0,seam,1),{0,0,-1},2).has_value(),
+                  "matching pillar ends leave no gap at their shared horizontal face");
+        const std::array<HubAsset,2> beams{{{HubAssetKind::TimberBeam,origin,facing,0},
+            {HubAssetKind::TimberBeam,origin+turn({1,0,0},facing),facing,0}}};
+        AssetCollision span;
+        span.rebuild(beams);
+        for (const float seam : {0.499f,0.5f,0.501f}) {
+            const auto hit=span.raycast(origin+turn({seam,2,0},facing),{0,-1,0},3);
+            check(hit && std::abs(hit->point.y-origin.y-0.25f)<0.0001f,
+                  "one-block beams have a continuous flat top across an integer-cell join");
+        }
+    }
+}
+
 void validateGarden(HubAssetKind kind, std::uint32_t variation)
 {
     const auto mesh = buildHubAsset({kind, {}, 0, variation});
@@ -705,6 +734,7 @@ int main()
     check(varyingKinds >= 7, "variants provide meaningful visual variation across the asset set");
     validateFenceModules();
     validateFenceCorners();
+    validateStructuralModules();
     validateLootChest();
     validateItemPickups();
 
