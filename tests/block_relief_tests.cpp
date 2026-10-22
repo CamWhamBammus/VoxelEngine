@@ -316,6 +316,81 @@ void shapeSurfaces()
     }
 }
 
+void stairRelief(voxel::World& world)
+{
+    using namespace voxel;
+    for (const auto material : {Block::Stone, Block::Limestone, Block::Slate}) {
+        for (int facing = 0; facing < 4; ++facing) {
+            clear(world);
+            const auto block = stairBlock(material, facing);
+            for (int z = 0; z < 16; z += 2) {
+                for (int x = 0; x < 16; x += 2) world.set({x, 6, z}, block);
+            }
+            const auto mesh = buildBlockRelief(world, centerChunk);
+            check(!mesh.indices.empty() && mesh.indices.size() / 3 <= 64 * 10 * 39,
+                  "each rocky stair orientation has bounded real surface geometry");
+            check(same(mesh, buildBlockRelief(world, centerChunk)), "stair surface detail is deterministic");
+            bool lowerTread = false, upperTread = false, riser = false, side = false, raised = false, embedded = false;
+            for (const auto& vertex : mesh.vertices) {
+                const glm::vec3 normal(vertex.relief);
+                const auto projected = vertex.position - normal * vertex.relief.w;
+                const glm::ivec3 cell(glm::floor(projected - normal * .001f));
+                const auto local = projected - glm::vec3(cell);
+                check(world.get(cell) == block, "stair relief remains attached to its stair cell");
+                bool supported = false;
+                const auto surfaces = blockSurfaces(block);
+                for (int i = 0; i < surfaces.count; ++i) {
+                    const auto& surface = surfaces.faces[i];
+                    if (glm::vec3(surface.normal) != normal) continue;
+                    bool inside = true;
+                    for (int axis = 0; axis < 3; ++axis) {
+                        inside &= normal[axis] != 0 ? std::abs(local[axis] - surface.minimum[axis]) < .0001f
+                            : local[axis] > surface.minimum[axis] && local[axis] < surface.maximum[axis];
+                    }
+                    supported |= inside;
+                }
+                check(supported, "raised chips fit strictly inside the actual tread, riser, or side rectangle");
+                check(vertex.material == static_cast<float>(material) && vertex.color == blockColor(material),
+                      "stair relief uses the cube material and color instead of the oriented stair ID");
+                check(vertex.relief.w >= -.0041f && vertex.relief.w <= .0301f,
+                      "stair chips retain the shallow depth of ordinary stone blocks");
+                check(std::abs(glm::length(vertex.normal) - 1) < .0001f, "stair facets have valid lighting normals");
+                lowerTread |= normal.y == 1 && std::abs(local.y - .5f) < .0001f;
+                upperTread |= normal.y == 1 && std::abs(local.y - 1) < .0001f;
+                const bool innerRiser = normal.y == 0 && std::abs(glm::dot(local - .5f, normal)) < .0001f;
+                riser |= innerRiser;
+                side |= normal.y == 0 && !innerRiser;
+                raised |= vertex.relief.w > .004f;
+                embedded |= vertex.relief.w < -.003f;
+            }
+            check(lowerTread && upperTread && riser && side,
+                  "rocky stair material reaches both treads, the inner riser, and exterior sides");
+            check(raised && embedded, "stair chips rise from and sink into their supporting faces");
+            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                const auto& a = mesh.vertices[mesh.indices[i]];
+                const auto& b = mesh.vertices[mesh.indices[i + 1]];
+                const auto& c = mesh.vertices[mesh.indices[i + 2]];
+                const auto cross = glm::cross(b.position - a.position, c.position - a.position);
+                check(glm::length(cross) > .000001f && glm::dot(glm::normalize(cross), a.normal) > .9999f,
+                      "stair relief triangle normals match their outward winding");
+                if (std::min({a.relief.w, b.relief.w, c.relief.w}) < -.003f) continue;
+                const glm::vec3 normal(a.relief);
+                const auto projected = a.position - normal * a.relief.w;
+                const glm::vec3 cell(glm::floor(projected - normal * .001f));
+                const float seed = glm::dot(cell * glm::abs(normal), glm::vec3(17, 37, 57))
+                    + static_cast<float>(material) * 19.0f;
+                const glm::vec3 u = normal.x != 0 ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
+                const glm::vec3 v = normal.y != 0 ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+                const auto plate = [&](const MeshVertex& point) {
+                    return paintedStone({glm::dot(point.position, u), glm::dot(point.position, v)}, seed, material == Block::Slate);
+                };
+                check(plate(a) == plate(b) && plate(a) == plate(c),
+                      "stair chip caps stay inside the same painted rock plate as the base material");
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -433,6 +508,8 @@ int main()
     for (const auto material : {Block::Stone, Block::Limestone, Block::Slate}) {
         for (const auto face : faces) stoneSurface(world, material, face);
     }
+
+    stairRelief(world);
 
     bool threw = false;
     try { buildBlockRelief(world, World::ChunkCount); }

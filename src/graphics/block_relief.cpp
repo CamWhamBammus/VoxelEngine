@@ -1,4 +1,5 @@
 #include "graphics/block_relief.h"
+#include "block_shapes.h"
 
 #include <algorithm>
 #include <array>
@@ -204,7 +205,7 @@ void triangle(MeshData& mesh, glm::vec3 a, glm::vec3 b, glm::vec3 c, Block mater
 }
 
 void wedge(MeshData& mesh, const Patch& patch, glm::vec3 faceCenter, glm::vec3 normal,
-           glm::vec3 u, glm::vec3 v, float height, Block material)
+           glm::vec3 u, glm::vec3 v, glm::vec2 boundsLow, glm::vec2 boundsHigh, float height, Block material)
 {
     auto polygon = patch.outline;
     glm::vec2 center(0);
@@ -248,7 +249,7 @@ void wedge(MeshData& mesh, const Patch& patch, glm::vec3 faceCenter, glm::vec3 n
                 * (1.0f - 0.65f * glm::smoothstep(0.6f, 1.0f, fraction));
             return -0.0025f + (height + 0.0025f) * exposure;
         }
-        const auto distance = glm::vec2(0.492f) - glm::abs(point - faceUV);
+        const auto distance = glm::min(point - boundsLow, boundsHigh - point);
         const float taper = glm::clamp(std::min(distance.x, distance.y) / 0.065f, 0.0f, 1.0f);
         return -0.001f + (height + 0.001f) * fraction * taper;
     };
@@ -286,35 +287,41 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
 {
     const auto& chunk = world.chunk(chunkIndex);
     const auto origin = world.origin(chunkIndex);
-    constexpr std::array<glm::ivec3, 6> faces{{
-        {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1},
-    }};
     MeshData mesh;
     for (int y = 0; y < Chunk::Size; ++y) {
         for (int z = 0; z < Chunk::Size; ++z) {
             for (int x = 0; x < Chunk::Size; ++x) {
-                const auto material = chunk.get(x, y, z);
+                const auto block = chunk.get(x, y, z);
+                const auto material = stairMaterial(block);
                 const bool mineral = ore(material);
                 if (!mineral && material != Block::Stone && material != Block::Limestone && material != Block::Slate) continue;
                 const auto cell = origin + glm::ivec3(x, y, z);
-                for (int face = 0; face < static_cast<int>(faces.size()); ++face) {
-                    const auto adjacent = cell + faces[face];
-                    if (!World::contains(adjacent) || world.get(adjacent) != Block::Air) continue;
+                const auto surfaces = blockSurfaces(block);
+                for (int surfaceIndex = 0; surfaceIndex < surfaces.count; ++surfaceIndex) {
+                    const auto& surface = surfaces.faces[surfaceIndex];
+                    const glm::vec3 normal(surface.normal);
+                    const auto faceCenter = glm::vec3(cell) + (surface.minimum + surface.maximum) * .5f;
+                    const glm::ivec3 adjacent(glm::floor(faceCenter + normal * .001f));
+                    if (!World::contains(adjacent)
+                        || (adjacent != cell && world.get(adjacent) != Block::Air)) continue;
+                    const int face = surface.normal.x != 0 ? (surface.normal.x > 0 ? 0 : 1)
+                        : surface.normal.y != 0 ? (surface.normal.y > 0 ? 2 : 3) : (surface.normal.z > 0 ? 4 : 5);
                     const auto hash = faceHash(cell, face, world.seed());
-                    if (!mineral && hash % (faces[face].y > 0 ? 12u : 5u) != 0) continue;
-                    const glm::vec3 normal(faces[face]);
+                    if (!mineral && hash % (normal.y > 0 ? 12u : 5u) != 0) continue;
                     const glm::vec3 u = normal.x != 0 ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
                     const glm::vec3 v = normal.y != 0 ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
-                    const auto faceCenter = glm::vec3(cell) + glm::vec3(0.5f) + normal * 0.5f;
-                    const glm::vec2 low(glm::dot(glm::vec3(cell), u), glm::dot(glm::vec3(cell), v));
+                    const auto minimum = glm::vec3(cell) + surface.minimum;
+                    const auto maximum = glm::vec3(cell) + surface.maximum;
+                    const glm::vec2 low = glm::vec2(glm::dot(minimum, u), glm::dot(minimum, v)) + .008f;
+                    const glm::vec2 high = glm::vec2(glm::dot(maximum, u), glm::dot(maximum, v)) - .008f;
                     const float seed = glm::dot(glm::vec3(cell) * glm::abs(normal), glm::vec3(17, 37, 57))
                         + static_cast<float>(material) * 19.0f;
-                    const auto patches = mineral ? oreVeins(low + 0.008f, low + 0.992f, seed)
-                        : stoneFracture(low + 0.008f, low + 0.992f, seed, material == Block::Slate);
+                    const auto patches = mineral ? oreVeins(low, high, seed)
+                        : stoneFracture(low, high, seed, material == Block::Slate);
                     for (std::size_t piece = 0; piece < patches.size(); ++piece) {
                         const float variation = float(mix(hash ^ static_cast<std::uint32_t>(piece)) & 0xffffu) / 65535.0f;
                         const float height = mineral ? 0.025f + variation * 0.025f : 0.012f + variation * 0.018f;
-                        wedge(mesh, patches[piece], faceCenter, normal, u, v, height, material);
+                        wedge(mesh, patches[piece], faceCenter, normal, u, v, low, high, height, material);
                     }
                 }
             }

@@ -55,6 +55,21 @@ struct BlockSurfaces {
 inline BlockSurfaces blockSurfaces(Block block) noexcept
 {
     const auto shape = blockShape(block);
+    BlockSurfaces result;
+    if (shape.count < 2) {
+        if (shape.count == 0) return result;
+        // Cubes dominate the cavern. Keep their common six-face path cheap.
+        for (int axis = 0; axis < 3; ++axis) {
+            for (const int direction : {1, -1}) {
+                glm::vec3 low(0), high(1);
+                glm::ivec3 normal(0);
+                low[axis] = high[axis] = direction > 0 ? 1.0f : 0.0f;
+                normal[axis] = direction;
+                result.faces[result.count++] = {low, high, normal};
+            }
+        }
+        return result;
+    }
     const auto contains = [&](glm::vec3 point) {
         for (int i = 0; i < shape.count; ++i) {
             const auto& box = shape.boxes[i];
@@ -64,7 +79,6 @@ inline BlockSurfaces blockSurfaces(Block block) noexcept
         }
         return false;
     };
-    BlockSurfaces result;
     for (int axis = 0; axis < 3; ++axis) {
         const int u = axis == 0 ? 2 : 0, v = axis == 1 ? 2 : 1;
         for (const int direction : {1, -1}) {
