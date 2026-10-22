@@ -1,4 +1,5 @@
 #include "graphics/block_relief.h"
+#include "block_shapes.h"
 
 #include <algorithm>
 #include <array>
@@ -272,11 +273,55 @@ void stoneSurface(voxel::World& world, voxel::Block material, glm::ivec3 normal)
           "stone density reaches every chunk quadrant without truncation");
 }
 
+void shapeSurfaces()
+{
+    using namespace voxel;
+    const auto contains = [](Block block, glm::vec3 point) {
+        const auto shape = blockShape(block);
+        for (int i = 0; i < shape.count; ++i) {
+            const auto& box = shape.boxes[i];
+            if (point.x >= box.minimum.x && point.x <= box.maximum.x
+                && point.y >= box.minimum.y && point.y <= box.maximum.y
+                && point.z >= box.minimum.z && point.z <= box.maximum.z) return true;
+        }
+        return false;
+    };
+    for (const auto block : {Block::Air, Block::Water, Block::Stone, Block::StoneStairs,
+                             Block::StoneStairsWest, Block::StoneStairsSouth, Block::StoneStairsEast}) {
+        const auto surfaces = blockSurfaces(block);
+        check(surfaces.count == (isStair(block) ? 10 : isSolid(block) ? 6 : 0),
+              "shape boundary contains only its bounded set of exterior rectangles");
+        float area = 0;
+        for (int i = 0; i < surfaces.count; ++i) {
+            const auto& surface = surfaces.faces[i];
+            const auto size = surface.maximum - surface.minimum;
+            area += size.x * size.y + size.x * size.z + size.y * size.z;
+            const auto middle = (surface.minimum + surface.maximum) * .5f;
+            const auto offset = glm::vec3(surface.normal) * .01f;
+            check(contains(block, middle - offset) && !contains(block, middle + offset),
+                  "every extracted face separates solid stair material from empty space");
+            for (int j = 0; j < i; ++j) {
+                const auto& other = surfaces.faces[j];
+                const auto overlap = glm::min(surface.maximum, other.maximum)
+                    - glm::max(surface.minimum, other.minimum);
+                const bool samePlane = surface.normal == other.normal
+                    && glm::dot(middle - other.minimum, glm::vec3(surface.normal)) == 0;
+                check(!samePlane || !((surface.normal.x != 0 ? overlap.z > 0 : overlap.x > 0)
+                       && (surface.normal.y != 0 ? overlap.z > 0 : overlap.y > 0)),
+                      "coplanar shape rectangles never overlap");
+            }
+        }
+        check(std::abs(area - (isStair(block) ? 5.5f : isSolid(block) ? 6.0f : 0.0f)) < .0001f,
+              "shape boundary covers the entire exterior with no internal box faces");
+    }
+}
+
 } // namespace
 
 int main()
 {
     using namespace voxel;
+    shapeSurfaces();
     World world(42);
     clear(world);
     check(buildBlockRelief(world, centerChunk).indices.empty(), "air has no relief");
