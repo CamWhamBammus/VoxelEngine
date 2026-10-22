@@ -99,21 +99,24 @@ void picketFence(AssetBuilder& out, std::uint32_t variation)
 void cornerFence(AssetBuilder& out, std::uint32_t variation)
 {
     const auto wood=timber(variation), paint=trim(variation);
-    // The corner is the anchor; both legs extend two metres toward +X / +Z.
-    for (const glm::vec3 center : {glm::vec3(0,0,0),glm::vec3(1.85f,0,0),glm::vec3(0,0,1.85f)}) {
-        out.box(center+glm::vec3(-0.12f,0,-0.12f),center+glm::vec3(0.12f,1.32f,0.12f),Block::Timber,wood*0.80f);
-        out.box(center+glm::vec3(-0.15f,1.23f,-0.15f),center+glm::vec3(0.15f,1.34f,0.15f),Block::Planks,paint);
-        out.box(center+glm::vec3(-0.10f,1.34f,-0.10f),center+glm::vec3(0.10f,1.43f,0.10f),Block::Timber,wood*1.13f);
-        out.box(center+glm::vec3(-0.13f,0.08f,-0.13f),center+glm::vec3(0.13f,0.18f,0.13f),Block::Slate,Iron);
+    // Keep the turn in one cell. Its two rails meet straight modules in the
+    // neighbouring +X and +Z cells, using the same center anchor when rotated.
+    out.box({-0.10f,0,-0.10f},{0.10f,0.91f,0.10f},Block::Timber,wood*0.80f);
+    out.box({-0.11f,0.06f,-0.11f},{0.11f,0.14f,0.11f},Block::Slate,Iron);
+    out.box({-0.12f,0.86f,-0.12f},{0.12f,0.94f,0.12f},Block::Planks,paint);
+    out.box({-0.085f,0.94f,-0.085f},{0.085f,1.0f,0.085f},Block::Timber,wood*1.13f);
+    for (const float y : {0.28f,0.66f}) {
+        out.box({0.09f,y,-0.06f},{0.5f,y+0.11f,0.06f},Block::Timber,wood);
+        out.box({-0.06f,y,0.09f},{0.06f,y+0.11f,0.5f},Block::Timber,wood);
     }
-    for (const float y : {0.39f,0.92f}) {
-        out.box({0.10f,y,-0.08f},{1.85f,y+0.15f,0.08f},Block::Timber,wood);
-        out.box({-0.08f,y,0.10f},{0.08f,y+0.15f,1.85f},Block::Timber,wood);
+    out.beam({0.12f,0.38f,0},{0.46f,0.69f,0},0.055f,Block::Timber,wood*0.86f);
+    out.beam({0,0.38f,0.12f},{0,0.69f,0.46f},0.055f,Block::Timber,wood*0.86f);
+    out.box({0.09f,0.77f,-0.07f},{0.5f,0.805f,0.07f},Block::Planks,wood*1.18f);
+    out.box({-0.07f,0.77f,0.09f},{0.07f,0.805f,0.5f},Block::Planks,wood*1.18f);
+    for (const float y : {0.32f,0.70f}) {
+        out.box({-0.018f,y,-0.11f},{0.018f,y+0.036f,-0.10f},Block::Slate,Brass);
+        out.box({-0.11f,y,-0.018f},{-0.10f,y+0.036f,0.018f},Block::Slate,Brass);
     }
-    out.beam({0.12f,0.51f,0},{1.76f,0.95f,0},0.10f,Block::Timber,wood*0.86f);
-    out.beam({0,0.51f,0.12f},{0,0.95f,1.76f},0.10f,Block::Timber,wood*0.86f);
-    out.box({0.10f,1.07f,-0.095f},{1.85f,1.115f,0.095f},Block::Planks,wood*1.18f);
-    out.box({-0.095f,1.07f,0.10f},{0.095f,1.115f,1.85f},Block::Planks,wood*1.18f);
 }
 
 void gardenGate(MeshData& mesh, const HubAsset& asset)

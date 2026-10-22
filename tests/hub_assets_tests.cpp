@@ -137,6 +137,28 @@ void validateFenceModules()
     }
 }
 
+void validateFenceCorners()
+{
+    for (int facing=0;facing<4;++facing) {
+        const glm::vec3 origin{3.5f,7,-8.5f};
+        validate(buildHubAsset({HubAssetKind::FenceCorner,origin,facing,0}),
+                 origin+glm::vec3(-0.5f,0,-0.5f),origin+glm::vec3(0.5f,1,0.5f));
+        const std::array<HubAsset,3> corner{{{HubAssetKind::FenceCorner,origin,facing,0},
+            {HubAssetKind::TimberFence,origin+turn({1,0,0},facing),facing,0},
+            {HubAssetKind::TimberFence,origin+turn({0,0,1},facing),(facing+1)%4,0}}};
+        AssetCollision collision;
+        collision.rebuild(corner);
+        for (const float seam : {0.499f,0.5f,0.501f}) {
+            check(collision.raycast(origin+turn({seam,0.70f,-1},facing),turn({0,0,1},facing),2).has_value()
+                  && collision.raycast(origin+turn({-1,0.70f,seam},facing),turn({1,0,0},facing),2).has_value(),
+                  "both corner arms meet neighbouring straight rails on the shared block face");
+        }
+        check(!collision.overlaps(origin+glm::vec3(-0.499f,0.1f,-0.499f),
+                                  origin+glm::vec3(-0.3f,0.2f,-0.3f)),
+              "a corner stays thin rather than filling the surrounding block");
+    }
+}
+
 void validateGarden(HubAssetKind kind, std::uint32_t variation)
 {
     const auto mesh = buildHubAsset({kind, {}, 0, variation});
@@ -681,6 +703,7 @@ int main()
     }
     check(varyingKinds >= 7, "variants provide meaningful visual variation across the asset set");
     validateFenceModules();
+    validateFenceCorners();
     validateLootChest();
     validateItemPickups();
 
