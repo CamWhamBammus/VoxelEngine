@@ -268,6 +268,33 @@ int main()
             press(game, &voxel::InputActions::undo);
         };
         stackBeam(voxel::HubAssetKind::TimberPillar,{0,1,0});
+        // Aim at the ends of the visible fence rails to continue a run. Their
+        // decorative posts must not change grid spacing or rotate the next piece.
+        for (int facing=0; facing<4; ++facing) {
+            game.camera.setPosition({10.5f,15,-15.5f}); aim(game.camera,{10.5f,8.5f,-18.5f});
+            equipAsset(voxel::HubAssetKind::TimberFence);
+            while (editor.facing()!=facing) press(game,&voxel::InputActions::devRotate);
+            press(game,&voxel::InputActions::place);
+            check(editor.assets().size()==1,"fence run begins with one grid-aligned piece");
+            if (editor.assets().size()!=1) continue;
+            const auto base=editor.assets().front();
+            glm::vec3 along{1,0,0};
+            for (int i=0;i<facing;++i) along={along.z,along.y,-along.x};
+            for (const float sign : {-1.f,1.f}) {
+                const auto direction=along*sign;
+                game.camera.setPosition(base.position+direction*2.f+glm::vec3(0,.45f,0));
+                aim(game.camera,base.position+direction*.45f+glm::vec3(0,.45f,0));
+                game.update(action);
+                check(editor.targetedAsset()==base && editor.placementPreview()
+                      && glm::distance(editor.placementPreview()->position,base.position+direction)<.001f
+                      && editor.placementPreview()->facing==facing,
+                      "both ends of every fence rotation continue on the neighboring grid cell");
+            }
+            press(game,&voxel::InputActions::place);
+            check(editor.assets().size()==2,"a neighboring fence can be placed from its visible end post");
+            if (editor.assets().size()==2) press(game,&voxel::InputActions::undo);
+            press(game,&voxel::InputActions::undo);
+        }
         // A narrow beam fits across the lower treads of three real stair blocks.
         // Its anchor must follow the hit point instead of the voxel center,
         // which would bury half the beam in the upper tread.

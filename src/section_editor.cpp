@@ -424,7 +424,24 @@ void SectionEditor::refreshTarget(Game& game)
                 // Attach the model's actual bounds to the selected surface:
                 // floor assets stand on it, hanging assets meet the underside,
                 // and wall attachments face away from the wall.
-                if (modelSurface || stairSurface) {
+                const HubAsset* supportModule = modelSurface ? &assets_[targetSurface_->assetIndex] : nullptr;
+                if (gridModule && !wallMount && supportModule
+                    && buildingGridSize(supportModule->kind).x && supportModule->kind != HubAssetKind::WindowFrame) {
+                    // Join whole modules, not their thin rails, caps, or trim.
+                    // Keep the supporting grid's origin so copied assemblies
+                    // and pieces on half-height landings remain aligned.
+                    const auto size = buildingGridSize(candidate.kind,candidate.facing);
+                    const auto supportSize = buildingGridSize(supportModule->kind,supportModule->facing);
+                    const auto point = targetSurface_->point;
+                    candidate.position = supportModule->position;
+                    for (const int axis : {0,2}) {
+                        if (normal[axis]) candidate.position[axis] += normal[axis]*(supportSize[axis]+size[axis])*.5f;
+                        else candidate.position[axis] += std::floor(point[axis]-supportModule->position[axis]+.5f);
+                    }
+                    if (normal.y > 0) candidate.position.y = point.y-minimum.y;
+                    else if (normal.y < 0) candidate.position.y = point.y-maximum.y;
+                    else candidate.position.y += std::floor(point.y-supportModule->position.y);
+                } else if (modelSurface || stairSurface) {
                     const auto point = modelSurface ? targetSurface_->point
                         : game.camera.position() + game.camera.forward() * game.target->distance;
                     if (!modelSurface && stairSurface && normal.y != 0) {
@@ -453,8 +470,9 @@ void SectionEditor::refreshTarget(Game& game)
                         if (normal.z) candidate.position.z = support.z + (normal.z > 0 ? 1.0f - minimum.z : -maximum.z);
                     }
                 }
-                candidate.position = glm::clamp(candidate.position, glm::vec3(SectionInteriorMin) + glm::vec3(.001f),
-                                                 glm::vec3(SectionInteriorMax) - glm::vec3(.001f));
+                if (!gridModule)
+                    candidate.position = glm::clamp(candidate.position, glm::vec3(SectionInteriorMin) + glm::vec3(.001f),
+                                                     glm::vec3(SectionInteriorMax) - glm::vec3(.001f));
                 const auto low = candidate.position + minimum;
                 const auto high = candidate.position + maximum;
                 const auto roomLow = glm::vec3(SectionInteriorMin) - glm::vec3(.02f);
