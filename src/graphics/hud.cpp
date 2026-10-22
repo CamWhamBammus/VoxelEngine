@@ -889,6 +889,8 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
             : item.asset == HubAssetKind::GardenGate ? std::string("T ROTATE / Y OPEN-CLOSED / ")+(editor.variation()%2 ? "OPEN" : "CLOSED")
             : item.block && isStair(*item.block) ? "T ROTATE "+std::to_string(stairFacing(*item.block)*90)+" DEG / RIGHT PLACE STAIR"
+            : item.asset && buildingGridSize(*item.asset).x ? "T ROTATE / Y FINISH / "
+                +sectionDimensions(buildingGridSize(*item.asset,editor.facing()))+" BLOCK GRID"
             : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
             : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
         if (pasting) {
