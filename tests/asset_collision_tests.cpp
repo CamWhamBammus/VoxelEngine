@@ -139,6 +139,21 @@ void buildingPassages()
         check(near(open.sweep(low,high,axis,distance),distance),
               "the open garden gate leaves full player clearance through its opening in every rotation");
 
+        for (const auto variant : {0u,1u,4u,5u}) {
+            const auto mesh=buildHubAsset({HubAssetKind::GardenGate,origin,facing,variant});
+            for (const auto& vertex : mesh.vertices) {
+                const auto local=vertex.position-origin;
+                check(std::abs(local.x)<=0.5001f && std::abs(local.z)<=0.5001f
+                      && local.y>=-0.0001f && local.y<=1.0001f,
+                      "open and closed gate leaves remain within their one-cell footprint");
+            }
+        }
+        // The gate fits between full blocks on its two adjoining cell faces;
+        // the open panels must still leave a normal-width player passage.
+        for (const float x : {-0.301f,0.301f})
+            check(!open.raycast(origin+rotate({x,0.60f,-1},facing),forward,2),
+                  "open gate preserves clearance around the player's full 0.6m width");
+
         const auto doorway = collisionFor({HubAssetKind::StoneDoorway, origin, facing, 0});
         check(near(doorway.sweep(low,high,axis,distance),distance),
               "stone doorway has a walkable opening with no invisible collision wall in every rotation");

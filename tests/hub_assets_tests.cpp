@@ -117,7 +117,8 @@ void validatePath(HubAssetKind kind, std::uint32_t variation)
 
 void validateFenceModules()
 {
-    for (const auto kind : {HubAssetKind::TimberFence, HubAssetKind::PicketFence}) {
+    for (const auto kind : {HubAssetKind::TimberFence, HubAssetKind::PicketFence,
+                            HubAssetKind::IronRailing, HubAssetKind::GardenGate}) {
         for (const auto variant : {0u,1u,42u}) for (int facing=0;facing<4;++facing) {
             const glm::vec3 origin{-4.5f,7,-8.5f};
             const auto mesh=buildHubAsset({kind,origin,facing,variant});
@@ -129,7 +130,7 @@ void validateFenceModules()
             // Sample across the joining cell face, including either side of
             // the seam: both visual end posts must form a continuous barrier.
             for (const float x : {0.499f,0.5f,0.501f}) {
-                const auto hit=collision.raycast(origin+turn({x,0.70f,1},facing),turn({0,0,-1},facing),2);
+                const auto hit=collision.raycast(origin+turn({x,0.90f,1},facing),turn({0,0,-1},facing),2);
                 check(hit && hit->distance<1.0f,
                       "one-block fence modules join without a gap in all four orientations");
             }
