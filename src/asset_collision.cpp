@@ -60,6 +60,7 @@ Cell binAt(glm::dvec3 position)
 struct Triangle {
     glm::vec3 a, b, c;
     Bounds bounds;
+    std::size_t assetIndex;
 };
 
 // SAT axes for a triangle against an axis-aligned box: the three box normals,
@@ -215,7 +216,8 @@ struct AssetCollision::Data {
 void AssetCollision::rebuild(std::span<const HubAsset> assets)
 {
     auto data = std::make_shared<Data>();
-    for (const auto& asset : assets) {
+    for (std::size_t assetIndex = 0; assetIndex < assets.size(); ++assetIndex) {
+        const auto& asset = assets[assetIndex];
         // Dropped items are collectible visuals, never walls, floors, or marker supports.
         if (isItemPickup(asset.kind)) continue;
         // Leave ample room for mesh extents and safe conversion to grid cells.
@@ -232,7 +234,7 @@ void AssetCollision::rebuild(std::span<const HubAsset> assets)
             const auto normal = glm::cross(glm::dvec3(b) - glm::dvec3(a), glm::dvec3(c) - glm::dvec3(a));
             if (!finite(a) || !finite(b) || !finite(c) || glm::dot(normal, normal) < 1e-20) continue;
             Triangle triangle{a,b,c,{glm::dvec3(glm::min(a,glm::min(b,c))),
-                                     glm::dvec3(glm::max(a,glm::max(b,c)))}};
+                                     glm::dvec3(glm::max(a,glm::max(b,c)))}, assetIndex};
             const auto index = static_cast<std::uint32_t>(data->triangles.size());
             data->triangles.push_back(triangle);
             model.bounds.minimum = glm::min(model.bounds.minimum, triangle.bounds.minimum);
@@ -322,7 +324,7 @@ std::optional<AssetSurfaceHit> AssetCollision::raycast(glm::vec3 origin, glm::ve
         auto normal = glm::normalize(glm::cross(glm::dvec3(triangle.b) - glm::dvec3(triangle.a),
                                                 glm::dvec3(triangle.c) - glm::dvec3(triangle.a)));
         if (glm::dot(normal, ray) > 0.0) normal = -normal;
-        result = AssetSurfaceHit{glm::vec3(start + ray * closest), glm::vec3(normal), float(closest)};
+        result = AssetSurfaceHit{glm::vec3(start + ray * closest), glm::vec3(normal), float(closest), triangle.assetIndex};
     }
     return result;
 }

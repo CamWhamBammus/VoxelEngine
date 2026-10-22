@@ -43,6 +43,21 @@ int main()
     if (!mkdtemp(pattern)) return 1;
     const std::filesystem::path root(pattern);
     try {
+        // Hits must identify the actual surface, including through hollow frames.
+        // Item drops do not enter the collision mesh but keep their document index.
+        voxel::AssetCollision surfaces;
+        const std::array placements{
+            voxel::HubAsset{voxel::HubAssetKind::ItemPickup,{0,0,-2}},
+            voxel::HubAsset{voxel::HubAssetKind::StoneDoorway,{0,0,0}},
+            voxel::HubAsset{voxel::HubAssetKind::TimberBeam,{0,1,3}}
+        };
+        surfaces.rebuild(placements);
+        const auto throughDoor = surfaces.raycast({0,1.1f,-4},{0,0,1},10);
+        check(throughDoor && throughDoor->assetIndex == 2,
+              "ray through doorway selects the beam behind it, preserving placement indices");
+        const auto doorJamb = surfaces.raycast({-1.2f,1,-4},{0,0,1},10);
+        check(doorJamb && doorJamb->assetIndex == 1,
+              "a hit on doorway masonry identifies its own placement");
         const std::array<std::string_view, 1> devArg{"--dev"};
         check(voxel::parseOptions(devArg).dev, "--dev opens the section authoring workflow");
         for (const std::vector<std::string_view>& args : {

@@ -11,6 +11,7 @@ struct AssetSurfaceHit {
     glm::vec3 point;
     glm::vec3 normal;
     float distance;
+    std::size_t assetIndex = 0; // Index in the original placement list, including skipped pickups.
 };
 
 // Scenery collision uses its visible triangles, including rotation and variation.
