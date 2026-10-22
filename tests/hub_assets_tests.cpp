@@ -189,6 +189,33 @@ void validateStructuralModules()
     }
 }
 
+void validateWallFittings()
+{
+    const glm::vec3 origin{-4.5f,7,-8.5f};
+    for (int facing=0;facing<4;++facing) {
+        const auto a=turn({-1.5f,0,-0.5f},facing), b=turn({1.5f,3,0.5f},facing);
+        validate(buildHubAsset({HubAssetKind::StoneDoorway,origin,facing,0}),
+                 origin+glm::min(a,b),origin+glm::max(a,b));
+        const std::array<HubAsset,1> door{{{HubAssetKind::StoneDoorway,origin,facing,0}}};
+        AssetCollision masonry;
+        masonry.rebuild(door);
+        for (const float x : {-0.499f,0.0f,0.499f}) for (const float y : {0.1f,1.0f,1.999f})
+            check(!masonry.raycast(origin+turn({x,y,1},facing),turn({0,0,-1},facing),2),
+                  "arched doorway preserves a full one-by-two-block clear opening");
+        for (const float x : {-1.4f,0.0f,1.4f})
+            check(masonry.raycast(origin+turn({x,2.90f,1},facing),turn({0,0,-1},facing),2).has_value(),
+                  "the square doorway header fills the top of a three-block wall cutout");
+        validate(buildHubAsset({HubAssetKind::WindowFrame,origin,facing,0}),
+                 origin+glm::vec3(-0.5f,0,-0.5f),origin+glm::vec3(0.5f,1,0.5f));
+        const std::array<HubAsset,1> window{{{HubAssetKind::WindowFrame,origin,facing,0}}};
+        AssetCollision frame;
+        frame.rebuild(window);
+        check(frame.raycast(origin+turn({0.45f,0.4f,1},facing),turn({0,0,-1},facing),2).has_value()
+              && !frame.raycast(origin+turn({0.2f,0.4f,1},facing),turn({0,0,-1},facing),2),
+              "a one-block window has solid jambs and genuinely open panes");
+    }
+}
+
 void validateGarden(HubAssetKind kind, std::uint32_t variation)
 {
     const auto mesh = buildHubAsset({kind, {}, 0, variation});
@@ -735,6 +762,7 @@ int main()
     validateFenceModules();
     validateFenceCorners();
     validateStructuralModules();
+    validateWallFittings();
     validateLootChest();
     validateItemPickups();
 

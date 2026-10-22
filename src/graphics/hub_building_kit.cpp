@@ -94,24 +94,27 @@ void stoneDoorway(AssetBuilder& out, std::uint32_t variant)
 {
     const glm::vec3 stone=variant%2 ? glm::vec3(0.50f,0.55f,0.48f) : glm::vec3(0.63f,0.60f,0.49f);
     for (const float side : {-1.0f,1.0f}) {
-        const float left=side<0 ? -1.5f : 0.8f;
-        // A recessed core keeps the jamb solid between the individual stones.
-        out.box({left+0.025f,0,-0.25f},{left+0.675f,2.5f,0.25f},Block::Limestone,Mortar);
-        for (int course=0;course<5;++course) {
+        const float left=side<0 ? -1.5f : 0.5f;
+        out.box({left+0.025f,0,-0.25f},{left+0.975f,2.0f,0.25f},Block::Limestone,Mortar);
+        for (int course=0;course<4;++course) {
             const float y=course*0.5f;
-            masonry(out,{{{left,y},{left,y+0.49f},{left+0.7f,y+0.49f},{left+0.7f,y}}},
+            masonry(out,{{{left,y},{left,y+0.49f},{left+1.0f,y+0.49f},{left+1.0f,y}}},
                     stone*(0.91f+0.035f*((course+variant)%4)));
         }
     }
-    // Segment the arch instead of filling the opening with a rectangular wall.
+    // A square 3x3 outer frame fills a block-wall cutout. The curved inner
+    // arch keeps the stonework character above a clear 1x2 doorway.
     constexpr std::array<glm::vec2,6> outer{{
-        {-1.5f,2.5f},{-1.05f,3.04f},{-0.38f,3.3f},
-        {0.38f,3.3f},{1.05f,3.04f},{1.5f,2.5f}
+        {-1.5f,2.0f},{-1.5f,3.0f},{-0.5f,3.0f},
+        {0.5f,3.0f},{1.5f,3.0f},{1.5f,2.0f}
     }};
     constexpr std::array<glm::vec2,6> inner{{
-        {-0.8f,2.5f},{-0.57f,2.72f},{-0.20f,2.9f},
-        {0.20f,2.9f},{0.57f,2.72f},{0.8f,2.5f}
+        {-0.5f,2.0f},{-0.40f,2.25f},{-0.18f,2.5f},
+        {0.18f,2.5f},{0.40f,2.25f},{0.5f,2.0f}
     }};
+    out.box({-1.475f,2.0f,-0.25f},{-0.525f,3.0f,0.25f},Block::Limestone,Mortar);
+    out.box({0.525f,2.0f,-0.25f},{1.475f,3.0f,0.25f},Block::Limestone,Mortar);
+    out.box({-0.525f,2.60f,-0.25f},{0.525f,3.0f,0.25f},Block::Limestone,Mortar);
     for (std::size_t i=0;i+1<outer.size();++i) {
         const float joint=i==0 ? 0 : 0.012f;
         const auto a=glm::mix(inner[i],inner[i+1],joint);
@@ -125,17 +128,17 @@ void stoneDoorway(AssetBuilder& out, std::uint32_t variant)
 void windowFrame(AssetBuilder& out, std::uint32_t variant)
 {
     const auto wood=timber(variant);
-    out.box({-0.9f,0,0},{0.9f,0.12f,0.36f},Block::Timber,wood*1.10f);
-    out.box({-0.8f,0.12f,0.025f},{0.8f,0.26f,0.27f},Block::Timber,wood);
-    for (const float left : {-0.8f,0.64f})
-        out.box({left,0.12f,0.025f},{left+0.16f,1.55f,0.27f},Block::Timber,wood);
-    out.box({-0.86f,1.47f,0.015f},{0.86f,1.65f,0.29f},Block::Timber,wood*1.06f);
-    for (const float x : {-0.22f,0.22f})
-        out.box({x-0.018f,0.25f,0.11f},{x+0.018f,1.48f,0.145f},Block::Slate,Iron);
-    out.box({-0.65f,0.84f,0.11f},{0.65f,0.88f,0.145f},Block::Slate,Iron);
-    for (const float x : {-0.73f,0.73f}) {
-        out.box({x-0.045f,1.48f,0.29f},{x+0.045f,1.64f,0.305f},Block::Slate,Iron);
-        out.box({x-0.022f,1.54f,0.303f},{x+0.022f,1.58f,0.32f},Block::Slate,Rivet);
+    // Sill, lintel, and side jambs stay inside a single square wall opening.
+    out.box({-0.5f,0,-0.18f},{0.5f,0.10f,0.25f},Block::Timber,wood*1.10f);
+    out.box({-0.5f,0.10f,-0.14f},{0.5f,0.18f,0.14f},Block::Timber,wood);
+    for (const float left : {-0.5f,0.38f})
+        out.box({left,0.10f,-0.14f},{left+0.12f,0.90f,0.14f},Block::Timber,wood);
+    out.box({-0.5f,0.88f,-0.15f},{0.5f,1.0f,0.17f},Block::Timber,wood*1.06f);
+    out.box({-0.014f,0.18f,-0.015f},{0.014f,0.89f,0.015f},Block::Slate,Iron);
+    out.box({-0.38f,0.49f,-0.015f},{0.38f,0.515f,0.015f},Block::Slate,Iron);
+    for (const float x : {-0.44f,0.44f}) {
+        out.box({x-0.025f,0.90f,0.17f},{x+0.025f,0.98f,0.18f},Block::Slate,Iron);
+        out.box({x-0.012f,0.93f,0.18f},{x+0.012f,0.95f,0.19f},Block::Slate,Rivet);
     }
 }
 
