@@ -11,6 +11,8 @@ namespace voxel {
 // each vertex onto its original painted face (render with decorative = 2).
 // Geometry embeds 0.004 into its anchor and extends at most 0.05 into empty
 // space. It never crosses its supporting surface's tangential edges.
+// Faces beside stairs are clipped to the neighboring empty half-cube, so the
+// same material continues into the opening without hidden/intersecting chips.
 // At most one stone fracture strip (0.03 high) or two ore ridges, whose low
 // tip and one lateral edge sink into the host instead of lifting a full kite.
 // Each clipped outline has <=12 corners. Stone adds a midpoint and cap center,

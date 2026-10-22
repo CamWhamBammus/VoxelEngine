@@ -16,6 +16,40 @@ struct Patch {
     glm::vec2 rise; // Direction along the face from the flush end to the raised edge.
 };
 
+// The empty half of a neighboring stair remains visible; its occupied lower
+// slab and upper half must clip chips just as they clip the block mesh itself.
+bool exposedSurface(const World& world, glm::ivec3 cell, BlockSurface& surface)
+{
+    const glm::vec3 normal(surface.normal);
+    const auto middle = glm::vec3(cell) + (surface.minimum + surface.maximum) * .5f;
+    const auto probe = middle + normal * .001f;
+    const glm::ivec3 adjacent(glm::floor(probe));
+    if (!World::contains(adjacent)) return false;
+    if (adjacent == cell) return true;
+    const auto neighbor = world.get(adjacent);
+    if (neighbor == Block::Air) return true;
+    if (!isStair(neighbor)) return false;
+    const auto upper = blockShape(neighbor).boxes[1];
+    glm::vec3 low(0, .5f, 0), high(1);
+    for (const int axis : {0, 2}) {
+        if (upper.minimum[axis] > 0) high[axis] = .5f;
+        if (upper.maximum[axis] < 1) low[axis] = .5f;
+    }
+    low += glm::vec3(adjacent - cell);
+    high += glm::vec3(adjacent - cell);
+    for (int axis = 0; axis < 3; ++axis) {
+        if (normal[axis] != 0) {
+            const float position = probe[axis] - cell[axis];
+            if (position <= low[axis] || position >= high[axis]) return false;
+        } else {
+            surface.minimum[axis] = std::max(surface.minimum[axis], low[axis]);
+            surface.maximum[axis] = std::min(surface.maximum[axis], high[axis]);
+            if (surface.minimum[axis] >= surface.maximum[axis]) return false;
+        }
+    }
+    return true;
+}
+
 std::uint32_t mix(std::uint32_t value)
 {
     value ^= value >> 16;
@@ -298,12 +332,10 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
                 const auto cell = origin + glm::ivec3(x, y, z);
                 const auto surfaces = blockSurfaces(block);
                 for (int surfaceIndex = 0; surfaceIndex < surfaces.count; ++surfaceIndex) {
-                    const auto& surface = surfaces.faces[surfaceIndex];
+                    auto surface = surfaces.faces[surfaceIndex];
+                    if (!exposedSurface(world, cell, surface)) continue;
                     const glm::vec3 normal(surface.normal);
                     const auto faceCenter = glm::vec3(cell) + (surface.minimum + surface.maximum) * .5f;
-                    const glm::ivec3 adjacent(glm::floor(faceCenter + normal * .001f));
-                    if (!World::contains(adjacent)
-                        || (adjacent != cell && world.get(adjacent) != Block::Air)) continue;
                     const int face = surface.normal.x != 0 ? (surface.normal.x > 0 ? 0 : 1)
                         : surface.normal.y != 0 ? (surface.normal.y > 0 ? 2 : 3) : (surface.normal.z > 0 ? 4 : 5);
                     const auto hash = faceHash(cell, face, world.seed());

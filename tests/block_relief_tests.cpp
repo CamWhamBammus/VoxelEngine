@@ -391,6 +391,85 @@ void stairRelief(voxel::World& world)
     }
 }
 
+void stairNeighbors(voxel::World& world)
+{
+    using namespace voxel;
+    clear(world);
+    const auto solidAt = [&](glm::vec3 point) {
+        const glm::ivec3 cell(glm::floor(point));
+        const auto local = point - glm::vec3(cell);
+        const auto shape = blockShape(world.get(cell));
+        for (int i = 0; i < shape.count; ++i) {
+            const auto& box = shape.boxes[i];
+            if (local.x > box.minimum.x && local.x < box.maximum.x
+                && local.y > box.minimum.y && local.y < box.maximum.y
+                && local.z > box.minimum.z && local.z < box.maximum.z) return true;
+        }
+        return false;
+    };
+    int survivingFaces = 0;
+    for (const auto anchor : {glm::ivec3(15, 6, 6), glm::ivec3(0, 8, 10),
+                              glm::ivec3(6, 7, 15), glm::ivec3(-1, 6, -1)}) {
+        const auto chunkIndex = anchor.x < 0 ? centerChunk - World::Width - 1 : centerChunk;
+        for (const auto block : {Block::CopperOre, Block::StoneStairs, Block::StoneStairsWest,
+                                 Block::StoneStairsSouth, Block::StoneStairsEast}) {
+            world.set(anchor, block);
+            cover(world, anchor);
+            for (const auto face : faces) {
+                const glm::vec3 normal(face);
+                const int axis = face.x != 0 ? 0 : face.y != 0 ? 1 : 2;
+                const float plane = anchor[axis] + (face[axis] > 0 ? 1.0f : 0.0f);
+                const auto boundaryVertex = [&](const MeshVertex& vertex) {
+                    const auto projected = vertex.position - glm::vec3(vertex.relief) * vertex.relief.w;
+                    return glm::vec3(vertex.relief) == normal && std::abs(projected[axis] - plane) < .0001f;
+                };
+                world.set(anchor + face, Block::Air);
+                const auto uncovered = buildBlockRelief(world, chunkIndex);
+                for (int facing = 0; facing < 4; ++facing) {
+                    world.set(anchor + face, stairBlock(Block::Planks, facing));
+                    const auto mesh = buildBlockRelief(world, chunkIndex);
+                    int visible = 0;
+                    for (const auto& vertex : mesh.vertices) {
+                        if (!boundaryVertex(vertex)) continue;
+                        ++visible;
+                        const auto projected = vertex.position - normal * vertex.relief.w;
+                        check(solidAt(projected - normal * .002f),
+                              "clipped relief remains anchored in solid geometry at stair seams");
+                        check(!solidAt(projected + normal * .002f),
+                              "chips beside stairs occupy only the neighboring empty half-cube");
+                        if (vertex.relief.w > 0) {
+                            check(!solidAt(vertex.position), "raised chip vertices never enter neighboring stair collision");
+                        }
+                    }
+                    if (visible > 0) ++survivingFaces;
+                    if (face.y > 0) check(visible == 0, "a stair's solid lower slab hides relief directly underneath it");
+                    for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                        const auto& a = mesh.vertices[mesh.indices[i]];
+                        const auto& b = mesh.vertices[mesh.indices[i + 1]];
+                        const auto& c = mesh.vertices[mesh.indices[i + 2]];
+                        if (!boundaryVertex(a)) continue;
+                        const auto center = (a.position + b.position + c.position) / 3.0f;
+                        const float depth = (a.relief.w + b.relief.w + c.relief.w) / 3.0f;
+                        check(!solidAt(center - normal * depth + normal * .002f),
+                              "clipped triangle interiors do not bridge across a neighboring stair's solid area");
+                    }
+                }
+                world.set(anchor + face, Block::Dirt);
+                const auto covered = buildBlockRelief(world, chunkIndex);
+                check(std::none_of(covered.vertices.begin(), covered.vertices.end(), boundaryVertex),
+                      "replacing the neighboring stair with a cube suppresses the full shared boundary");
+                world.set(anchor + face, Block::Air);
+                check(same(uncovered, buildBlockRelief(world, chunkIndex)),
+                      "removing a neighboring stair restores the original surface geometry deterministically");
+                world.set(anchor + face, Block::Dirt);
+            }
+            world.set(anchor, Block::Air);
+            for (const auto face : faces) world.set(anchor + face, Block::Air);
+        }
+    }
+    check(survivingFaces > 30, "cube and stair relief remains visible through many partial openings at chunk seams");
+}
+
 } // namespace
 
 int main()
@@ -510,6 +589,7 @@ int main()
     }
 
     stairRelief(world);
+    stairNeighbors(world);
 
     bool threw = false;
     try { buildBlockRelief(world, World::ChunkCount); }
