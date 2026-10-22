@@ -51,6 +51,8 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 
 You walk up stairs automatically. Full blocks need a jump. The lantern lights your surroundings; the compass points toward the village tree or your current expedition exit.
 
+You have 100 health. Long falls deal damage; landing in water cushions the fall. If you die, you return at full health to the checkpoint you reached, or the current section's Start. Your inventory and collected loot stay as they were. Health carries over when you move to the next section, but checkpoints belong to their own section.
+
 Chests and floating drops provide resources. Ironbound chests need a cave key, and keys only work within the section where you found them. Collected loot stays collected when you replay a section. Unused keys return to their source when you leave and come back.
 
 Press **F4** to choose a published level, or **F6** to try the ten built-in Root Crossing parkour rooms. A fresh checkout won't have any published levels: those are made locally with the builders below. On a Mac, you may need to hold **Fn** for the function keys.
@@ -116,6 +118,7 @@ The main loop in [src/main.cpp](src/main.cpp) reads input, updates the game, and
 | Game modes and input | [game.cpp](src/game.cpp), [input.cpp](src/input.cpp) |
 | Creature rigs and animation | [monsters.cpp](src/monsters.cpp), [monster_preview.cpp](src/monster_preview.cpp), [monster_skeleton.cpp](src/graphics/monster_skeleton.cpp) |
 | Movement and collision | [player.cpp](src/player.cpp), [asset_collision.cpp](src/asset_collision.cpp) |
+| Health and respawning | [health.cpp](src/health.cpp), [game_health.cpp](src/game_health.cpp) |
 | Village layout and buildings | [scene.cpp](src/scene.cpp), [hub_buildings.cpp](src/hub_buildings.cpp) |
 | Blocks and chunk meshes | [world.h](src/world.h), [mesh.cpp](src/mesh.cpp) |
 | Building tools and section files | [section_editor.cpp](src/section_editor.cpp), [section_tools.cpp](src/section_tools.cpp), [sections.cpp](src/sections.cpp) |

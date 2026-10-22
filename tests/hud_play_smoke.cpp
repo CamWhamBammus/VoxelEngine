@@ -81,7 +81,7 @@ void verifyPlayHud(int width, int height)
         glActiveTexture(GL_TEXTURE0);
     };
     try {
-        const auto draw=[&](int w, int h, float scale=1.0f) {
+        const auto draw=[&](int w, int h, float scale=1.0f, bool healthOnly=false) {
             glBindFramebuffer(GL_FRAMEBUFFER,0);
             glViewport(0,0,w,h);
             glDisable(GL_SCISSOR_TEST);
@@ -96,8 +96,10 @@ void verifyPlayHud(int width, int height)
             glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
             glActiveTexture(GL_TEXTURE3);
             const auto before=state();
-            hud.drawPlay(game,w,h,scale);
+            if (!healthOnly) hud.drawPlay(game,w,h,scale);
             require(state()==before,"Play HUD changed caller OpenGL state");
+            hud.drawHealth(game,w,h,scale);
+            require(state()==before,"Health HUD changed caller OpenGL state");
             Pixels pixels(static_cast<std::size_t>(w)*h*4);
             glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
             require(glGetError()==GL_NO_ERROR,"Play HUD generated an OpenGL error");
@@ -119,6 +121,42 @@ void verifyPlayHud(int width, int height)
         draw(640,360,2);
         require(difference(small,draw(640,360,std::numeric_limits<float>::quiet_NaN()))==0,
                 "Invalid HUD scale did not fall back to the normal layout");
+
+        require(game.healthVisible(),"Walking player has no health HUD");
+        const auto healthy=draw(width,height,1,true);
+        require(game.damagePlayer(35),"HUD fixture cannot damage the player");
+        const auto hurt=draw(width,height,1,true);
+        require(difference(healthy,hurt)>350,"Health damage did not visibly change the meter and feedback");
+        // Read inside the bar, away from the flash and frame: losing health must
+        // shorten the red fill, not merely update the number or screen tint.
+        const float healthScale=std::min({1.0f,width/780.0f,height/440.0f});
+        const auto redFill=[&](const Pixels& pixels) {
+            std::size_t count=0;
+            const int left=static_cast<int>(31*healthScale),right=static_cast<int>(185*healthScale);
+            const int bottom=static_cast<int>(30*healthScale),top=static_cast<int>(34*healthScale);
+            for (int y=bottom;y<top;++y) for (int x=left;x<right;++x) {
+                const auto index=(static_cast<std::size_t>(y)*width+x)*4;
+                count+=pixels[index]>100 && pixels[index]>pixels[index+1]*2;
+            }
+            return count;
+        };
+        require(redFill(hurt)<redFill(healthy)*.8f,"Damaged health bar did not shorten its red fill");
+        draw(640,360,2,true);
+        game.restoreHealth();
+        require(difference(healthy,draw(width,height,1,true))==0,"Restoring health did not restore the full bar");
+        require(game.damagePlayer(Health::Maximum) && game.health().dead(),"HUD fixture cannot enter death state");
+        const auto dead=draw(width,height,1,true);
+        require(difference(healthy,dead)>static_cast<std::size_t>(width)*height/2,
+                "Death overlay did not cover the scene and announce respawn");
+        InputActions waiting; waiting.active=true;
+        for (int frame=0;frame<4;++frame) game.update(waiting,.1f);
+        require(game.health().dead() && game.health().respawnProgress()>0,
+                "HUD fixture did not advance the automatic respawn timer");
+        require(difference(dead,draw(width,height,1,true))>100,
+                "Automatic respawn progress did not visibly advance");
+        draw(640,360,2,true);
+        game.restoreHealth();
+        require(difference(healthy,draw(width,height,1,true))==0,"Death overlay remains after health restoration");
 
         const auto dryFeet=game.player.feetPosition();
         const auto dryHud=draw(width,height);
@@ -152,6 +190,8 @@ void verifyPlayHud(int width, int height)
         const auto before=state();
         hud.drawPlay(game,0,0);
         require(state()==before,"Minimized play HUD changed OpenGL state");
+        hud.drawHealth(game,0,0);
+        require(state()==before,"Minimized health HUD changed OpenGL state");
         hud.draw("EDITOR - F5 SAVE",width,height);
         require(state()==before,"Text HUD no longer restores OpenGL state");
         require(glGetError()==GL_NO_ERROR,"HUD compatibility check generated an OpenGL error");
@@ -159,7 +199,7 @@ void verifyPlayHud(int width, int height)
         cleanup(); throw;
     }
     cleanup();
-    std::cout << "Play HUD passed: tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
+    std::cout << "Play HUD passed: health and death, tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
 }
 
 } // namespace voxel

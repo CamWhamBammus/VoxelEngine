@@ -1511,6 +1511,7 @@ int runGraphicsSmokeTest(const Options& options)
         else if (game.devMode()) hud.drawSection(game, width, height, scaleY);
         else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
         if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
+        hud.drawHealth(game,width,height,scaleY);
         if (frame == 2) {
             verifyFrame(width, height, options.screenshot);
             frameVerified = true;

@@ -90,6 +90,19 @@ void Player::setAssetCollision(std::shared_ptr<const AssetCollision> collision)
 {
     assetCollision_ = std::move(collision);
     grounded_ = false; // Support is refreshed against the new scene before movement.
+    resetFallTracking();
+}
+
+void Player::resetFallTracking()
+{
+    fallPeakY_ = feet_.y;
+    pendingFallDistance_ = 0.0f;
+    trackingFall_ = false;
+}
+
+float Player::consumeFallDistance()
+{
+    return std::exchange(pendingFallDistance_, 0.0f);
 }
 
 bool Player::overlapsBlock(glm::ivec3 position) const
@@ -111,6 +124,7 @@ bool Player::setFeetPosition(const World& world, glm::vec3 position)
     grounded_ = supported(world, assetCollision_.get(), feet_);
     verticalVelocity_ = 0.0f;
     jumpHeld_ = false;
+    resetFallTracking();
     refreshWater(world);
     return true;
 }
@@ -287,6 +301,7 @@ void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
     while (remaining > 0.0f) {
         const float step = std::min(remaining, 1.0f / 120.0f);
         refreshWater(world);
+        if (inWater_) trackingFall_ = false;
         const bool swimming = inWater_ && (!grounded_ || waterSurface_ - feet_.y >= 0.45f);
         const float speed = inWater_ ? (sprint ? 4.0f : 2.5f) : (sprint ? 7.0f : 4.5f);
         const glm::vec3 horizontalDistance = direction * (speed * step);
@@ -316,6 +331,19 @@ void Player::update(const World& world, glm::vec2 movement, glm::vec3 forward,
         move(world, horizontalDistance + glm::vec3(0, verticalDistance, 0));
         if (swimming && jump && !descend)
             climbShore(world, horizontalDistance - glm::vec3(feet_.x - previous.x, 0, feet_.z - previous.z));
+        // Sample the actual swept position, including fractional model surfaces.
+        // Grounded stair-following never starts a fall; water cancels one before
+        // any landing can be reported. Keep a prior unconsumed landing intact.
+        if (inWater_) {
+            trackingFall_ = false;
+        } else if (!grounded_) {
+            if (!trackingFall_) fallPeakY_ = previous.y;
+            fallPeakY_ = std::max(fallPeakY_, feet_.y);
+            trackingFall_ = true;
+        } else if (trackingFall_) {
+            pendingFallDistance_ = std::max(pendingFallDistance_, fallPeakY_ - feet_.y);
+            trackingFall_ = false;
+        }
         if (std::abs((feet_.y - previous.y) - verticalDistance) > ContactTolerance
             || (grounded_ && verticalVelocity_ < 0.0f)) {
             verticalVelocity_ = 0.0f;

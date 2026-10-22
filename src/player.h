@@ -21,6 +21,9 @@ public:
     bool inWater() const { return inWater_; }
     bool underwater() const { return underwater_; }
     bool overlapsBlock(glm::ivec3 position) const;
+    // Largest dry landing since the last read, measured from the airborne apex.
+    // Ordinary jumps are reported too; the caller decides what causes damage.
+    float consumeFallDistance();
 
     // Share the current scene collider; editor flight does not use Player.
     void setAssetCollision(std::shared_ptr<const AssetCollision> collision);
@@ -41,6 +44,7 @@ private:
     void moveAxis(const World& world, int axis, float distance);
     void refreshWater(const World& world);
     bool climbShore(const World& world, glm::vec3 remainingMovement);
+    void resetFallTracking();
 
     std::shared_ptr<const AssetCollision> assetCollision_;
     glm::vec3 feet_{0.5f, 16.0f, 0.5f};
@@ -50,6 +54,9 @@ private:
     bool inWater_ = false;
     bool underwater_ = false;
     float waterSurface_ = 0.0f;
+    float fallPeakY_ = 16.0f;
+    float pendingFallDistance_ = 0.0f;
+    bool trackingFall_ = false;
 };
 
 } // namespace voxel

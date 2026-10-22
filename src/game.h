@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "editing.h"
 #include "equipment.h"
+#include "health.h"
 #include "level_editor.h"
 #include "loot.h"
 #include "monster_preview.h"
@@ -73,6 +74,13 @@ class Game {
 public:
     explicit Game(const Options& options);
     void update(const InputActions& actions, float deltaSeconds = 0.0f);
+    const Health& health() const { return health_; }
+    bool healthVisible() const;
+    std::string_view respawnDestination() const;
+    bool damagePlayer(int amount);
+    void restoreHealth();
+    // Called after movement, before checking checkpoints or section exits.
+    bool checkPlayerDamage(float deathHeight);
     bool monsterPreviewActive() const { return monsterPreviewActive_; }
     const MonsterPreview& monsterPreview() const { return monsterPreview_; }
     std::span<const MonsterInstance> monsters() const
@@ -138,6 +146,7 @@ public:
 
 private:
     friend class LevelController;
+    void updateDeath(const InputActions& actions, float deltaSeconds);
     void enterMonsterPreview();
     void resetMonsterCamera();
     void updateMonsters(const InputActions& actions, float deltaSeconds);
@@ -169,6 +178,7 @@ private:
     void findTarget();
     void editTarget(const InputActions& actions);
 
+    Health health_;
     MonsterPreview monsterPreview_;
     bool monsterPreviewActive_ = false;
     SectionEditor sectionEditor_;

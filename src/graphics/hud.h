@@ -29,6 +29,9 @@ public:
                       float contentScale = 1.0f);
     void drawPlay(const Game& game, int framebufferWidth, int framebufferHeight,
                   float contentScale = 1.0f);
+    // Draw last so damage and the automatic respawn message remain visible.
+    void drawHealth(const Game& game, int framebufferWidth, int framebufferHeight,
+                    float contentScale = 1.0f);
     void drawSection(const Game& game, int framebufferWidth, int framebufferHeight,
                      float contentScale = 1.0f);
     // Pointer coordinates are physical framebuffer pixels, measured from the

@@ -296,6 +296,8 @@ int main()
                 player.update(world,{0,1},-glm::vec3(direction),false,false,1.f/fps);
             check(glm::distance(player.feetPosition(),stairFeet) < .001f && player.grounded(),
                   "stair descent follows each tread in all rotations at 30, 60 and 120 FPS");
+            check(near(player.consumeFallDistance(), 0),
+                  "following successive stair treads never accumulates a fall");
         }
         player.setFeetPosition(world,stairFeet + glm::vec3(direction)*3.f + glm::vec3(0,3,0));
         player.update(world,{},glm::vec3(direction),true,false,1.f/120);
@@ -574,6 +576,77 @@ int main()
         "spawning settles onto fitted paving without moving to another voxel column");
     player.setAssetCollision(nullptr);
     check(player.setFeetPosition(world, assetBase), "clearing scene collision restores voxel-only movement");
+
+    // Landing events belong to the physics sweep, not the health system. A
+    // consumer receives one distance after contact, even on a slow frame.
+    const auto settle = [&](Player& body, float seconds, float frameTime, bool descend = false) {
+        for (int frame = 0; frame < int(std::ceil(seconds / frameTime)); ++frame)
+            body.update(world, {}, forward, false, false, frameTime, descend);
+    };
+    player.setFeetPosition(world, start);
+    player.update(world, {}, forward, true, false, 1.f / 60);
+    settle(player, 1, 1.f / 60);
+    const float hopFall = player.consumeFallDistance();
+    check(player.grounded() && hopFall > 1.3f && hopFall < 1.35f,
+          "ordinary hop reports its actual apex height below the damaging fall threshold");
+    check(near(player.consumeFallDistance(), 0), "a landing is consumed exactly once");
+
+    for (const float frameTime : {.1f, 1.f / 30, 1.f / 60, 1.f / 144}) {
+        player.setFeetPosition(world, start + glm::vec3(0, 8, 0));
+        settle(player, 2, frameTime);
+        check(player.grounded() && near(player.consumeFallDistance(), 8, .001f),
+              "high drop records the same distance at 10, 30, 60 and 144 FPS");
+        settle(player, .2f, frameTime);
+        check(near(player.consumeFallDistance(), 0), "remaining grounded cannot repeat a fall event");
+    }
+
+    player.setFeetPosition(world, start + glm::vec3(0, 8, 0));
+    settle(player, 2, 1.f / 60);
+    player.update(world, {}, forward, true, false, 1.f / 60);
+    settle(player, 1, 1.f / 60);
+    check(near(player.consumeFallDistance(), 8),
+          "multiple landings retain the largest distance until the consumer reads it");
+
+    player.setFeetPosition(world, start + glm::vec3(0, 8, 0));
+    settle(player, .2f, 1.f / 60);
+    player.setFeetPosition(world, start + glm::vec3(0, 2, 0));
+    settle(player, 1, 1.f / 60);
+    check(near(player.consumeFallDistance(), 2), "teleport resets the previous airborne apex");
+    player.setFeetPosition(world, start + glm::vec3(0, 8, 0));
+    settle(player, 2, 1.f / 60);
+    player.setFeetPosition(world, start);
+    check(near(player.consumeFallDistance(), 0), "teleport clears an unconsumed landing");
+    player.setFeetPosition(world, start + glm::vec3(0, 8, 0));
+    settle(player, 2, 1.f / 60);
+    player.setAssetCollision(nullptr);
+    check(near(player.consumeFallDistance(), 0), "changing the scene collider clears an unconsumed landing");
+
+    player.setFeetPosition(world, start + glm::vec3(0, 8, 0));
+    settle(player, .2f, 1.f / 60);
+    const auto airbornePosition = player.feetPosition();
+    const float invalid = std::numeric_limits<float>::quiet_NaN();
+    player.update(world, {}, forward, false, false, invalid);
+    player.update(world, {invalid, 0}, forward, false, false, .1f);
+    player.update(world, {}, {invalid, 0, 0}, false, false, .1f);
+    check(player.feetPosition() == airbornePosition && near(player.consumeFallDistance(), 0),
+          "invalid input neither moves an airborne player nor fabricates a landing");
+    check(!player.setFeetPosition(world, {10.5f, .5f, 30.5f}), "invalid teleport during a fall is rejected");
+    settle(player, 2, 1.f / 60);
+    check(near(player.consumeFallDistance(), 8),
+          "invalid input and rejected teleports do not corrupt an active fall");
+
+    player.setFeetPosition(world, {-20.5f, 20, -20.5f});
+    settle(player, 5, 1.f / 60, true);
+    check(player.grounded() && player.inWater() && near(player.consumeFallDistance(), 0),
+          "water cushions a high drop all the way to the pool floor");
+
+    setAssets({{HubAssetKind::CrateStack, assetBase, 0, 1}});
+    player.setFeetPosition(world, assetBase + glm::vec3(0, 8, 0));
+    settle(player, 2, 1.f / 60);
+    check(player.grounded() && near(player.feetPosition().y, 1.82f)
+          && near(player.consumeFallDistance(), 7.18f, .001f),
+          "landing on a model reports the drop to its actual fractional top");
+    player.setAssetCollision(nullptr);
 
     World terrain(42);
     check(player.spawn(terrain), "generated terrain has a safe spawn");

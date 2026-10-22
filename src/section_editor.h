@@ -92,6 +92,7 @@ public:
     bool nameSelected() const { return nameSelected_; }
     bool testComplete() const { return testComplete_; }
     bool checkpointReached() const { return checkpointReached_; }
+    void respawnAfterDeath(Game& game);
     float testElapsed() const { return testElapsed_; }
     int testFalls() const { return testFalls_; }
     std::uint64_t revision() const { return revision_; }

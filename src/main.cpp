@@ -154,6 +154,7 @@ int main(int argc, char** argv)
             hud.drawInventory(game, width, height, scaleY);
             if ((game.devMode() || game.levelActive()) && !game.menuOpen() && !input.captured())
                 hud.draw("PAUSED | TAB TO RESUME", width, height, scaleY);
+            hud.drawHealth(game,width,height,scaleY);
             window.present();
         }
         return EXIT_SUCCESS;

@@ -1080,11 +1080,13 @@ void SectionEditor::startTest(Game& game)
     faceMarker(game, meta_.spawn);
     screen_ = SectionEditorScreen::Test; game.target.reset(); preview_.reset();
     game.beginSectionLoot(assets_, true);
+    game.restoreHealth();
     message_ = "WALK TO THE GOLD END | R RESET | F8 RETURN TO BUILD";
 }
 void SectionEditor::stopTest(Game& game)
 {
     game.endSectionLoot();
+    game.restoreHealth();
     screen_ = SectionEditorScreen::Build;
     game.camera.setPosition(buildPosition_); pointCamera(game.camera, buildDirection_);
     message_ = testComplete_ ? "TEST PASSED | F10 CHOOSE A CATEGORY AND ACCEPT" : "BACK TO BUILD | COMPLETE A TEST BEFORE ACCEPTING";
@@ -1094,7 +1096,25 @@ void SectionEditor::resetTest(Game& game, bool restart)
     if (restart) { checkpointReached_ = false; testElapsed_ = 0; testFalls_ = 0; }
     testComplete_ = false;
     faceMarker(game, checkpointReached_ && meta_.checkpoint ? *meta_.checkpoint : meta_.spawn);
+    game.restoreHealth();
     message_ = "RETURNED TO " + std::string(checkpointReached_ ? "CHECKPOINT" : "START");
+}
+void SectionEditor::respawnAfterDeath(Game& game)
+{
+    try {
+        try { resetTest(game,false); }
+        catch (const std::exception&) {
+            checkpointReached_ = false;
+            resetTest(game,false);
+        }
+        ++testFalls_;
+        message_ = checkpointReached_ ? "RESPAWNED AT CHECKPOINT | HEALTH RESTORED"
+                                      : "RESPAWNED AT SECTION START | HEALTH RESTORED";
+    } catch (const std::exception&) {
+        stopTest(game);
+        message_ = "NO SAFE RESPAWN | FIX THE START BEFORE TESTING AGAIN";
+    }
+    game.status = message_;
 }
 void SectionEditor::updateTest(Game& game, const InputActions& actions, float deltaSeconds)
 {
@@ -1103,9 +1123,9 @@ void SectionEditor::updateTest(Game& game, const InputActions& actions, float de
     game.camera.setPosition(game.player.eyePosition());
     if (!testComplete_ && std::isfinite(deltaSeconds) && deltaSeconds > 0) testElapsed_ += std::min(deltaSeconds, .1f);
     const auto feet = game.player.feetPosition();
-    // The room floor remains usable for descending routes and puzzles. R is
-    // available anywhere; only leaving the protected room triggers a fall reset.
-    if (feet.y < SectionInteriorMin.y - 2) { ++testFalls_; resetTest(game, false); return; }
+    // Check lethal landings before markers so death cannot accept a test or
+    // activate a checkpoint the player only reached by a fatal fall.
+    if (game.checkPlayerDamage(SectionInteriorMin.y - 2.0f)) return;
     const auto reaches = [&](glm::vec3 marker) {
         const auto delta = feet - marker;
         return game.player.grounded() && std::abs(delta.y) < .6f && delta.x * delta.x + delta.z * delta.z < 1.2f * 1.2f;

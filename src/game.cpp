@@ -247,6 +247,8 @@ bool Game::saveAuthoringDraft()
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
+    if (health_.dead()) { updateDeath(actions,deltaSeconds); return; }
+    if (actions.active && healthVisible()) health_.update(deltaSeconds);
     if (monsterPreviewActive_) { updateMonsters(actions, deltaSeconds); return; }
     if (actions.active && actions.monsterPreview && !editorMode_ && !devMode_
         && !levelController_.open() && !rootCrossingActive() && !menuOpen()) {
@@ -343,6 +345,7 @@ bool Game::returnToVillage()
     camera.rotate(VillageYaw - glm::degrees(std::atan2(facing.z, facing.x)),
                   VillagePitch - glm::degrees(std::asin(facing.y)));
     camera.setPosition(player.eyePosition());
+    restoreHealth();
     return true;
 }
 
@@ -381,10 +384,10 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
             return;
         }
         if (player.feetPosition().y < crossingCourse_.resetY) {
-            resetRootCrossing(false, true);
+            damagePlayer(Health::Maximum);
             return;
         }
-    } else if (actions.respawn || player.feetPosition().y < -16.0f) {
+    } else if (actions.respawn) {
         status = returnToVillage() ? "Returned to the village"
                                    : "No safe space at the village entrance";
         return;
@@ -413,6 +416,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     }
     player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     camera.setPosition(player.eyePosition());
+    if (checkPlayerDamage(rootCrossingActive() ? crossingCourse_.resetY : -16.0f)) return;
     if (rootCrossingActive()) updateRootCrossing(deltaSeconds);
 }
 
@@ -459,6 +463,7 @@ void Game::startRootCrossing(int index)
     crossingFalls_ = 0;
     target.reset();
     positionForCrossing(crossingCourse_.spawn);
+    restoreHealth();
     status = std::string(rootCrossingCatalog()[index].name) + " | REACH THE GOLD FINISH MARKER";
 }
 
@@ -485,6 +490,7 @@ void Game::resetRootCrossing(bool fullRestart, bool fallen)
     crossingCompleted_ = false;
     positionForCrossing(crossingCheckpointReached_ ? crossingCourse_.checkpoint : crossingCourse_.spawn,
                         crossingCheckpointReached_);
+    restoreHealth();
     status = fullRestart ? "NEW ATTEMPT | REACH THE GOLD FINISH MARKER"
         : crossingCheckpointReached_ ? "RETURNED TO CHECKPOINT | SHIFT+R STARTS A NEW ATTEMPT"
                                      : "RETURNED TO START | SHIFT+R STARTS A NEW ATTEMPT";
@@ -497,10 +503,6 @@ void Game::updateRootCrossing(float deltaSeconds)
     // inflate a run while the player is not actually being simulated.
     if (std::isfinite(deltaSeconds) && deltaSeconds > 0.0f)
         crossingElapsed_ += std::min(deltaSeconds, 0.1f);
-    if (player.feetPosition().y < crossingCourse_.resetY) {
-        resetRootCrossing(false, true);
-        return;
-    }
     const auto onLanding = [&](glm::vec3 landing, float radius) {
         const auto offset = player.feetPosition() - landing;
         return player.grounded() && std::abs(offset.y) < 0.75f

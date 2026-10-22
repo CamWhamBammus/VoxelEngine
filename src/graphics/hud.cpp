@@ -1672,6 +1672,74 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     render(drawing, shader_, vao_, buffer_);
 }
 
+void Hud::drawHealth(const Game& game, int framebufferWidth, int framebufferHeight, float contentScale)
+{
+    if (!game.healthVisible() || framebufferWidth<=0 || framebufferHeight<=0) return;
+    if (!std::isfinite(contentScale) || contentScale<=0) contentScale=1;
+    // Leave room beside the central tool pockets, even in narrow windows.
+    const float scale=std::min({std::clamp(contentScale,.5f,4.0f),
+        framebufferWidth/780.0f,framebufferHeight/440.0f});
+    const float width=framebufferWidth/scale,height=framebufferHeight/scale;
+    Drawing drawing(width,height,scale);
+    const auto& health=game.health();
+    const float flash=std::clamp(health.damageFlash(),0.0f,1.0f);
+    if (flash>0 && !health.dead()) {
+        // A brief feathered edge leaves the route and crosshair unobscured.
+        const float edge=std::min(width,height)*.008f;
+        for (int band=0;band<6;++band) {
+            const float inset=band*edge;
+            const glm::vec4 tint{.55f,.06f,.025f,flash*(6-band)*.021f};
+            drawing.quad(inset,inset,width-2*inset,edge,tint);
+            drawing.quad(inset,height-inset-edge,width-2*inset,edge,tint);
+            drawing.quad(inset,inset+edge,edge,height-2*inset-2*edge,tint);
+            drawing.quad(width-inset-edge,inset+edge,edge,height-2*inset-2*edge,tint);
+        }
+    }
+
+    constexpr float x=18,w=180,h=44;
+    // The workshop's playtest uses a wide instruction strip along the bottom.
+    const float y=height-(game.devMode() ? 128 : 62);
+    const glm::vec4 blood{.73f,.20f,.17f,1};
+    const glm::vec4 bright{.97f,.44f,.31f,1};
+    drawing.frame(x+2,y+3,w,h,{0,0,0,.3f},{0,0,0,.3f});
+    drawing.frame(x,y,w,h,glm::mix(Edge,bright,flash*.5f),Panel);
+    constexpr std::array<std::uint8_t,6> heart{0x66,0xff,0xff,0x7e,0x3c,0x18};
+    for (int row=0;row<6;++row) for (int column=0;column<8;++column)
+        if (heart[row]&(1u<<(7-column)))
+            drawing.quad(x+12+column*1.3f,y+11+row*1.3f,1.3f,1.3f,row<2 ? bright : blood);
+    drawing.text("HEALTH",x+30,y+12,1,Cream);
+    const auto value=std::to_string(health.current())+"/"+std::to_string(Health::Maximum);
+    drawing.text(value,x+w-13-(value.size()*6-1)*drawing.fontPixel(1),y+12,1,
+        health.current()<=25 ? bright : Muted);
+    constexpr float meterWidth=w-24;
+    drawing.quad(x+12,y+26,meterWidth,8,{.23f,.10f,.075f,1});
+    const float fill=meterWidth*std::clamp(health.fraction(),0.0f,1.0f);
+    if (fill>0) {
+        drawing.quad(x+12,y+26,fill,8,blood);
+        drawing.quad(x+12,y+26,fill,2,bright);
+        drawing.quad(x+12,y+32,fill,2,{.48f,.11f,.09f,1});
+    }
+    for (int tick=1;tick<4;++tick)
+        drawing.quad(x+12+meterWidth*tick*.25f,y+28,1,6,{.13f,.07f,.04f,.55f});
+
+    if (health.dead()) {
+        drawing.quad(0,0,width,height,{.035f,.018f,.018f,.67f});
+        constexpr float panelWidth=350,panelHeight=130;
+        const float center=width*.5f,top=height*.5f-panelHeight*.5f;
+        drawing.frame(center-panelWidth*.5f+4,top+5,panelWidth,panelHeight,{0,0,0,.3f},{0,0,0,.3f});
+        drawing.frame(center-panelWidth*.5f,top,panelWidth,panelHeight,Edge,Panel,9);
+        drawing.centered("YOU DIED",center,top+23,2.5f,bright);
+        fittedCentered(drawing,"RETURNING TO "+std::string(game.respawnDestination()),
+            center,top+56,panelWidth-36,1.2f,Cream);
+        constexpr float progressWidth=236;
+        drawing.quad(center-progressWidth*.5f,top+80,progressWidth,4,Canvas);
+        drawing.quad(center-progressWidth*.5f,top+80,
+            progressWidth*std::clamp(health.respawnProgress(),0.0f,1.0f),4,Gold);
+        drawing.centered("AUTOMATIC RESPAWN",center,top+101,1,Muted);
+    }
+    render(drawing,shader_,vao_,buffer_);
+}
+
 void Hud::drawSection(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
 {
     if (!game.devMode() || framebufferWidth<=0 || framebufferHeight<=0) return;

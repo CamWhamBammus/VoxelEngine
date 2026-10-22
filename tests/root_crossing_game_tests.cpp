@@ -162,9 +162,12 @@ int main()
         const auto checkpointTime = game.crossingElapsed();
         check(game.player.setFeetPosition(game.world, {course.spawn.x, -2.0f, course.spawn.z}), "fall fixture can leave the course");
         game.update(request, .1f);
+        check(game.health().dead(), "falling below the crossing begins the death presentation");
+        for (int i = 0; i < 20 && game.health().dead(); ++i) game.update(request, .1f);
         check(game.player.feetPosition() == course.checkpoint && game.player.grounded() && game.crossingFalls() == 1
-              && game.crossingCheckpointReached() && game.crossingElapsed() >= checkpointTime,
-              "falling resets to the activated checkpoint and counts a fall without clearing run time");
+              && game.crossingCheckpointReached() && game.crossingElapsed() >= checkpointTime
+              && game.health().current() == voxel::Health::Maximum,
+              "fall death restores health at the checkpoint and counts a fall without clearing run time");
         request.respawn = true;
         game.update(request);
         check(game.player.feetPosition() == course.checkpoint && game.crossingFalls() == 1,

@@ -66,6 +66,7 @@ public:
     std::uint64_t revision() const { return revision_; }
     std::size_t sectionIndex() const { return sectionIndex_; }
     bool checkpointReached() const { return checkpointReached_; }
+    void respawnAfterDeath(Game& game);
     float elapsed() const { return elapsed_; }
     int falls() const { return falls_; }
     const std::filesystem::path& libraryRoot() const { return levelRoot_; }

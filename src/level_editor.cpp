@@ -201,6 +201,7 @@ bool LevelController::start(Game& game, const LevelDefinition& definition)
     const auto previous = definition_;
     definition_ = definition;
     if (!loadSectionAt(game, 0)) { definition_ = previous; return false; }
+    game.restoreHealth();
     running_ = true;
     creator_ = false;
     dirty_ = false;
@@ -214,12 +215,36 @@ void LevelController::reset(Game& game, bool full)
 {
     if (full) {
         pendingSection_ = 0;
-        if (loadSectionAt(game, 0)) { elapsed_ = 0; falls_ = 0; }
+        if (loadSectionAt(game, 0)) { elapsed_ = 0; falls_ = 0; game.restoreHealth(); }
         else screen_ = LevelScreen::Error;
     } else {
-        try { position(game, checkpointReached_ && meta_.checkpoint ? *meta_.checkpoint : meta_.spawn); }
+        try {
+            position(game, checkpointReached_ && meta_.checkpoint ? *meta_.checkpoint : meta_.spawn);
+            game.restoreHealth();
+        }
         catch (const std::exception& error) { message_ = error.what(); }
     }
+}
+
+void LevelController::respawnAfterDeath(Game& game)
+{
+    const bool checkpoint = checkpointReached_ && meta_.checkpoint.has_value();
+    try {
+        try { position(game, checkpoint ? *meta_.checkpoint : meta_.spawn); }
+        catch (const std::exception&) {
+            // A removed support must not trap the player in a death loop.
+            position(game,meta_.spawn);
+            checkpointReached_ = false;
+        }
+        ++falls_;
+        game.restoreHealth();
+        message_ = checkpointReached_ ? "RESPAWNED AT CHECKPOINT | HEALTH RESTORED"
+                                      : "RESPAWNED AT SECTION START | HEALTH RESTORED";
+    } catch (const std::exception&) {
+        game.leaveLevelMode();
+        message_ = "SECTION HAS NO SAFE RESPAWN | RETURNED TO VILLAGE";
+    }
+    game.status = message_;
 }
 
 void LevelController::activate(Game& game, int id)
@@ -378,7 +403,7 @@ void LevelController::updatePlay(Game& game, const InputActions& actions, float 
     game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     game.camera.setPosition(game.player.eyePosition());
     elapsed_ += stepTime(deltaSeconds);
-    if (game.player.feetPosition().y < SectionInteriorMin.y - 2.0f) { ++falls_; reset(game, false); return; }
+    if (game.checkPlayerDamage(SectionInteriorMin.y - 2.0f)) return;
     if (meta_.checkpoint && atMarker(game, *meta_.checkpoint)) checkpointReached_ = true;
     if (!atMarker(game, meta_.finish)) return;
     game.discardSectionKeys();

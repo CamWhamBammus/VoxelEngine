@@ -89,6 +89,8 @@ Place a **Start** marker and an **End** marker from the Markers tab. Placing ano
 
 Press **F8** to test. Reach the gold End to pass, then press **F8** to go back to building. **R** returns to the Start or checkpoint; **Shift+R** restarts the attempt.
 
+Walk onto the checkpoint to activate it. Playtests start with 100 health and use the same fall damage as published levels: drops over three blocks cost about 10 health per extra block, while water cushions falls. Death briefly pauses the attempt, then respawns you at full health at the activated checkpoint or Start. Loot you've already collected stays collected for the rest of that test. Building mode doesn't take damage.
+
 Press **F10** to give the section a name and category, then accept it. Any later edit requires another test. Categories organize sections; choosing Puzzle or Mining doesn't add puzzle logic or mining mechanics.
 
 **F5** saves a draft. Changes also save after 20 seconds of active editing, before tests or library changes, and when leaving. **F9** opens the library. **B** or **F7** saves changed work and returns to the village. Drafts and accepted sections are stored under `sections/` in the folder you launched from.
