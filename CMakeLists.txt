@@ -18,6 +18,11 @@ endfunction()
 # Game logic and CPU mesh generation can be tested without an OpenGL window.
 add_library(VoxelCore
     src/game.cpp
+    src/monsters.cpp
+    src/monster_preview.cpp
+    src/graphics/monster_skeleton.cpp
+    src/graphics/monster_wizard.cpp
+    src/graphics/monster_slime.cpp
     src/game_inventory.cpp
     src/equipment.cpp
     src/items.cpp
@@ -95,7 +100,7 @@ if(BUILD_TESTING)
         root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools
         levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
-        lush_hub
+        lush_hub monsters
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

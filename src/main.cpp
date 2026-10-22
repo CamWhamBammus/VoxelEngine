@@ -102,9 +102,10 @@ int main(int argc, char** argv)
             }
             renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
                             static_cast<float>(now), !game.editorMode()
+                                && !game.monsterPreviewActive()
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
-                            !game.rootCrossingActive() && !game.devMode() && !game.levelActive(),
-                            game.sectionSceneAssets(), game.sectionPickupOffsets());
+                            !game.rootCrossingActive() && !game.devMode() && !game.levelActive() && !game.monsterPreviewActive(),
+                            game.sectionSceneAssets(), game.sectionPickupOffsets(), game.monsters());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
@@ -129,7 +130,8 @@ int main(int argc, char** argv)
                 const double fps = sampleSeconds >= 0.25 ? sampleFrames / sampleSeconds : 0.0;
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
-                const char* title = game.levelCreatorActive() ? "Level Creator"
+                const char* title = game.monsterPreviewActive() ? "Creature Preview"
+                    : game.levelCreatorActive() ? "Level Creator"
                     : game.levelController().open() ? "Expeditions"
                     : game.devMode() ? "Section Builder"
                     : game.editorMode()
@@ -141,10 +143,12 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
-            if (!game.menuOpen() && !game.devMode() && !game.levelController().open()
+            if ((!game.monsterPreviewActive() || !input.captured())
+                && !game.menuOpen() && !game.devMode() && !game.levelController().open()
                 && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
                 hud.draw(statusText, width, height, scaleY);
-            if (game.devMode()) hud.drawSection(game, width, height, scaleY);
+            if (game.monsterPreviewActive()) hud.drawMonsters(game, width, height, scaleY);
+            else if (game.devMode()) hud.drawSection(game, width, height, scaleY);
             else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
             if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
             hud.drawInventory(game, width, height, scaleY);

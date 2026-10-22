@@ -55,6 +55,16 @@ Chests and floating drops provide resources. Ironbound chests need a cave key, a
 
 Press **F4** to choose a published level, or **F6** to try the ten built-in Root Crossing parkour rooms. A fresh checkout won't have any published levels: those are made locally with the builders below. On a Mac, you may need to hold **Fn** for the function keys.
 
+## Creature preview
+
+Press **F3** in the village, or run `./build/VoxelEngine --monsters`. The grotto has a skeleton swordsman, a cave wizard, and a hopping slime. Walk around them to inspect the models and animations.
+
+**1** plays idle, **2** plays walk/hop cycles in place, **3** plays attacks, and **E** cycles through all three. **R** resets the view; **B** or **F3** returns to the village. Escape pauses the animations along with the game.
+
+These are animation prototypes. They don't chase, damage, or drop loot yet.
+
+![The skeleton, wizard, and slime in the creature preview](docs/screenshots/creatures.png)
+
 ## Building sections and levels
 
 Start the section builder with **F7**, or launch it directly:
@@ -104,6 +114,7 @@ The main loop in [src/main.cpp](src/main.cpp) reads input, updates the game, and
 | Area | Start here |
 | --- | --- |
 | Game modes and input | [game.cpp](src/game.cpp), [input.cpp](src/input.cpp) |
+| Creature rigs and animation | [monsters.cpp](src/monsters.cpp), [monster_preview.cpp](src/monster_preview.cpp), [monster_skeleton.cpp](src/graphics/monster_skeleton.cpp) |
 | Movement and collision | [player.cpp](src/player.cpp), [asset_collision.cpp](src/asset_collision.cpp) |
 | Village layout and buildings | [scene.cpp](src/scene.cpp), [hub_buildings.cpp](src/hub_buildings.cpp) |
 | Blocks and chunk meshes | [world.h](src/world.h), [mesh.cpp](src/mesh.cpp) |

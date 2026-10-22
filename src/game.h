@@ -5,6 +5,7 @@
 #include "equipment.h"
 #include "level_editor.h"
 #include "loot.h"
+#include "monster_preview.h"
 #include "player.h"
 #include "root_crossings.h"
 #include "section_editor.h"
@@ -20,6 +21,7 @@ namespace voxel {
 
 // Startup settings. The command line is read once, before opening the window.
 struct Options {
+    bool monsters = false;
     bool editor = false;
     bool dev = false;
     bool levelCreator = false;
@@ -39,6 +41,7 @@ struct Options {
 
 inline constexpr const char* Usage =
     "Usage: VoxelEngine [options]\n\n"
+    "  --monsters         Open the creature animation preview.\n"
     "  --dev              Open the section builder and world library.\n"
     "  --level-creator    Assemble accepted sections into playable numbered levels.\n"
     "  --editor           Open the flying terrain editor instead of the cave sample.\n"
@@ -70,6 +73,10 @@ class Game {
 public:
     explicit Game(const Options& options);
     void update(const InputActions& actions, float deltaSeconds = 0.0f);
+    bool monsterPreviewActive() const { return monsterPreviewActive_; }
+    const MonsterPreview& monsterPreview() const { return monsterPreview_; }
+    std::span<const MonsterInstance> monsters() const
+    { return monsterPreviewActive_ ? monsterPreview_.monsters() : std::span<const MonsterInstance>{}; }
     bool editorMode() const { return editorMode_; }
     bool devMode() const { return devMode_; }
     bool devFlying() const { return devMode_ && sectionEditor_.flying(); }
@@ -131,6 +138,9 @@ public:
 
 private:
     friend class LevelController;
+    void enterMonsterPreview();
+    void resetMonsterCamera();
+    void updateMonsters(const InputActions& actions, float deltaSeconds);
     void enterLevelMode(bool creator);
     void leaveLevelMode();
     void buildVillage();
@@ -159,6 +169,8 @@ private:
     void findTarget();
     void editTarget(const InputActions& actions);
 
+    MonsterPreview monsterPreview_;
+    bool monsterPreviewActive_ = false;
     SectionEditor sectionEditor_;
     LevelController levelController_;
     bool devMode_ = false;

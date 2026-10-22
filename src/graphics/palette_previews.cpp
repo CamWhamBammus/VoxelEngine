@@ -44,6 +44,7 @@ uniform int decorative;
 uniform float timeSeconds;
 uniform vec3 cameraPosition;
 out vec4 fragmentColor;
+#define modelPosition worldPosition
 )glsl") + materialShader + R"glsl(
 void main() {
     MaterialSurface surface = evaluateMaterial();

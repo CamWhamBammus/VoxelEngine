@@ -43,6 +43,7 @@ void Game::discardSectionKeys()
 
 std::span<const HubAsset> Game::sectionSceneAssets() const
 {
+    if (monsterPreviewActive_) return monsterPreview_.scenery();
     if (sectionLootActive_) return loot_.sceneAssets();
     if (devMode_) return sectionEditor_.assets();
     if (levelController_.active()) return levelController_.assets();

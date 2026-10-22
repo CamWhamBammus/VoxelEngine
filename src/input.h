@@ -31,6 +31,7 @@ struct InputActions {
     std::optional<int> inventoryClick, lootClick;
     bool inventoryPointerPressed = false;
     glm::vec2 inventoryPointer{0}; // Normalized window coordinates, like the creative menus.
+    bool monsterPreview = false; // F3 animation workbench, from the hub.
     bool crossingMenu = false;
     std::optional<int> selectedCrossing; // 0–9 while the test picker is open.
     int crossingMenuStep = 0;
@@ -188,6 +189,7 @@ private:
         bool inventory = false, inventorySort = false;
         std::array<bool, 3> tools{};
         std::array<bool, 10> courses{};
+        bool monsterPreview = false;
         bool crossingMenu = false;
         bool menuPrevious = false;
         bool menuNext = false;

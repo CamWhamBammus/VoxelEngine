@@ -43,13 +43,15 @@ layout(location = 4) in vec4 relief;
 uniform mat4 viewProjection;
 uniform mat4 model;
 out vec3 worldPosition;
+out vec3 modelPosition;
 out vec3 surfaceNormal;
 out vec3 surfaceColor;
 out vec4 reliefSurface;
 flat out int materialId;
 void main() {
+    modelPosition = position;
     worldPosition = (model * vec4(position, 1.0)).xyz;
-    surfaceNormal = normalize(mat3(model) * normal);
+    surfaceNormal = normalize(transpose(inverse(mat3(model))) * normal);
     surfaceColor = color;
     reliefSurface = relief;
     materialId = int(material + 0.5);
@@ -59,6 +61,7 @@ void main() {
 
 const std::string worldFragmentShader = std::string(R"glsl(#version 410 core
 in vec3 worldPosition;
+in vec3 modelPosition;
 in vec3 surfaceNormal;
 in vec3 surfaceColor;
 in vec4 reliefSurface;
@@ -70,6 +73,8 @@ uniform int cameraInWater;
 uniform int decorative;
 uniform float timeSeconds;
 uniform int carriedLantern;
+uniform int monsterCount;
+uniform vec3 monsterFeet[3];
 uniform int lightCount;
 uniform int lightOffset;
 uniform sampler2D lightSources;
@@ -115,7 +120,14 @@ void main() {
     vec3 fogColor;
     float fog;
     if (underground != 0) {
-        float ao = decorative == 1 || materialId == 16 ? 1.0 : contactShade();
+        float ao = decorative == 1 || decorative == 3 || materialId == 16 ? 1.0 : contactShade();
+        // Soft ground contact under the three preview creatures. The animated
+        // bodies are not part of the static voxel shadow volume.
+        if (decorative != 3 && normal.y > .5) for (int m = 0; m < monsterCount; ++m) {
+            vec3 delta = worldPosition - monsterFeet[m];
+            float footprint = 1.0 - smoothstep(.12, 1.0, length(delta.xz / vec2(.8,.65)));
+            ao *= 1.0 - .48 * footprint * (1.0 - smoothstep(.03,.25,abs(delta.y)));
+        }
         float cone = smoothstep(0.35, 0.94, dot(-viewDirection, cameraForward));
         float headlamp = 0.24 * (0.2 + 0.8 * max(dot(normal, viewDirection), 0.0))
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
@@ -246,7 +258,8 @@ void WorldRenderer::uploadLights(const World& world)
 
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
                            bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets,
-                           std::span<const HubAsset> placedAssets, std::span<const glm::vec3> pickupOffsets)
+                           std::span<const HubAsset> placedAssets, std::span<const glm::vec3> pickupOffsets,
+                           std::span<const MonsterInstance> monsters)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -431,12 +444,19 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("underground", underground);
     shader_.setInt("cameraInWater", cameraInWater);
     shader_.setInt("carriedLantern", carriedLantern);
+    shader_.setInt("monsterCount", static_cast<int>(std::min<std::size_t>(3, monsters.size())));
+    for (std::size_t i = 0; i < std::min<std::size_t>(3,monsters.size()); ++i) {
+        const auto matrices = monsterMatrices(monsters[i]);
+        auto feet = matrices.empty() ? monsters[i].position : glm::vec3(matrices[0][3]);
+        feet.y = monsters[i].position.y;
+        shader_.setVec3(("monsterFeet[" + std::to_string(i) + "]").c_str(), feet);
+    }
     shader_.setInt("decorative", 0);
     shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
-    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = 0;
+    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -493,6 +513,33 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         shader_.setMat4("model", glm::mat4(1));
         shader_.setInt("decorative", 0);
     }
+    // Joint meshes stay resident; only their transforms change each frame.
+    // Draw before the water snapshot so refraction includes the creatures.
+    shader_.setInt("decorative", 3);
+    for (const auto& monster : monsters) {
+        const auto& rig = monsterRig(monster.kind);
+        auto& meshes = monsters_[static_cast<std::size_t>(monster.kind)];
+        if (meshes.empty()) for (const auto& part : rig.parts) {
+            auto mesh = std::make_unique<GpuMesh>();
+            mesh->upload(part.mesh);
+            meshes.push_back(std::move(mesh));
+        }
+        for (const auto& mesh : meshes) monsterTriangles_ += mesh->indexCount()/3;
+        if (!frustum.intersects(monster.position-glm::vec3(4,1,4), monster.position+glm::vec3(4,5,4))) continue;
+        const auto cell = glm::clamp(glm::ivec3(glm::floor(monster.position)),World::Min,World::MaxExclusive-1)-World::Min;
+        const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
+            + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
+        shader_.setInt("lightOffset",lightOffsets_[chunk]);
+        shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+        const auto matrices = monsterMatrices(monster);
+        for (std::size_t i=0; i<meshes.size(); ++i) {
+            shader_.setMat4("model",matrices[i]);
+            meshes[i]->draw();
+            drawnTriangles_ += meshes[i]->indexCount()/3;
+        }
+    }
+    shader_.setMat4("model",glm::mat4(1));
+    shader_.setInt("decorative",0);
     if (!visibleWater.empty()) {
         if (underground && !wireframe) {
             postProcess_.captureScene();
@@ -530,7 +577,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
 
 std::size_t WorldRenderer::triangleCount() const
 {
-    std::size_t total = 0;
+    std::size_t total = monsterTriangles_;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
     for (const auto& mesh : water_) total += mesh.indexCount() / 3;
     if (underground_) {

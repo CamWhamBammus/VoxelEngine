@@ -69,6 +69,7 @@ Input::Buttons Input::readButtons() const
         .courses = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3),
                     keyDown(GLFW_KEY_4), keyDown(GLFW_KEY_5), keyDown(GLFW_KEY_6),
                     keyDown(GLFW_KEY_7), keyDown(GLFW_KEY_8), keyDown(GLFW_KEY_9), keyDown(GLFW_KEY_0)},
+        .monsterPreview = keyDown(GLFW_KEY_F3),
         .crossingMenu = keyDown(GLFW_KEY_F6),
         .menuPrevious = keyDown(GLFW_KEY_UP),
         .menuNext = keyDown(GLFW_KEY_DOWN),
@@ -142,6 +143,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         pendingText_.clear();
         return;
     }
+    actions_.monsterPreview = !editorMode && pressed(buttons.monsterPreview, previous.monsterPreview);
     actions_.devToggle = !editorMode && pressed(buttons.devToggle, previous.devToggle);
     actions_.levelCreator = !editorMode && pressed(buttons.levelCreator, previous.levelCreator);
     actions_.levelMenu = !editorMode && pressed(buttons.levelMenu, previous.levelMenu);

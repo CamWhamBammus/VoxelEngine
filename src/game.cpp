@@ -29,6 +29,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
             return arguments[i];
         };
         if (argument == "--help" || argument == "-h") options.help = true;
+        else if (argument == "--monsters") options.monsters = true;
         else if (argument == "--editor") options.editor = true;
         else if (argument == "--dev") options.dev = true;
         else if (argument == "--level-creator") options.levelCreator = true;
@@ -66,6 +67,10 @@ Options parseOptions(std::span<const std::string_view> arguments)
             throw std::invalid_argument("Unknown option: " + std::string(argument));
         }
     }
+    if (options.monsters && (options.dev || options.levelCreator || options.editor
+        || options.rootCrossing >= 0 || options.worldExplicit) && !options.help) {
+        throw std::invalid_argument("Creature preview cannot be combined with other game modes or --world");
+    }
     if (options.levelCreator && (options.dev || options.editor || options.rootCrossing >= 0 || options.worldExplicit) && !options.help) {
         throw std::invalid_argument("Level creator cannot be combined with --dev, --editor, --world or --root-crossing");
     }
@@ -87,6 +92,10 @@ Game::Game(const Options& options)
     : world(options.seed), sectionEditor_(options.sectionLibrary), levelController_(options.sectionLibrary, options.levelLibrary), savedWorld_(world), savePath_(options.worldPath), editReach_(options.editReach),
       editorMode_(options.editor), progressPath_(options.smokeTest || options.editor ? "" : options.progressPath)
 {
+    if (options.monsters && (options.dev || options.levelCreator || options.editor
+        || options.rootCrossing >= 0 || options.worldExplicit)) {
+        throw std::invalid_argument("Creature preview cannot be combined with other game modes or --world");
+    }
     if (options.levelCreator && (options.dev || options.editor || options.rootCrossing >= 0 || options.worldExplicit)) {
         throw std::invalid_argument("Level creator cannot be combined with --dev, --editor, --world or --root-crossing");
     }
@@ -116,7 +125,8 @@ Game::Game(const Options& options)
         status = "New world - F5 to save";
     }
     if (!editorMode_) {
-        if (options.rootCrossing >= 0) startRootCrossing(options.rootCrossing);
+        if (options.monsters) enterMonsterPreview();
+        else if (options.rootCrossing >= 0) startRootCrossing(options.rootCrossing);
         else {
             buildVillage();
             if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
@@ -138,6 +148,51 @@ Game::Game(const Options& options)
     if (editorMode_) findTarget();
     if (options.dev) enterDevMode();
     if (options.levelCreator) enterLevelMode(true);
+}
+
+void Game::resetMonsterCamera()
+{
+    if (!player.setFeetPosition(world, MonsterPreview::Spawn))
+        throw std::runtime_error("Creature preview spawn is blocked");
+    camera.reset();
+    const auto direction = camera.forward();
+    camera.rotate(-90.0f - glm::degrees(std::atan2(direction.z,direction.x)),
+                  -2.0f - glm::degrees(std::asin(direction.y)));
+    camera.setPosition(player.eyePosition());
+}
+
+void Game::enterMonsterPreview()
+{
+    endSectionLoot();
+    smithOpen_ = crossingMenuOpen_ = false;
+    monsterPreviewActive_ = true;
+    monsterPreview_.build(world);
+    auto collision = std::make_shared<AssetCollision>();
+    collision->rebuild(monsterPreview_.scenery());
+    player.setAssetCollision(std::move(collision));
+    resetMonsterCamera();
+    target.reset();
+    status = "CREATURE PREVIEW | 1 IDLE | 2 MOVE | 3 ATTACK | E AUTO | B HUB";
+}
+
+void Game::updateMonsters(const InputActions& actions, float deltaSeconds)
+{
+    if (!actions.active) return;
+    if (actions.monsterPreview || actions.returnToHub) {
+        monsterPreviewActive_ = false;
+        buildVillage();
+        if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
+        status = "F3 CREATURE PREVIEW | F7 SECTION BUILDER";
+        return;
+    }
+    if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < 3)
+        monsterPreview_.select(static_cast<MonsterAnimation>(*actions.selectedTool));
+    if (actions.interact) monsterPreview_.automatic();
+    if (actions.respawn) { resetMonsterCamera(); monsterPreview_.automatic(); }
+    monsterPreview_.update(deltaSeconds);
+    player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint,
+                  deltaSeconds, actions.descend);
+    camera.setPosition(player.eyePosition());
 }
 
 void Game::enterDevMode()
@@ -192,6 +247,12 @@ bool Game::saveAuthoringDraft()
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
+    if (monsterPreviewActive_) { updateMonsters(actions, deltaSeconds); return; }
+    if (actions.active && actions.monsterPreview && !editorMode_ && !devMode_
+        && !levelController_.open() && !rootCrossingActive() && !menuOpen()) {
+        enterMonsterPreview();
+        return;
+    }
     if (updateInventory(actions, deltaSeconds)) return;
     if (!editorMode_ && actions.active && (actions.levelCreator || actions.levelMenu
         || (actions.devClick && *actions.devClick == SectionUiLevelCreator))) {
@@ -615,7 +676,7 @@ std::string Game::playStatusText(bool captured, bool showHelp) const
     } else text << "GLOWROOT HAVEN | VILLAGE HUB";
     if (!captured) text << "\nPAUSED | TAB TO RESUME";
     if (!crossingMenuOpen_) text << "\n" << status;
-    text << "\nH CONTROLS | F4 LEVELS | F7 SECTION BUILDER | F11 LEVEL CREATOR";
+    text << "\nH CONTROLS | F3 CREATURES | F4 LEVELS | F7 SECTION BUILDER | F11 LEVEL CREATOR";
     if (showHelp) {
         text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
              << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
@@ -643,6 +704,9 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
                              std::size_t totalTriangles, double fps,
                              bool captured, bool showHelp) const
 {
+    if (monsterPreviewActive_) {
+        return captured ? "CREATURE PREVIEW" : "PAUSED | TAB TO RESUME";
+    }
     if (levelController_.open()) {
         std::ostringstream text;
         text << (levelCreatorActive() ? "LEVEL CREATOR" : "EXPEDITIONS") << " | " << levelController_.message();

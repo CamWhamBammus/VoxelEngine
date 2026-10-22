@@ -1414,6 +1414,44 @@ void verifyFrame(int width, int height, const std::string& screenshotPath)
     std::cout << "Screenshot: " << screenshotPath << '\n';
 }
 
+void verifyMonsters(int width, int height)
+{
+    Options options; options.monsters = true;
+    Game game(options);
+    WorldRenderer renderer;
+    const auto pixels = [&] {
+        std::vector<unsigned char> data(static_cast<std::size_t>(width)*height*4);
+        glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,data.data());
+        checkOpenGl();
+        return data;
+    };
+    for (const auto& creature : game.monsters()) {
+        auto monster = creature;
+        monster.animation = MonsterAnimation::Walk;
+        const auto render = [&] {
+            renderer.render(game.world,game.camera,width,height,false,true,0,false,false,
+                            game.sectionSceneAssets(),{},std::span<const MonsterInstance>(&monster,1));
+        };
+        render();
+        const auto still = pixels();
+        const auto rebuilds = renderer.sceneRebuildCount();
+        monster.seconds = .57f;
+        render();
+        const auto moving = pixels();
+        std::size_t changed=0;
+        for(std::size_t i=0;i<still.size();i+=4)
+            changed += std::abs(int(still[i])-int(moving[i]))
+                +std::abs(int(still[i+1])-int(moving[i+1]))
+                +std::abs(int(still[i+2])-int(moving[i+2])) > 15;
+        if (changed<100 || renderer.sceneRebuildCount()!=rebuilds)
+            throw std::runtime_error("Creature animation missing or rebuilding static scenery");
+    }
+    Hud hud;
+    hud.drawMonsters(game,width,height,1);
+    checkOpenGl();
+    std::cout << "Creature rendering passed: three animated rigs, stable scenery cache and preview HUD\n";
+}
+
 int runGraphicsSmokeTest(const Options& options)
 {
     Game game(options);
@@ -1442,6 +1480,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyDroppedItems(width, height);
     verifyLevelHud(width, height);
     verifyLushMaterials(width, height);
+    verifyMonsters(width, height);
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.
@@ -1457,20 +1496,19 @@ int runGraphicsSmokeTest(const Options& options)
             throw std::runtime_error("Smoke test framebuffer is empty");
         }
         renderer.render(game.world, game.camera, width, height, false, !game.editorMode(), 0.0f,
-                        game.devMode() || game.equipment.selectedTool() == Tool::Lantern,
-                        !game.rootCrossingActive() && !game.devMode() && !game.levelActive(),
-                        game.devMode() ? std::span<const HubAsset>(game.sectionEditor().assets())
-                            : game.levelActive() ? std::span<const HubAsset>(game.levelController().assets())
-                                                 : std::span<const HubAsset>{});
+                        !game.monsterPreviewActive() && (game.devMode() || game.equipment.selectedTool() == Tool::Lantern),
+                        !game.rootCrossingActive() && !game.devMode() && !game.levelActive() && !game.monsterPreviewActive(),
+                        game.sectionSceneAssets(),game.sectionPickupOffsets(),game.monsters());
         float scaleX, scaleY;
         glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
         overlay.draw(game.target, game.camera, width, height, scaleY);
         if (game.levelActive() && !game.levelMenuOpen())
             overlay.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height);
-        if (!game.rootCrossingActive() && !game.devMode() && !game.levelController().open())
+        if (!game.rootCrossingActive() && !game.devMode() && !game.levelController().open() && !game.monsterPreviewActive())
             hud.draw(game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                                      renderer.triangleCount(), 0.0, true, false), width, height, scaleY);
-        if (game.devMode()) hud.drawSection(game, width, height, scaleY);
+        if (game.monsterPreviewActive()) hud.drawMonsters(game,width,height,scaleY);
+        else if (game.devMode()) hud.drawSection(game, width, height, scaleY);
         else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
         if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
         if (frame == 2) {

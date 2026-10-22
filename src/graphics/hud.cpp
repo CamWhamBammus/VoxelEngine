@@ -1510,6 +1510,33 @@ void Hud::draw(std::string_view text, int framebufferWidth, int framebufferHeigh
     render(drawing, shader_, vao_, buffer_);
 }
 
+void Hud::drawMonsters(const Game& game, int framebufferWidth, int framebufferHeight, float contentScale)
+{
+    if (!game.monsterPreviewActive() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
+    if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
+    const float scale = std::min({std::clamp(contentScale,.5f,4.0f),
+        framebufferWidth/660.0f,framebufferHeight/400.0f});
+    const float width = framebufferWidth/scale, height = framebufferHeight/scale;
+    Drawing drawing(width,height,scale);
+    const float center = width*.5f;
+    drawing.frame(center-237,16,474,53,Edge,Panel);
+    drawing.centered("THE GROTTO / CREATURE STUDIES",center,27,1.5f,Cream);
+    drawing.centered("SCRAPBONE   /   HOLLOW SAGE   /   MOSSDROP",center,51,1,Muted);
+    constexpr std::array labels{"1  IDLE", "2  MOVE", "3  ATTACK", "E  AUTO"};
+    const auto& preview = game.monsterPreview();
+    for (int i=0; i<4; ++i) {
+        const bool active = i==3 ? preview.isAutomatic()
+            : static_cast<int>(preview.animation())==i;
+        const float x = center-236+i*120;
+        drawing.frame(x,height-87,112,30,active ? Gold : Edge,active ? Selected : Panel);
+        drawing.centered(labels[i],x+56,height-77,1,active ? Gold : Cream);
+    }
+    drawing.frame(center-290,height-48,580,31,Edge,Panel);
+    drawing.centered("WASD WALK / SPACE JUMP / R RESET / F3 OR B VILLAGE",center,height-39,1,Muted);
+    drawing.centered("ANIMATION PREVIEW / COMBAT COMES LATER",center,height-25,.8f,Muted);
+    render(drawing,shader_,vao_,buffer_);
+}
+
 void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight, float contentScale)
 {
     if (game.editorMode() || framebufferWidth <= 0 || framebufferHeight <= 0) return;

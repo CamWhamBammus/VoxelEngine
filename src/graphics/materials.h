@@ -29,8 +29,9 @@ float materialNoise(vec2 p) {
 // Correlated shapes are sampled on a 32-pixel grid, not random bright checkers.
 MaterialSurface evaluateMaterial() {
     vec3 n = normalize(surfaceNormal);
-    if (decorative == 1) {
-        float brush = floor(materialNoise(worldPosition.xz * 2.0 + worldPosition.y) * 4.0) / 4.0;
+    if (decorative == 1 || decorative == 3) {
+        vec3 paint = decorative == 3 ? floor(modelPosition * 32.0) / 32.0 : worldPosition;
+        float brush = floor(materialNoise(paint.xz * 2.0 + paint.y) * 4.0) / 4.0;
         vec3 color = surfaceColor * (0.87 + 0.18 * brush);
         if (materialId == 20) {
             // Broad painted grain and sparse pale flecks keep the fitted stones

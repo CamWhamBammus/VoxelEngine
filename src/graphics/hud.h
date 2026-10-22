@@ -25,6 +25,8 @@ public:
 
     void draw(std::string_view text, int framebufferWidth, int framebufferHeight,
               float contentScale = 1.0f);
+    void drawMonsters(const Game& game, int framebufferWidth, int framebufferHeight,
+                      float contentScale = 1.0f);
     void drawPlay(const Game& game, int framebufferWidth, int framebufferHeight,
                   float contentScale = 1.0f);
     void drawSection(const Game& game, int framebufferWidth, int framebufferHeight,
