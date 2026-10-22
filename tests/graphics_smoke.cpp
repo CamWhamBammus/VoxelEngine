@@ -14,6 +14,7 @@
 #include "graphics/window.h"
 #include "graphics/cave_details.h"
 #include "graphics/block_relief.h"
+#include "graphics/voxel_lighting.h"
 #include "hub_assets.h"
 #include "camera.h"
 #include "editing.h"
@@ -702,6 +703,131 @@ void verifyUndergroundMaterials(int width, int height)
     std::cout << "Underground materials passed: grain, ores, wood, emission, wall shadows and light edits\n";
 }
 
+// Run the production GLSL against a tiny synthetic occupancy texture. Exact
+// geometry probes catch half-step shading defects without depending on paint,
+// tone mapping, framebuffer scale, or a driver's anti-aliasing pattern.
+void verifyVoxelShapeLighting()
+{
+    constexpr const char* vertex = R"glsl(#version 410 core
+void main() {
+    vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+    gl_Position = vec4(p * 2.0 - 1.0, 0, 1);
+}
+)glsl";
+    const auto fragment = std::string(R"glsl(#version 410 core
+uniform sampler3D occupancy;
+uniform vec3 worldMinimum;
+uniform vec3 worldPosition;
+uniform vec3 surfaceNormal;
+uniform vec3 lightPosition;
+uniform int decorative;
+const vec4 reliefSurface = vec4(0);
+out vec4 color;
+)glsl") + voxelLightingShader + R"glsl(
+void main() {
+    color = vec4(contactShade(), visibleLight(worldPosition, lightPosition),
+                 float(occupiedAt(worldPosition)), 1);
+}
+)glsl";
+    Shader shader(vertex, fragment.c_str());
+    GLuint frame = 0, color = 0, occupancy = 0, vao = 0;
+    glGenFramebuffers(1, &frame);
+    glGenTextures(1, &color);
+    glGenTextures(1, &occupancy);
+    glGenVertexArrays(1, &vao);
+    const auto cleanup = [&] {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindVertexArray(0);
+        glUseProgram(0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDeleteFramebuffers(1, &frame);
+        glDeleteTextures(1, &color);
+        glDeleteTextures(1, &occupancy);
+        glDeleteVertexArrays(1, &vao);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    };
+    try {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, color);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 1, 1, 0, GL_RGBA, GL_FLOAT, nullptr);
+        glBindFramebuffer(GL_FRAMEBUFFER, frame);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            throw std::runtime_error("Voxel lighting probe framebuffer is incomplete");
+        glBindTexture(GL_TEXTURE_3D, occupancy);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+        glViewport(0, 0, 1, 1);
+        glBindVertexArray(vao);
+        shader.use();
+        shader.setInt("occupancy", 0);
+        shader.setInt("decorative", 0);
+        shader.setVec3("worldMinimum", {});
+        shader.setVec3("lightPosition", {4.5f, 4.5f, 4.5f});
+        constexpr int size = 5;
+        std::array<unsigned char, size * size * size> voxels{};
+        const auto set = [&](glm::ivec3 p, unsigned char code) {
+            voxels[static_cast<std::size_t>(p.x + size * (p.y + size * p.z))] = code;
+            // Width five requires byte-aligned rows when uploading R8 data.
+            GLint alignment = 4;
+            glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glTexImage3D(GL_TEXTURE_3D, 0, GL_R8, size, size, size, 0, GL_RED,
+                         GL_UNSIGNED_BYTE, voxels.data());
+            glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+        };
+        const auto sample = [&](glm::vec3 point, glm::vec3 normal) {
+            shader.setVec3("worldPosition", point);
+            shader.setVec3("surfaceNormal", normal);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+            glm::vec4 result{};
+            glReadPixels(0, 0, 1, 1, GL_RGBA, GL_FLOAT, &result[0]);
+            checkOpenGl();
+            return result;
+        };
+        for (int facing = 0; facing < 4; ++facing) {
+            set({2, 2, 2}, static_cast<unsigned char>(200 + facing));
+            const auto rotate = [facing](glm::vec3 point) {
+                point -= glm::vec3(2.5f, 0, 2.5f);
+                for (int turn = 0; turn < facing; ++turn)
+                    point = {point.z, point.y, -point.x};
+                return point + glm::vec3(2.5f, 0, 2.5f);
+            };
+            const auto low = rotate({2.5f, 2.5f, 2.55f});
+            const auto high = rotate({2.5f, 3.0f, 2.25f});
+            const float crease = sample(low, {0, 1, 0}).x;
+            const float upper = sample(high, {0, 1, 0}).x;
+            if (crease > 0.85f || upper < 0.999f)
+                throw std::runtime_error("Stair contact shading missed its inner riser or darkened its open top");
+            if (sample(low + glm::vec3(0, 0.1f, 0), {0, 1, 0}).z != 0.0f
+                || sample(high - glm::vec3(0, 0.1f, 0), {0, 1, 0}).z != 1.0f)
+                throw std::runtime_error("Stair lighting occupancy disagrees with its rotated half-step geometry");
+        }
+        set({2, 2, 2}, 0);
+        // The upper half of the neighboring stair faces away from this wall.
+        // Its lower slab may shade the bottom corner, but its air must stay open.
+        set({2, 2, 3}, 202);
+        const float openHalf = sample({1.9f, 2.9f, 3.0f}, {0, 0, 1}).x;
+        set({2, 2, 3}, 200);
+        const float filledHalf = sample({1.9f, 2.9f, 3.0f}, {0, 0, 1}).x;
+        set({2, 2, 3}, 255);
+        const float fullCube = sample({1.9f, 2.9f, 3.0f}, {0, 0, 1}).x;
+        if (openHalf < filledHalf + 0.15f || std::abs(filledHalf - fullCube) > 0.001f)
+            throw std::runtime_error("Stair contact shading treats an empty half as solid or differs from matching cube faces");
+        cleanup();
+    } catch (...) {
+        cleanup();
+        throw;
+    }
+    std::cout << "Voxel shape lighting passed: rotated stair creases, empty halves and matching cube contacts\n";
+}
+
 void verifyStableWorldLighting(int width, int height)
 {
     // Repeat across horizontal and vertical chunk seams. The upper target is
@@ -1255,6 +1381,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyCrosshair(width, height);
     verifyRenderTransitions(width, height);
     verifyRendererCaches(width, height);
+    verifyVoxelShapeLighting();
     verifyUndergroundMaterials(width, height);
     verifyStableWorldLighting(width, height);
     verifyBlockRelief(width, height);

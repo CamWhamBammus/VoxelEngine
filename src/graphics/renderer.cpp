@@ -4,6 +4,7 @@
 #include "graphics/block_relief.h"
 #include "graphics/materials.h"
 #include "graphics/water.h"
+#include "graphics/voxel_lighting.h"
 #include "hub_assets.h"
 #include "block_shapes.h"
 #include "sections.h"
@@ -84,80 +85,7 @@ vec4 lightData(int index, int part) {
     return texelFetch(lightSources, ivec2(address % width, address / width), 0);
 }
 
-int occupancyCode(ivec3 cell) {
-    ivec3 local = cell - ivec3(worldMinimum);
-    if (any(lessThan(local, ivec3(0))) || any(greaterThanEqual(local, textureSize(occupancy, 0)))) return 0;
-    return int(texelFetch(occupancy, local, 0).r * 255.0 + 0.5);
-}
-
-bool solid(ivec3 cell) { return occupancyCode(cell) >= 200; }
-
-bool crossesBox(vec3 start, vec3 ray, vec3 low, vec3 high) {
-    float near = 0.0, far = 1.0;
-    for (int axis = 0; axis < 3; ++axis) {
-        if (abs(ray[axis]) < 0.000001) {
-            if (start[axis] < low[axis] || start[axis] >= high[axis]) return false;
-        } else {
-            float a = (low[axis] - start[axis]) / ray[axis];
-            float b = (high[axis] - start[axis]) / ray[axis];
-            near = max(near, min(a, b)); far = min(far, max(a, b));
-        }
-    }
-    return far > near + 0.000001;
-}
-
-bool blocksLight(ivec3 cell, vec3 start, vec3 ray) {
-    int code = occupancyCode(cell);
-    if (code == 255) return true;
-    if (code < 200 || code > 203) return false;
-    vec3 local = start - vec3(cell);
-    if (crossesBox(local, ray, vec3(0), vec3(1, 0.5, 1))) return true;
-    vec3 low = vec3(0, 0.5, 0), high = vec3(1);
-    if (code == 200) high.z = 0.5;
-    else if (code == 201) high.x = 0.5;
-    else if (code == 202) low.z = 0.5;
-    else low.x = 0.5;
-    return crossesBox(local, ray, low, high);
-}
-
-float contactShade() {
-    vec3 normal = decorative == 2 ? reliefSurface.xyz : normalize(surfaceNormal);
-    vec3 anchor = decorative == 2 ? worldPosition - normal * reliefSurface.w : worldPosition;
-    ivec3 outside = ivec3(floor(anchor + normal * 0.02));
-    ivec3 u = abs(normal.x) > 0.5 ? ivec3(0, 0, 1) : ivec3(1, 0, 0);
-    ivec3 v = abs(normal.y) > 0.5 ? ivec3(0, 0, 1) : ivec3(0, 1, 0);
-    vec2 position = fract(vec2(dot(anchor, vec3(u)), dot(anchor, vec3(v))));
-    vec2 low = 1.0 - smoothstep(vec2(0.0), vec2(0.65), position);
-    vec2 high = 1.0 - smoothstep(vec2(0.0), vec2(0.65), 1.0 - position);
-    float shade = float(solid(outside - u)) * low.x + float(solid(outside + u)) * high.x
-        + float(solid(outside - v)) * low.y + float(solid(outside + v)) * high.y;
-    float corners = float(solid(outside - u - v)) * low.x * low.y
-        + float(solid(outside - u + v)) * low.x * high.y
-        + float(solid(outside + u - v)) * high.x * low.y
-        + float(solid(outside + u + v)) * high.x * high.y;
-    return max(0.42, 1.0 - shade * 0.24 - corners * 0.16);
-}
-
-// Walk crossed voxels, not fixed-distance samples: even a one-block wall casts
-// a reliable shadow. The final cell is the emitting block and is not a blocker.
-float visibleLight(vec3 start, vec3 end) {
-    vec3 ray = end - start;
-    ivec3 cell = ivec3(floor(start));
-    ivec3 target = ivec3(floor(end));
-    ivec3 advance = ivec3(sign(ray));
-    vec3 delta = 1.0 / max(abs(ray), vec3(0.000001));
-    vec3 next = mix(start - vec3(cell), vec3(cell + 1) - start, greaterThan(ray, vec3(0.0))) * delta;
-    next = mix(vec3(1e20), next, greaterThan(abs(ray), vec3(0.000001)));
-    // Sources reach at most eleven blocks: 32 crossings cover every direction.
-    for (int step = 0; step < 32; ++step) {
-        if (all(equal(cell, target))) return 1.0;
-        if (blocksLight(cell, start, ray)) return 0.0;
-        if (next.x < next.y && next.x < next.z) { cell.x += advance.x; next.x += delta.x; }
-        else if (next.y < next.z) { cell.y += advance.y; next.y += delta.y; }
-        else { cell.z += advance.z; next.z += delta.z; }
-    }
-    return 0.0;
-}
+)glsl" + voxelLightingShader + R"glsl(
 
 float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) {
     float centerVisibility = visibleLight(start, center);
