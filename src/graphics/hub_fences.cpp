@@ -41,15 +41,31 @@ void endPosts(AssetBuilder& out, glm::vec3 wood, glm::vec3 paint)
     }
 }
 
+// A module fills one voxel along its rail direction. Two neighbouring half
+// posts meet at the shared cell face instead of colliding across two cells.
+void fencePosts(AssetBuilder& out, glm::vec3 wood, glm::vec3 paint)
+{
+    for (const float side : {-1.0f,1.0f}) {
+        const float left=side<0 ? -0.5f : 0.39f;
+        const float right=side<0 ? -0.39f : 0.5f;
+        out.box({left,0,-0.10f},{right,0.91f,0.10f},Block::Timber,wood*0.80f);
+        out.box({left,0.06f,-0.11f},{right,0.14f,0.11f},Block::Slate,Iron);
+        out.box({left,0.86f,-0.12f},{right,0.94f,0.12f},Block::Planks,paint);
+        out.box({left+0.01f,0.94f,-0.085f},{right-0.01f,1.0f,0.085f},Block::Timber,wood*1.13f);
+        const float x=(left+right)*0.5f;
+        for (const float z : {-0.11f,0.10f}) for (const float y : {0.32f,0.70f})
+            out.box({x-0.018f,y,z},{x+0.018f,y+0.036f,z+0.01f},Block::Slate,Brass);
+    }
+}
+
 void timberFence(AssetBuilder& out, std::uint32_t variation)
 {
     const auto wood=timber(variation);
-    endPosts(out,wood,trim(variation));
-    for (const float y : {0.39f,0.92f})
-        out.box({-0.83f,y,-0.08f},{0.83f,y+0.15f,0.08f},Block::Timber,wood);
-    out.beam({-0.79f,0.51f,0},{0.79f,0.95f,0},0.10f,Block::Timber,wood*0.86f);
-    // A contrasting top strip catches lantern light along a path or balcony.
-    out.box({-0.83f,1.07f,-0.095f},{0.83f,1.115f,0.095f},Block::Planks,wood*1.18f);
+    fencePosts(out,wood,trim(variation));
+    for (const float y : {0.28f,0.66f})
+        out.box({-0.40f,y,-0.06f},{0.40f,y+0.11f,0.06f},Block::Timber,wood);
+    out.beam({-0.36f,0.38f,0},{0.36f,0.69f,0},0.065f,Block::Timber,wood*0.86f);
+    out.box({-0.40f,0.77f,-0.07f},{0.40f,0.805f,0.07f},Block::Planks,wood*1.18f);
 }
 
 void pointedBoard(AssetBuilder& out, float x, float base, float height,
@@ -67,16 +83,16 @@ void pointedBoard(AssetBuilder& out, float x, float base, float height,
 void picketFence(AssetBuilder& out, std::uint32_t variation)
 {
     const auto wood=timber(variation), paint=trim(variation);
-    endPosts(out,wood,paint);
-    for (const float y : {0.31f,0.82f})
-        out.box({-0.83f,y,-0.12f},{0.83f,y+0.11f,0.01f},Block::Timber,wood*0.80f);
-    for (int i=0; i<7; ++i) {
-        const float x=-0.69f+i*0.23f;
-        const float height=1.15f+0.10f*(1.0f-std::abs(x)/0.69f);
-        pointedBoard(out,x,0.13f,height,0.15f,0.12f,
+    fencePosts(out,wood,paint);
+    for (const float y : {0.24f,0.64f})
+        out.box({-0.40f,y,-0.09f},{0.40f,y+0.08f,0.01f},Block::Timber,wood*0.80f);
+    for (int i=0; i<5; ++i) {
+        const float x=-0.30f+i*0.15f;
+        const float height=0.84f+0.07f*(1.0f-std::abs(x)/0.30f);
+        pointedBoard(out,x,0.10f,height,0.10f,0.09f,
                      (variation%3==1 ? paint*1.25f : wood)*(i%2==0 ? 1.0f : 0.93f));
-        for (const float y : {0.35f,0.86f})
-            out.box({x-0.016f,y,0.06f},{x+0.016f,y+0.032f,0.074f},Block::Slate,Iron);
+        for (const float y : {0.27f,0.67f})
+            out.box({x-0.012f,y,0.045f},{x+0.012f,y+0.024f,0.055f},Block::Slate,Iron);
     }
 }
 

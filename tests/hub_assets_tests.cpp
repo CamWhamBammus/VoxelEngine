@@ -115,6 +115,28 @@ void validatePath(HubAssetKind kind, std::uint32_t variation)
         check(topArea > 0.78f && topArea < 0.99f, "fitted slabs cover most of a tile while leaving narrow joints");
 }
 
+void validateFenceModules()
+{
+    for (const auto kind : {HubAssetKind::TimberFence, HubAssetKind::PicketFence}) {
+        for (const auto variant : {0u,1u,42u}) for (int facing=0;facing<4;++facing) {
+            const glm::vec3 origin{-4.5f,7,-8.5f};
+            const auto mesh=buildHubAsset({kind,origin,facing,variant});
+            validate(mesh,origin+glm::vec3(-0.5f,0,-0.5f),origin+glm::vec3(0.5f,1,0.5f));
+            const std::array<HubAsset,2> line{{{kind,origin,facing,variant},
+                {kind,origin+turn({1,0,0},facing),facing,variant}}};
+            AssetCollision collision;
+            collision.rebuild(line);
+            // Sample across the joining cell face, including either side of
+            // the seam: both visual end posts must form a continuous barrier.
+            for (const float x : {0.499f,0.5f,0.501f}) {
+                const auto hit=collision.raycast(origin+turn({x,0.70f,1},facing),turn({0,0,-1},facing),2);
+                check(hit && hit->distance<1.0f,
+                      "one-block fence modules join without a gap in all four orientations");
+            }
+        }
+    }
+}
+
 void validateGarden(HubAssetKind kind, std::uint32_t variation)
 {
     const auto mesh = buildHubAsset({kind, {}, 0, variation});
@@ -658,6 +680,7 @@ int main()
         }
     }
     check(varyingKinds >= 7, "variants provide meaningful visual variation across the asset set");
+    validateFenceModules();
     validateLootChest();
     validateItemPickups();
 
