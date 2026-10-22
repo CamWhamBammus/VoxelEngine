@@ -178,8 +178,8 @@ void barrelHoop(AssetBuilder& out, float bottom, float top, float lower, float u
 void barrel(AssetBuilder& out, std::uint32_t variant)
 {
     const auto wood=timber(variant);
-    constexpr std::array<float,5> heights{{0,0.18f,0.65f,1.12f,1.30f}};
-    constexpr std::array<float,5> radii{{0.44f,0.48f,0.52f,0.48f,0.44f}};
+    constexpr std::array<float,5> heights{{0,0.14f,0.48f,0.82f,0.96f}};
+    constexpr std::array<float,5> radii{{0.36f,0.40f,0.46f,0.40f,0.36f}};
     for (int side=0;side<8;++side) {
         for (std::size_t ring=0;ring+1<heights.size();++ring) {
             const auto a=barrelPoint(side,heights[ring],radii[ring]);
@@ -195,14 +195,15 @@ void barrel(AssetBuilder& out, std::uint32_t variant)
             out.quad(glm::mix(b,a,0.485f),glm::mix(b,a,0.515f),glm::mix(c,d,0.515f),glm::mix(c,d,0.485f),
                      Block::Timber,wood*0.48f);
         }
-        out.triangle({0,0,0},barrelPoint(side,0,0.44f),barrelPoint(side+1,0,0.44f),Block::Timber,wood*0.7f);
-        out.triangle({0,1.30f,0},barrelPoint(side+1,1.30f,0.44f),barrelPoint(side,1.30f,0.44f),Block::Planks,wood*1.10f);
+        out.triangle({0,0,0},barrelPoint(side,0,0.36f),barrelPoint(side+1,0,0.36f),Block::Timber,wood*0.7f);
+        out.triangle({0,0.96f,0},barrelPoint(side+1,0.96f,0.36f),barrelPoint(side,0.96f,0.36f),Block::Planks,wood*1.10f);
     }
-    barrelHoop(out,0.12f,0.25f,0.482f,0.504f);
-    barrelHoop(out,1.05f,1.18f,0.504f,0.482f);
-    // Lid battens remain inside its rim and give the top a readable silhouette.
-    for (const float x : {-0.25f,0.17f})
-        out.box({x,1.30f,-0.30f},{x+0.08f,1.35f,0.30f},Block::Timber,wood*0.8f);
+    barrelHoop(out,0.09f,0.20f,0.395f,0.425f);
+    barrelHoop(out,0.76f,0.87f,0.425f,0.395f);
+    // The lid battens reach exactly one block high. The rounded body and its
+    // hoops leave clearance from neighbouring walls on every side.
+    for (const float x : {-0.18f,0.11f})
+        out.box({x,0.96f,-0.24f},{x+0.07f,1.0f,0.24f},Block::Timber,wood*0.8f);
 }
 
 } // namespace

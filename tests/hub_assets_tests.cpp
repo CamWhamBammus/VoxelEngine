@@ -216,6 +216,29 @@ void validateWallFittings()
     }
 }
 
+void validateBarrelFootprint()
+{
+    const glm::vec3 origin{-4.5f,7,-8.5f};
+    for (int facing=0;facing<4;++facing) for (const auto variant : {0u,1u,42u}) {
+        const auto mesh=buildHubAsset({HubAssetKind::Barrel,origin,facing,variant});
+        validate(mesh,origin+glm::vec3(-0.5f,0,-0.5f),origin+glm::vec3(0.5f,1,0.5f));
+        glm::vec3 low(1000),high(-1000);
+        for (const auto& vertex : mesh.vertices) {
+            low=glm::min(low,vertex.position); high=glm::max(high,vertex.position);
+        }
+        check(std::abs(high.y-origin.y-1.0f)<0.0001f && low.y==origin.y
+              && high.x-low.x<0.95f && high.z-low.z<0.95f,
+              "barrel fits one cell with side clearance and a top exactly one block above its base");
+        const std::array<HubAsset,2> barrels{{{HubAssetKind::Barrel,origin,facing,variant},
+            {HubAssetKind::Barrel,origin+glm::vec3(0,1,0),facing,variant}}};
+        AssetCollision collision;
+        collision.rebuild(barrels);
+        const auto top=collision.raycast(origin+turn({0.14f,3,0},facing),{0,-1,0},4);
+        check(top && std::abs(top->point.y-origin.y-2.0f)<0.0001f,
+              "stacked barrels keep their real top surface at the next integer block height");
+    }
+}
+
 void validateGarden(HubAssetKind kind, std::uint32_t variation)
 {
     const auto mesh = buildHubAsset({kind, {}, 0, variation});
@@ -763,6 +786,7 @@ int main()
     validateFenceCorners();
     validateStructuralModules();
     validateWallFittings();
+    validateBarrelFootprint();
     validateLootChest();
     validateItemPickups();
 
