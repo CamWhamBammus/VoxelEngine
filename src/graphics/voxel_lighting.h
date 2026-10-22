@@ -56,7 +56,9 @@ bool crossesBox(vec3 start, vec3 ray, vec3 low, vec3 high) {
 
 bool blocksLight(ivec3 cell, vec3 start, vec3 ray) {
     int code = occupancyCode(cell);
-    if (code == 255) return true;
+    // DDA can visit a side cell for zero time at an exact edge/corner crossing.
+    // Cubes and stairs must both require a nonzero intersection to cast a shadow.
+    if (code == 255) return crossesBox(start - vec3(cell), ray, vec3(0), vec3(1));
     if (code < 200 || code > 203) return false;
     vec3 local = start - vec3(cell);
     if (crossesBox(local, ray, vec3(0), vec3(1, 0.5, 1))) return true;

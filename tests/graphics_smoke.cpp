@@ -820,12 +820,57 @@ void main() {
         const float fullCube = sample({1.9f, 2.9f, 3.0f}, {0, 0, 1}).x;
         if (openHalf < filledHalf + 0.15f || std::abs(filledHalf - fullCube) > 0.001f)
             throw std::runtime_error("Stair contact shading treats an empty half as solid or differs from matching cube faces");
+        set({2, 2, 3}, 0);
+        const auto visibility = [&](glm::vec3 start, glm::vec3 end) {
+            shader.setVec3("lightPosition", end);
+            return sample(start, {0, 1, 0}).y;
+        };
+        // A diagonal ray only touches these side cells at one edge. The same
+        // geometry must transmit light whether the side cell is a cube or stair.
+        for (int axis = 0; axis < 3; ++axis) {
+            const int other = (axis + 1) % 3;
+            glm::vec3 start(2.75f), end(2.75f);
+            start[axis] = start[other] = 0.5f;
+            end[axis] = end[other] = 4.5f;
+            for (int side = 0; side < 2; ++side) {
+                glm::ivec3 tangent = glm::ivec3(glm::floor(start));
+                tangent[side == 0 ? axis : other] += 1;
+                for (const unsigned char code : {255, 200, 201, 202, 203}) {
+                    set(tangent, code);
+                    if (visibility(start, end) != 1.0f || visibility(end, start) != 1.0f)
+                        throw std::runtime_error("A zero-length voxel edge crossing incorrectly blocked light");
+                }
+                set(tangent, 0);
+            }
+            glm::ivec3 wall = glm::ivec3(glm::floor(start));
+            wall[axis] += 1;
+            wall[other] += 1;
+            set(wall, 255);
+            if (visibility(start, end) != 0.0f || visibility(end, start) != 0.0f)
+                throw std::runtime_error("Diagonal light escaped a full block it actually crossed");
+            set(wall, 0);
+        }
+        // The high half must cast a shadow, while its missing half transmits.
+        for (int facing = 0; facing < 4; ++facing) {
+            set({2, 2, 2}, static_cast<unsigned char>(200 + facing));
+            const int across = facing % 2 == 0 ? 0 : 2;
+            const int along = facing % 2 == 0 ? 2 : 0;
+            glm::vec3 start(2.75f), end(2.75f);
+            start[across] = 0.5f;
+            end[across] = 4.5f;
+            start[along] = end[along] = facing < 2 ? 2.75f : 2.25f;
+            if (visibility(start, end) != 1.0f)
+                throw std::runtime_error("The missing upper half of a stair blocked light");
+            start[along] = end[along] = facing < 2 ? 2.25f : 2.75f;
+            if (visibility(start, end) != 0.0f)
+                throw std::runtime_error("A stair's occupied upper half failed to block light");
+        }
         cleanup();
     } catch (...) {
         cleanup();
         throw;
     }
-    std::cout << "Voxel shape lighting passed: rotated stair creases, empty halves and matching cube contacts\n";
+    std::cout << "Voxel shape lighting passed: stair contacts, empty halves, diagonal edges and solid shadows\n";
 }
 
 void verifyStableWorldLighting(int width, int height)
