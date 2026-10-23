@@ -87,18 +87,24 @@ void spawnAndSwordChecks(World& world)
     strike(session, world, player);
     require(session.healthBars().front().current == 15 && session.healthBars().front().visibleSeconds > 3.8f
             && session.swordSwing() == 1, "one aimed sword hit deals25 damage and reveals enemy health");
+    require(session.hits().size() == 1 && !session.hits().front().lethal,
+            "a real damaging contact creates one nonlethal impact");
     for (int i = 0; i < 3; ++i) {
         const auto monster = session.monsters().front();
         session.update(world, player, aim(player, monster), true, .1f);
     }
-    require(session.healthBars().front().current == 15 && session.pendingCompletions().empty(),
+    require(session.healthBars().front().current == 15 && session.pendingCompletions().empty()
+            && session.hits().size() == 1 && session.hits().front().age > .29f,
             "holding attack cannot bypass the sword cooldown");
     tick(session, world, player, 2);
     strike(session, world, player);
     require(session.monsters().empty() && session.pendingCompletions().size() == 1
             && session.pendingCompletions().front() == 0 && session.remaining() == 1,
             "last kill reports the authored spawner index and waits for a durable completion");
+    require(session.hits().size() == 1 && session.hits().front().lethal && session.hits().front().age == 0,
+            "the lethal contact survives removal of the enemy");
     session.resetUnfinished();
+    require(session.hits().empty(), "respawning clears outstanding impacts");
     tick(session, world, player, 30);
     require(session.monsters().empty() && session.pendingCompletions().size() == 1,
             "a pending completion survives respawn so failed saves cannot duplicate enemies or rewards");
@@ -116,7 +122,7 @@ void spawnAndSwordChecks(World& world)
     start(session, world, player, asset);
     strike(session, world, player);
     session.resetUnfinished();
-    require(session.monsters().empty() && session.projectiles().empty() && !session.active()
+    require(session.monsters().empty() && session.projectiles().empty() && session.hits().empty() && !session.active()
             && session.swordSwing() == 0 && session.remaining() == 1,
             "unfinished encounters reset all transient combat state on death");
     position(player, world, {.5f, 9, 7.5f});
@@ -175,6 +181,7 @@ void obstructionChecks(World& world)
     for (int frame = 0; frame < 50; ++frame) {
         session.update(world, player, aim(player, session.monsters().front()), true, .1f);
         require(session.healthBars().front().current == 40, "sword strikes cannot damage enemies through terrain");
+        require(session.hits().empty(), "a wall-blocked sword produces no enemy damage effects");
         require(session.monsters().front().position.z <= float(barrier) - .29f,
                 "chasing monsters respect terrain collision");
     }
@@ -204,6 +211,137 @@ void obstructionChecks(World& world)
                 "the slime's broad sides stay outside walls while it chases and pounces");
     }
     wall(world, slimeWall, Block::Air);
+}
+
+void hitFeedbackChecks(World& world)
+{
+    EncounterSession session;
+    Player player;
+    const auto skeleton = spawner({1, 0, 0});
+    start(session, world, player, skeleton);
+    auto monster = session.monsters().front();
+    position(player, world, monster.position + glm::vec3(0, 0, 2.4f));
+    session.update(world, player, {0, 1, 0}, true, .01f);
+    require(session.hits().empty() && session.monsters().front().hitReaction == 0,
+            "a missed sword swing has no impact or enemy recoil");
+    tick(session, world, player, 5);
+    monster = session.monsters().front();
+    position(player, world, monster.position + glm::vec3(0, 0, 2.4f));
+    const auto direction = aim(player, monster);
+    const auto contact = player.eyePosition() + direction
+        * ((monster.position.z + .47f - player.eyePosition().z) / direction.z);
+    const auto before = monster.position;
+    require(session.update(world, player, direction, true, .01f) == 0,
+            "a sword hit interrupts attacks before they damage the player");
+    require(session.hits().size() == 1 && session.hits().front().kind == MonsterKind::Skeleton
+            && glm::length(session.hits().front().position - contact) < .002f
+            && glm::length(session.hits().front().direction - glm::vec3(0, 0, -1)) < .001f,
+            "damage effects use the ray's visible contact and the shove's horizontal direction");
+    float previousDistance = 0;
+    for (const float seconds : {.08f, .08f, .09f}) {
+        require(session.update(world, player, direction, false, seconds) == 0,
+                "a recoiling enemy cannot attack");
+        const auto current = session.monsters().front();
+        const float distance = before.z - current.position.z;
+        require(distance > previousDistance && current.animation != MonsterAnimation::Attack,
+                "knockback visibly advances across several frames while chasing is paused");
+        require(std::abs(current.position.y - before.y) < .001f,
+                "grounded recoil keeps the enemy on its floor");
+        previousDistance = distance;
+    }
+    require(std::abs(previousDistance - .62f) < .003f
+            && session.monsters().front().hitReaction < .001f,
+            "decaying recoil travels a short predictable distance and settles to zero");
+    const float stoppedZ = session.monsters().front().position.z;
+    tick(session, world, player);
+    require(session.monsters().front().position.z > stoppedZ + .1f,
+            "normal chasing recovers after the short hit reaction");
+    tick(session, world, player);
+    require(session.hits().empty(), "contact effects expire even while the encounter continues");
+
+    // The same integration at a different frame rate gives the same shove.
+    start(session, world, player, skeleton);
+    monster = session.monsters().front();
+    position(player, world, monster.position + glm::vec3(0, 0, 2.4f));
+    session.update(world, player, aim(player, monster), true, .1f);
+    session.update(world, player, {}, false, .1f);
+    session.update(world, player, {}, false, .06f);
+    require(std::abs(monster.position.z - session.monsters().front().position.z - .62f) < .003f,
+            "the shove does not depend on the frame rate");
+    session.begin(std::span(&skeleton, 1), {});
+    require(session.hits().empty(), "entering another section clears old hit effects");
+
+    start(session, world, player, skeleton);
+    monster = session.monsters().front();
+    position(player, world, monster.position + glm::vec3(0, 0, 1.6f));
+    for (int frame = 0; frame < 30
+            && session.monsters().front().animation != MonsterAnimation::Attack; ++frame)
+        tick(session, world, player);
+    require(session.monsters().front().animation == MonsterAnimation::Attack,
+            "interruption fixture has a winding-up skeleton");
+    session.update(world, player, aim(player, session.monsters().front()), true, .01f);
+    require(session.monsters().front().animation != MonsterAnimation::Attack
+            && session.monsters().front().hitReaction > .9f
+            && tick(session, world, player, 4) == 0,
+            "a successful strike cancels the current enemy attack instead of merely hiding its animation");
+    session.clear();
+    require(session.hits().empty(), "leaving combat clears hit effects");
+
+    // A shove off a ledge must not suspend gravity for the hit animation.
+    start(session, world, player, skeleton);
+    strike(session, world, player);
+    const auto falling = session.monsters().front().position;
+    for (int z = int(std::floor(falling.z)) - 1; z <= int(std::floor(falling.z)) + 1; ++z)
+        world.set({int(std::floor(falling.x)), 8, z}, Block::Air);
+    tick(session, world, player, 2);
+    require(session.monsters().front().position.y < falling.y - .1f,
+            "gravity continues while an enemy recoils over a gap");
+    for (int z = int(std::floor(falling.z)) - 1; z <= int(std::floor(falling.z)) + 1; ++z)
+        world.set({int(std::floor(falling.x)), 8, z}, Block::Stone);
+}
+
+void knockbackCollisionChecks(World& world)
+{
+    EncounterSession session;
+    Player player;
+    const auto skeleton = spawner({1, 0, 0});
+    start(session, world, player, skeleton);
+    const auto before = session.monsters().front().position;
+    const int barrier = int(std::floor(before.z)) - 1;
+    wall(world, barrier, Block::Stone);
+    strike(session, world, player);
+    tick(session, world, player, 2);
+    require(session.monsters().front().position.z < before.z
+            && session.monsters().front().position.z >= float(barrier + 1) + Player::Width / 2 - .001f,
+            "a sustained shove stops at the terrain wall behind the enemy");
+    wall(world, barrier, Block::Air);
+
+    for (const auto counts : {std::array{1, 0, 0}, std::array{0, 0, 1}}) {
+        const auto asset = spawner(counts);
+        auto collision = std::make_shared<AssetCollision>();
+        position(player, world, {.5f, 9, 7.5f});
+        session.begin(std::span(&asset, 1), collision);
+        tick(session, world, player, 5);
+        require(session.monsters().size() == 1, "fence fixture must spawn an enemy");
+        const bool slime = counts[2] != 0;
+        const auto feet = session.healthBars().front().position - glm::vec3(0, slime ? 1.4f : 2.4f, 0);
+        const float half = slime ? .69f : Player::Width / 2;
+        const std::array fence{HubAsset{HubAssetKind::TimberFence,
+            feet - glm::vec3(0, 0, half + .35f)}};
+        collision->rebuild(fence);
+        position(player, world, feet + glm::vec3(0, 0, 2.4f));
+        session.update(world, player, glm::normalize(feet + glm::vec3(0, .8f, 0) - player.eyePosition()), true, .01f);
+        for (int frame = 0; frame < 3; ++frame) {
+            const auto current = session.healthBars().front().position - glm::vec3(0, slime ? 1.4f : 2.4f, 0);
+            require(!collision->overlaps(current + glm::vec3(-half, .002f, -half),
+                                         current + glm::vec3(half, slime ? 1.08f : Player::Height, half)),
+                    "every knockback frame keeps the full mob body outside decorative fence rails");
+            if (frame < 2) tick(session, world, player);
+        }
+        const auto after = session.healthBars().front().position;
+        require(feet.z - after.z > .02f && feet.z - after.z < .4f,
+                "a thin fence stops the shove, including the slime's broad sides");
+    }
 }
 
 void attackChecks(World& world)
@@ -291,6 +429,8 @@ int main()
         spawningChecks(world);
         obstructionChecks(world);
         attackChecks(world);
+        hitFeedbackChecks(world);
+        knockbackCollisionChecks(world);
         std::cout << "Encounter tests passed\n";
         return 0;
     } catch (const std::exception& error) {

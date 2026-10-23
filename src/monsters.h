@@ -44,6 +44,8 @@ struct MonsterInstance {
     float seconds = 0;
     MonsterPose transitionFrom;
     float transition = 1;
+    float hitReaction = 0; // 1 at impact, returning to 0 as the recoil settles.
+    glm::vec3 hitDirection{0, 0, 1}; // World direction away from the attacker.
 };
 MonsterPose blendedMonsterPose(const MonsterInstance& monster);
 std::vector<glm::mat4> monsterMatrices(const MonsterInstance& monster);

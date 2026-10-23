@@ -73,8 +73,23 @@ std::vector<glm::mat4> monsterMatrices(const MonsterInstance& monster)
     const auto& rig = monsterRig(monster.kind);
     const auto pose = blendedMonsterPose(monster);
     if (pose.size() != rig.parts.size()) throw std::logic_error("Monster pose does not match its rig");
-    const auto origin = glm::rotate(glm::translate(glm::mat4(1), monster.position),
-                                    glm::radians(monster.yaw), glm::vec3(0,1,0));
+    auto origin = glm::translate(glm::mat4(1), monster.position);
+    const float reaction = std::isfinite(monster.hitReaction)
+        ? std::clamp(monster.hitReaction, 0.0f, 1.0f) : 0.0f;
+    if (reaction > 0) {
+        // Lean in world space so a side or rear strike bends the body away
+        // from that strike, independently of which way the creature faces.
+        auto direction = glm::vec3(monster.hitDirection.x, 0, monster.hitDirection.z);
+        const float length = glm::length(direction);
+        direction = std::isfinite(length) && length > .001f ? direction/length : glm::vec3(0,0,1);
+        const float strength = reaction * reaction * (3.0f - 2.0f * reaction);
+        const float lean = monster.kind == MonsterKind::Slime ? 5.0f
+            : monster.kind == MonsterKind::Wizard ? 6.0f : 8.0f;
+        origin = glm::rotate(origin, glm::radians(lean * strength), glm::cross(glm::vec3(0,1,0),direction));
+        if (monster.kind == MonsterKind::Slime)
+            origin = glm::scale(origin, glm::vec3(1 + .13f*strength, 1 - .17f*strength, 1 + .13f*strength));
+    }
+    origin = glm::rotate(origin, glm::radians(monster.yaw), glm::vec3(0,1,0));
     std::vector<glm::mat4> matrices;
     matrices.reserve(rig.parts.size());
     for (std::size_t i = 0; i < rig.parts.size(); ++i) {

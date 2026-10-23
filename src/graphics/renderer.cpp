@@ -35,6 +35,26 @@ GpuMesh* pickupMesh(std::array<GpuMesh,ItemCount>& cache, const HubAsset& asset)
     return &mesh;
 }
 
+MeshData buildHitChip(MonsterKind kind)
+{
+    MeshData mesh;
+    const HubAsset origin{};
+    AssetBuilder model(mesh,origin);
+    if (kind == MonsterKind::Skeleton) {
+        model.box({-.8f,-.35f,-.4f},{.8f,.35f,.4f},Block::Slate,{.95f,.83f,.61f});
+    } else {
+        // A short crystal or a pointed droplet, with real triangular faces.
+        const bool slime = kind == MonsterKind::Slime;
+        const glm::vec3 color = slime ? glm::vec3(.46f,.92f,.18f) : glm::vec3(.78f,.40f,1.0f);
+        const glm::vec3 ring[4]{{.7f,0,0},{0,0,.7f},{-.7f,0,0},{0,0,-.7f}};
+        for (int i=0; i<4; ++i) {
+            model.triangle({0,slime ? 1.05f : 1.4f,0},ring[(i+1)%4],ring[i],Block::Slate,color);
+            model.triangle({0,slime ? -.5f : -1.0f,0},ring[i],ring[(i+1)%4],Block::Slate,color*.8f);
+        }
+    }
+    return mesh;
+}
+
 constexpr const char* worldVertexShader = R"glsl(#version 410 core
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 normal;
@@ -73,6 +93,8 @@ uniform int underground;
 uniform int cameraInWater;
 uniform int decorative;
 uniform int firstPerson;
+uniform float monsterHit;
+uniform int impactChip;
 uniform float timeSeconds;
 uniform int carriedLantern;
 uniform int monsterCount;
@@ -190,6 +212,13 @@ void main() {
         fogColor = vec3(0.48, 0.70, 0.90);
         fog = smoothstep(55.0, 150.0, cameraDistance);
     }
+    // The hurt tint is per creature and keeps face shading. A brief pale
+    // coral pulse remains legible in the cave without making the body glow.
+    float flash = smoothstep(.38, .96, monsterHit) * .75;
+    float facing = .48 + .52 * max(dot(normal, viewDirection), 0.0);
+    lit = mix(lit, vec3(1.0,.62,.43) * facing + lit*.15, flash);
+    if (impactChip != 0)
+        lit = max(lit, color * (.32 + .30 * max(dot(normal,viewDirection),0.0)));
     if (materialId == 16)
         lit = shadeWater(lit, normal, viewDirection) + surfaceHighlight * 0.75;
     if (underground != 0) {
@@ -275,7 +304,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::span<const HubAsset> placedAssets, std::span<const glm::vec3> pickupOffsets,
                            std::span<const MonsterInstance> monsters,
                            std::span<const EncounterProjectile> projectiles,
-                           std::optional<float> heldSwordSwing)
+                           std::optional<float> heldSwordSwing,
+                           std::span<const EncounterHit> hits)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -469,6 +499,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     }
     shader_.setInt("decorative", 0);
     shader_.setInt("firstPerson", 0);
+    shader_.setFloat("monsterHit", 0);
+    shader_.setInt("impactChip", 0);
     shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
@@ -548,6 +580,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
         shader_.setInt("lightOffset",lightOffsets_[chunk]);
         shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+        shader_.setFloat("monsterHit",std::isfinite(monster.hitReaction)
+            ? std::clamp(monster.hitReaction,0.0f,1.0f) : 0.0f);
         const auto matrices = monsterMatrices(monster);
         for (std::size_t i=0; i<meshes.size(); ++i) {
             shader_.setMat4("model",matrices[i]);
@@ -555,8 +589,52 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             drawnTriangles_ += meshes[i]->indexCount()/3;
         }
     }
+    shader_.setFloat("monsterHit",0);
     shader_.setMat4("model",glm::mat4(1));
     shader_.setInt("decorative",0);
+    // Hits have their own lifetime, so the killing blow still leaves a burst
+    // after the creature disappears. Each small closed mesh is uploaded once.
+    shader_.setInt("decorative",3);
+    shader_.setInt("impactChip",1);
+    for (const auto& hit : hits) {
+        if (!std::isfinite(hit.age) || hit.age < 0 || hit.age >= EncounterHit::Lifetime
+            || !std::isfinite(hit.position.x) || !std::isfinite(hit.position.y) || !std::isfinite(hit.position.z)) continue;
+        if (!frustum.intersects(hit.position-glm::vec3(2),hit.position+glm::vec3(2))) continue;
+        const auto kind = static_cast<std::size_t>(hit.kind);
+        if (kind >= hitChips_.size()) continue;
+        auto& chip = hitChips_[kind];
+        if (!chip.indexCount()) chip.upload(buildHitChip(hit.kind));
+        const auto cell = glm::clamp(glm::ivec3(glm::floor(hit.position)),World::Min,World::MaxExclusive-1)-World::Min;
+        const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
+            + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
+        shader_.setInt("lightOffset",lightOffsets_[chunk]);
+        shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+        auto direction = glm::vec3(hit.direction.x,0,hit.direction.z);
+        const float length = glm::length(direction);
+        direction = std::isfinite(length) && length > .001f ? direction/length : glm::vec3(0,0,1);
+        const auto sideways = glm::cross(glm::vec3(0,1,0),direction);
+        const float progress = hit.age/EncounterHit::Lifetime;
+        const float fade = 1.0f-glm::smoothstep(.45f,1.0f,progress);
+        if (fade <= .001f) continue; // Keep the normal transform invertible at expiry.
+        const int count = hit.lethal ? 11 : 8;
+        for (int i=0; i<count; ++i) {
+            const float angle = i*2.39996323f; // Stable spread; no per-frame randomness.
+            const auto radial = sideways*std::cos(angle) + glm::vec3(0,std::sin(angle),0);
+            const auto velocity = radial*(1.25f + .18f*(i%3)) + glm::vec3(0,.7f,0)
+                - direction*(.55f + .14f*(i%4));
+            const auto position = hit.position + radial*.07f + velocity*hit.age
+                - glm::vec3(0,1.7f*hit.age*hit.age,0);
+            const float size = (.065f + .012f*(i%3))*fade;
+            auto model = glm::translate(glm::mat4(1),position);
+            model = glm::rotate(model,angle+hit.age*(5+i),glm::normalize(glm::vec3(.4f,1,.3f)));
+            shader_.setMat4("model",glm::scale(model,glm::vec3(size)));
+            chip.draw();
+            drawnTriangles_ += chip.indexCount()/3;
+        }
+    }
+    shader_.setInt("impactChip",0);
+    shader_.setInt("decorative",0);
+    shader_.setMat4("model",glm::mat4(1));
     if(!projectiles.empty()) {
         if(!spellBolt_.indexCount()) {
             MeshData mesh;

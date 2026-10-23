@@ -109,7 +109,8 @@ int main(int argc, char** argv)
                             game.encounters().projectiles(),
                             game.healthVisible() && !game.health().dead()
                                 && game.equipment.selectedTool() == voxel::Tool::Sword
-                                ? std::optional<float>(game.encounters().swordSwing()) : std::nullopt);
+                                ? std::optional<float>(game.encounters().swordSwing()) : std::nullopt,
+                            game.encounters().hits());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {

@@ -2,6 +2,7 @@
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
 #include "held_sword_smoke.h"
+#include "damage_feedback_smoke.h"
 #include "inventory_hud_smoke.h"
 #include "root_crossing_hud_smoke.h"
 #include "section_hud_smoke.h"
@@ -1483,6 +1484,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyLevelHud(width, height);
     verifyLushMaterials(width, height);
     verifyMonsters(width, height);
+    verifyDamageFeedback();
 
     // GPU resources are scoped after Window so their destructors run while its
     // context is still current. Smoke tests never capture the user's mouse.

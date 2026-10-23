@@ -87,6 +87,7 @@ if(VOXEL_BUILD_APP)
         tests/water_graphics_smoke.cpp
         tests/hud_play_smoke.cpp
         tests/held_sword_smoke.cpp
+        tests/damage_feedback_smoke.cpp
         tests/inventory_hud_smoke.cpp
         tests/root_crossing_hud_smoke.cpp
         tests/section_hud_smoke.cpp

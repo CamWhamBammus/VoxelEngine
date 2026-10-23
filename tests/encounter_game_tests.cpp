@@ -234,26 +234,62 @@ int main()
         attackTarget(game,0);
         require(std::none_of(game.encounters().healthBars().begin(),game.encounters().healthBars().end(),
             [](const auto& bar) { return bar.current < bar.maximum; }), "a pickaxe cannot invoke sword damage");
+        require(game.encounters().hits().empty() && game.encounters().monsters().front().hitReaction == 0,
+                "a pickaxe produces no impact particles or hurt flash");
+        aim(game,game.camera.position()-game.camera.forward()*4.0f);
+        InputActions miss; miss.active = miss.attack = true; miss.selectedTool = 3;
+        game.update(miss,.1f);
+        require(game.encounters().hits().empty() && game.encounters().monsters().front().hitReaction == 0,
+                "swinging the sword away from the target produces no damage feedback");
+        tick(game,5);
         attackTarget(game,3);
         require(game.equipment.selectedTool() == Tool::Sword && std::any_of(game.encounters().healthBars().begin(),
             game.encounters().healthBars().end(),[](const auto& bar) { return bar.current < bar.maximum && bar.visibleSeconds > 0; }),
             "the fourth tool damages the targeted mob and reveals its health bar");
+        require(game.encounters().hits().size() == 1 && !game.encounters().hits().front().lethal
+                && game.encounters().hits().front().kind == MonsterKind::Skeleton
+                && game.encounters().monsters().front().hitReaction > 0,
+                "a real sword hit emits one impact and makes the surviving skeleton flash");
+        const auto impactAge = game.encounters().hits().front().age;
+        const auto reaction = game.encounters().monsters().front().hitReaction;
+        const auto hurtPosition = game.encounters().monsters().front().position;
+        InputActions inactive;
+        for (int i = 0; i < 10; ++i) game.update(inactive,.1f);
+        require(game.encounters().hits().size() == 1 && game.encounters().hits().front().age == impactAge
+                && game.encounters().monsters().front().hitReaction == reaction
+                && game.encounters().monsters().front().position == hurtPosition,
+                "losing focus freezes damage particles, hurt flash, and knockback");
+        press(game,&InputActions::inventory); tick(game,10);
+        require(game.inventoryOpen() && game.encounters().hits().size() == 1
+                && game.encounters().hits().front().age == impactAge
+                && game.encounters().monsters().front().hitReaction == reaction
+                && game.encounters().monsters().front().position == hurtPosition,
+                "the inventory pauses damage feedback alongside enemy movement");
+        press(game,&InputActions::closeMenu);
         require(game.damagePlayer(100), "unfinished encounter can kill the player");
         respawn(game);
         require(game.player.feetPosition() == first.spawn && game.encounters().remaining() == 1
-                && game.encounters().monsters().empty() && !game.encounters().active(),
-                "death discards damaged enemies and rearms the unfinished encounter");
+                && game.encounters().monsters().empty() && !game.encounters().active()
+                && game.encounters().hits().empty(),
+                "respawning discards damaged enemies and their feedback while rearming the unfinished encounter");
         activate(game); defeat(game);
+        require(std::any_of(game.encounters().hits().begin(),game.encounters().hits().end(),
+            [](const auto& hit) { return hit.lethal; }), "a killing sword hit keeps its impact visible after the mob disappears");
         require(game.equipment.lootProgress.at(record).unlocked && pickups(game) == 2,
                 "completing persists the encounter and releases both configured reward stacks");
         require(std::filesystem::is_regular_file(options.progressPath), "encounter completion writes player progress");
         require(read(firstPath) == sectionBytes, "playing never rewrites the authored section");
+        position(game,first.finish); tick(game,5);
+        require(game.levelController().sectionIndex() == 1 && game.encounters().hits().empty()
+                && game.equipment.lootProgress.at(record).unlocked,
+                "entering the next section clears transient impacts without losing the permanent spawner clear");
 
         Game restored(options);
         require(restored.levelController().start(restored,level), "cleared level can be loaded again");
         position(restored,{5.5f,9,.5f}); tick(restored,15);
         require(restored.encounters().remaining() == 0 && restored.encounters().monsters().empty() && pickups(restored) == 2,
                 "reloading keeps the spawner cleared and restores unclaimed rewards");
+        require(restored.encounters().hits().empty(), "loading durable progress does not restore transient damage feedback");
         require(restored.damagePlayer(100), "death can occur after encounter completion");
         respawn(restored);
         require(restored.encounters().remaining() == 0 && pickups(restored) == 2,

@@ -14,6 +14,8 @@ namespace {
 constexpr float Pi = 3.14159265359f;
 constexpr float SpawnInterval = .75f;
 constexpr float PlayerHitCooldown = .65f;
+constexpr float HitRecoilDuration = .26f;
+constexpr float HitKnockbackDistance = .62f;
 constexpr std::size_t NoAsset = std::numeric_limits<std::size_t>::max();
 
 bool finite(glm::vec3 value)
@@ -145,7 +147,7 @@ void EncounterSession::clear()
 {
     collision_.reset();
     spawners_.clear(); mobs_.clear(); monsters_.clear(); bars_.clear();
-    projectiles_.clear(); completions_.clear();
+    projectiles_.clear(); hits_.clear(); completions_.clear();
     swordCooldown_ = hurtCooldown_ = 0;
 }
 
@@ -175,7 +177,7 @@ void EncounterSession::markCleared(std::size_t assetIndex)
 
 void EncounterSession::resetUnfinished()
 {
-    mobs_.clear(); monsters_.clear(); bars_.clear(); projectiles_.clear();
+    mobs_.clear(); monsters_.clear(); bars_.clear(); projectiles_.clear(); hits_.clear();
     swordCooldown_ = hurtCooldown_ = 0;
     for (auto& spawner : spawners_) {
         if (spawner.cleared || spawner.complete) continue;
@@ -251,12 +253,19 @@ void EncounterSession::swingSword(const World& world, const Player& player, glm:
     if (!target) return;
     target->health = std::max(0, target->health - SwordDamage);
     target->healthVisible = 4.0f;
-    // Knockback uses the same sweeps as walking: a hit cannot push a monster
-    // through a wall or a thin decorative fence.
-    Player pushed = target->body;
-    pushed.move(world, horizontal(pushed.feetPosition() - player.feetPosition()) * .35f);
-    if (target->model.kind != MonsterKind::Slime || slimeFits(world, collision_.get(), pushed.feetPosition()))
-        target->body = std::move(pushed);
+    target->recoilRemaining = HitRecoilDuration;
+    target->model.hitReaction = 1;
+    target->model.hitDirection = horizontal(target->body.feetPosition() - player.feetPosition());
+    // Interrupt the windup as well as chasing: otherwise the AI immediately
+    // cancels the shove, or lands a hit while visibly recoiling.
+    target->attackTime = -1;
+    target->attackFired = false;
+    target->cooldown = std::max(target->cooldown, .48f);
+    target->hopDelay = std::max(target->hopDelay, .35f);
+    animation(target->model, MonsterAnimation::Idle);
+    if (hits_.size() >= 32) hits_.erase(hits_.begin());
+    hits_.push_back({player.eyePosition() + direction * nearest, target->model.hitDirection,
+                     target->model.kind, 0, target->health == 0});
 }
 
 int EncounterSession::updateMob(Mob& mob, const World& world, const Player& player, float seconds)
@@ -266,6 +275,15 @@ int EncounterSession::updateMob(Mob& mob, const World& world, const Player& play
     mob.hopDelay = std::max(0.0f, mob.hopDelay - seconds);
     mob.healthVisible = std::max(0.0f, mob.healthVisible - seconds);
     mob.model.transition = std::min(1.0f, mob.model.transition + seconds / .16f);
+    const bool recoiling = mob.recoilRemaining > 0;
+    const float recoilBefore = mob.recoilRemaining / HitRecoilDuration;
+    mob.recoilRemaining = std::max(0.0f, mob.recoilRemaining - seconds);
+    const float recoilAfter = mob.recoilRemaining / HitRecoilDuration;
+    mob.model.hitReaction = recoilAfter;
+    // Integrate a decaying velocity so the same shove takes the same distance
+    // at low and high frame rates, without moving through colliders in one jump.
+    const float knockback = HitKnockbackDistance
+        * (recoilBefore * recoilBefore - recoilAfter * recoilAfter);
     const auto feet = mob.body.feetPosition();
     const auto offset = player.feetPosition() - feet;
     const float distance = glm::length(offset);
@@ -275,7 +293,7 @@ int EncounterSession::updateMob(Mob& mob, const World& world, const Player& play
     const bool wizard = mob.model.kind == MonsterKind::Wizard;
     const bool slime = mob.model.kind == MonsterKind::Slime;
     const float attackRange = wizard ? 8.0f : slime ? 3.1f : 2.0f;
-    if (mob.attackTime < 0 && mob.cooldown == 0 && distance < attackRange && sight) {
+    if (!recoiling && mob.attackTime < 0 && mob.cooldown == 0 && distance < attackRange && sight) {
         mob.attackTime = 0;
         mob.attackFired = false;
         mob.attackDirection = direction;
@@ -285,7 +303,10 @@ int EncounterSession::updateMob(Mob& mob, const World& world, const Player& play
     bool jump = false;
     float speed = 0;
     int damage = 0;
-    if (mob.attackTime >= 0) {
+    if (recoiling) {
+        animation(mob.model, MonsterAnimation::Idle);
+        mob.model.seconds += seconds;
+    } else if (mob.attackTime >= 0) {
         const float previous = mob.attackTime;
         mob.attackTime += seconds;
         const float duration = wizard ? 2.6f : slime ? 1.65f : 1.5f;
@@ -334,6 +355,9 @@ int EncounterSession::updateMob(Mob& mob, const World& world, const Player& play
     if (distance < .9f && glm::dot(direction, horizontal(offset)) > 0) speed = 0;
     Player moved = mob.body;
     moved.update(world, {0, speed / 4.5f}, direction, jump, false, seconds);
+    // Gravity still runs while stunned, and the regular swept movement plus
+    // the broad-slime check below also resolve knockback against scenery.
+    if (knockback > 0) moved.move(world, mob.model.hitDirection * knockback);
     // Slide around simple obstructions instead of endlessly walking directly
     // into them. Each alternate move uses the real terrain/model sweeps too.
     if (speed > 0 && mob.attackTime < 0 && !jump && mob.body.grounded()
@@ -425,6 +449,8 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
     const float seconds = std::min(deltaSeconds, .1f);
     swordCooldown_ = std::max(0.0f, swordCooldown_ - seconds);
     hurtCooldown_ = std::max(0.0f, hurtCooldown_ - seconds);
+    for (auto& hit : hits_) hit.age += seconds;
+    std::erase_if(hits_, [](const EncounterHit& hit) { return hit.age >= EncounterHit::Lifetime; });
     for (std::size_t index = 0; index < spawners_.size(); ++index) {
         auto& spawner = spawners_[index];
         if (spawner.cleared || spawner.complete) continue;

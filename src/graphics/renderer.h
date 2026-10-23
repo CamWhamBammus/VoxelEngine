@@ -30,7 +30,8 @@ public:
                 std::span<const glm::vec3> pickupOffsets = {},
                 std::span<const MonsterInstance> monsters = {},
                 std::span<const EncounterProjectile> projectiles = {},
-                std::optional<float> heldSwordSwing = {});
+                std::optional<float> heldSwordSwing = {},
+                std::span<const EncounterHit> hits = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -49,6 +50,7 @@ private:
     std::array<GpuMesh, ItemCount> pickups_; // Local meshes; animated with per-draw transforms.
     std::array<std::vector<std::unique_ptr<GpuMesh>>,3> monsters_; // Uploaded once per joint.
     GpuMesh spellBolt_; // Shared by glowing wizard bolts and their short trails.
+    std::array<GpuMesh,3> hitChips_; // Cached bone chips, amethyst shards, slime droplets.
     GpuMesh heldSword_;
     std::size_t heldSwordTriangles_ = 0;
     std::size_t monsterTriangles_ = 0;

@@ -20,6 +20,16 @@ struct EncounterProjectile {
     float remainingSeconds = 0;
 };
 
+// A contact remains visible briefly after the struck enemy is removed.
+struct EncounterHit {
+    static constexpr float Lifetime = .42f;
+    glm::vec3 position{0};
+    glm::vec3 direction{0, 0, 1};
+    MonsterKind kind = MonsterKind::Skeleton;
+    float age = 0;
+    bool lethal = false;
+};
+
 // One walking section owns one session. Authored placements stay unchanged;
 // the caller persists completions and releases their rewards before marking
 // them cleared. An unsuccessful save therefore leaves a completion pending.
@@ -48,6 +58,7 @@ public:
     std::span<const MonsterInstance> monsters() const { return monsters_; }
     std::span<const MobHealthBar> healthBars() const { return bars_; }
     std::span<const EncounterProjectile> projectiles() const { return projectiles_; }
+    std::span<const EncounterHit> hits() const { return hits_; }
     std::span<const std::size_t> pendingCompletions() const { return completions_; }
 
 private:
@@ -75,6 +86,7 @@ private:
         float attackTime = -1;
         bool attackFired = false;
         float hopDelay = .2f;
+        float recoilRemaining = 0;
         glm::vec3 attackDirection{0, 0, 1};
     };
 
@@ -90,6 +102,7 @@ private:
     std::vector<MonsterInstance> monsters_;
     std::vector<MobHealthBar> bars_;
     std::vector<EncounterProjectile> projectiles_;
+    std::vector<EncounterHit> hits_;
     std::vector<std::size_t> completions_;
     float swordCooldown_ = 0;
     float hurtCooldown_ = 0;

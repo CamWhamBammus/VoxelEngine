@@ -59,6 +59,49 @@ int main()
             check(moved,"Idle, move and attack must each animate the rig");
         }
         check(poseValid,"Animation must remain finite, bounded and invertible across several cycles");
+        // Recoil must bend away from the strike, even when the creature faces
+        // another way, and return exactly to its normal pose after the hit.
+        MonsterInstance hurt;
+        hurt.kind = kind;
+        hurt.position = {3,2,-4};
+        hurt.yaw = 90;
+        hurt.seconds = .37f;
+        const auto resting = monsterMatrices(hurt);
+        bool recoilValid = true;
+        for (const auto direction : {glm::vec3(1,0,0),glm::vec3(-1,0,0),glm::vec3(0,0,1),glm::vec3(0,0,-1)}) {
+            hurt.hitDirection = direction;
+            for (int frame=0; frame<=30; ++frame) {
+                hurt.hitReaction = 1.0f-frame/30.0f;
+                const auto matrices = monsterMatrices(hurt);
+                for (std::size_t i=0; i<matrices.size(); ++i) {
+                    recoilValid &= std::isfinite(glm::determinant(matrices[i]))
+                        && std::abs(glm::determinant(matrices[i])) > std::abs(glm::determinant(resting[i]))*.5f;
+                    for (const auto& v : rig.parts[i].mesh.vertices) {
+                        const auto p = glm::vec3(matrices[i]*glm::vec4(v.position,1));
+                        const auto rest = glm::vec3(resting[i]*glm::vec4(v.position,1));
+                        recoilValid &= finite(p) && glm::length(p-rest) < .65f;
+                        if (frame == 30) recoilValid &= glm::length(p-rest) < .00001f;
+                    }
+                }
+                if (frame == 0) {
+                    // Comparing a point above the root isolates the whole-body
+                    // lean from the animated joint's existing local rotation.
+                    const auto recoil = matrices.front()*glm::inverse(resting.front());
+                    const auto top = hurt.position+glm::vec3(0,1,0);
+                    const auto shifted = glm::vec3(recoil*glm::vec4(top,1))-top;
+                    check(glm::dot(shifted,direction) > .05f,"Hit recoil must lean away from the attack direction");
+                    if (kind == MonsterKind::Slime)
+                        check(shifted.y < -.1f,"Slime hit reaction must visibly squash its body");
+                }
+            }
+        }
+        check(recoilValid,"Recoil must stay bounded, invertible and fully recover its resting pose");
+        hurt.hitReaction = std::numeric_limits<float>::quiet_NaN();
+        check(monsterMatrices(hurt) == resting,"Invalid reaction timers must not corrupt a creature pose");
+        hurt.hitReaction = 1;
+        hurt.hitDirection = glm::vec3(std::numeric_limits<float>::infinity());
+        for (const auto& matrix : monsterMatrices(hurt))
+            check(std::isfinite(glm::determinant(matrix)),"Invalid hit directions must fall back to a finite recoil");
     }
     Options options;
     options.monsters = true;

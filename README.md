@@ -54,7 +54,7 @@ You walk up stairs automatically. Full blocks need a jump. The lantern lights yo
 
 You have 100 health. Long falls deal damage; landing in water cushions the fall. If you die, you return at full health to the checkpoint you reached, or the current section's Start. Your inventory and collected loot stay as they were. Health carries over when you move to the next section, but checkpoints belong to their own section.
 
-Trial spawners wake when you approach. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hitting an enemy reveals its health bar. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
+Trial spawners wake when you approach. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hits knock enemies back, briefly flash their bodies, and scatter bone chips, magic shards, or slime droplets. A hit also reveals the enemy's health bar and interrupts its attack. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
 
 Completed spawners stay cleared, even after closing the game. Uncollected rewards wait beside them on your next visit. Dying or pressing **R** resets unfinished encounters, while cleared spawners and collected loot stay as they were.
 
