@@ -142,6 +142,68 @@ void verifyChestAuthoring(int width,int height,const std::filesystem::path& libr
         }
     }
 }
+void verifySpawnerAuthoring(int width,int height,const std::filesystem::path& library,Hud& hud)
+{
+    World room;buildBlankSection(room);
+    const HubAsset spawner{HubAssetKind::TrialSpawner,{.5f,9,18.5f}};
+    saveSectionDraft(room,{},std::span(&spawner,1),library);
+    Options options;options.dev=true;options.smokeTest=true;options.sectionLibrary=library.string();
+    Game game(options);
+    const auto act=[&](int id) {InputActions a;a.active=true;a.devClick=id;game.update(a);};
+    act(SectionUiWorldBase);act(SectionUiLibraryDraftBase);
+    game.camera.setPosition(spawner.position+glm::vec3(0,2,3));
+    const auto direction=glm::normalize(spawner.position+glm::vec3(0,.7f,0)-game.camera.position());
+    const auto previous=game.camera.forward();
+    game.camera.rotate(glm::degrees(std::atan2(direction.z,direction.x)-std::atan2(previous.z,previous.x)),
+                       glm::degrees(std::asin(direction.y)-std::asin(previous.y)));
+    InputActions open;open.active=true;open.devPalette=true;game.update(open);
+    require(game.sectionEditor().screen()==SectionEditorScreen::SpawnerSettings,
+            "Placed spawner did not open its encounter settings");
+    const auto draw=[&](int w,int h,float dpi=1) {
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,w,h);glDisable(GL_SCISSOR_TEST);
+        glClearColor(.13f,.17f,.15f,1);glClear(GL_COLOR_BUFFER_BIT);
+        const auto before=state();hud.drawSection(game,w,h,dpi);
+        require(state()==before,"Spawner editor changed OpenGL state");
+        Pixels pixels(static_cast<std::size_t>(w)*h*4);
+        glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        require(glGetError()==GL_NO_ERROR,"Spawner editor generated an OpenGL error");
+        return pixels;
+    };
+    const auto original=draw(width,height);
+    for(const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+        const float dpi=size.x==640 ? 2 : 1;
+        const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
+        const float x=(size.x/scale-610)*.5f,y=(size.y/scale-440)*.5f;
+        const auto hit=[&](float px,float py) {
+            return Hud::sectionClick(game,size.x,size.y,dpi,(x+px)*scale,(y+py)*scale);
+        };
+        for(int kind=0;kind<3;++kind) {
+            require(hit(446,109+kind*66)==SectionUiSpawnerMinusBase+kind,
+                    "Spawner minus target disagrees with its scaled display");
+            require(hit(551,109+kind*66)==SectionUiSpawnerPlusBase+kind,
+                    "Spawner plus target disagrees with its scaled display");
+        }
+        require(hit(305,335)==SectionUiSpawnerRewards && hit(100,418)==SectionUiSpawnerCancel
+                && hit(460,418)==SectionUiSpawnerApply,"Spawner settings targets moved at high DPI");
+        draw(size.x,size.y,dpi);
+    }
+    act(SectionUiSpawnerPlusBase+1);
+    require(difference(original,draw(width,height))>20,"Spawner count did not visibly update");
+    act(SectionUiSpawnerRewards);
+    require(game.sectionEditor().screen()==SectionEditorScreen::ChestContents
+            && game.sectionEditor().editingChestKind()==HubAssetKind::TrialSpawner,
+            "Reward editing did not reuse the item contents screen");
+    draw(width,height);draw(640,360,2);
+    act(SectionUiChestItemBase+static_cast<int>(ItemId::Ruby));
+    act(SectionUiChestApply);
+    require(game.sectionEditor().screen()==SectionEditorScreen::SpawnerSettings,
+            "Reward editing did not return to staged spawner settings");
+    act(SectionUiSpawnerApply);
+    require(game.sectionEditor().assets()[0].spawner.counts[1]==2
+            && game.sectionEditor().assets()[0].chestItems.size()==1,
+            "Spawner settings did not save enemies and rewards together");
+}
+
 }
 
 void verifySectionHud(int width,int height)
@@ -527,6 +589,7 @@ void verifySectionHud(int width,int height)
         const auto before=state(); hud.drawSection(game,0,0);
         require(state()==before,"Minimized section HUD changed OpenGL state");
         verifyChestAuthoring(width,height,temporary/"chest-workshop",hud);
+        verifySpawnerAuthoring(width,height,temporary/"spawner-workshop",hud);
     } catch (...) { cleanup(); throw; }
     cleanup();
     std::cout << "Section HUD passed: world library, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";

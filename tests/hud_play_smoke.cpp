@@ -56,6 +56,53 @@ std::size_t difference(const Pixels& a, const Pixels& b)
     return changed;
 }
 
+void verifyCombatBars(int width,int height,Hud& hud)
+{
+    Options options;options.smokeTest=true;
+    Game game(options);
+    buildBlankSection(game.world);
+    require(game.player.setFeetPosition(game.world,{.5f,9,6.5f}),"Combat HUD fixture needs a safe floor");
+    game.camera.setPosition(game.player.eyePosition());
+    HubAsset spawner{HubAssetKind::TrialSpawner,{.5f,9,.5f}};
+    spawner.spawner.counts={1,0,0};
+    game.beginSectionLoot(std::span(&spawner,1),true);
+    InputActions tick;tick.active=true;
+    for(int frame=0;frame<10 && game.monsters().empty();++frame) game.updateCombat(tick,.1f);
+    require(game.monsters().size()==1,"Combat HUD fixture did not spawn its skeleton");
+    const auto feet=game.monsters().front().position;
+    require(game.player.setFeetPosition(game.world,feet+glm::vec3(0,0,2.6f)),"Combat HUD fixture needs sword reach");
+    game.camera.setPosition(game.player.eyePosition());
+    const auto direction=glm::normalize(feet+glm::vec3(0,1.1f,0)-game.camera.position());
+    const auto previous=game.camera.forward();
+    game.camera.rotate(glm::degrees(std::atan2(direction.z,direction.x)-std::atan2(previous.z,previous.x)),
+                       glm::degrees(std::asin(direction.y)-std::asin(previous.y)));
+    const auto draw=[&](int w,int h,float scale=1) {
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,w,h);glDisable(GL_SCISSOR_TEST);
+        glClearColor(.18f,.24f,.28f,1);glClear(GL_COLOR_BUFFER_BIT);
+        const auto before=state();hud.drawCombat(game,w,h,scale);
+        require(state()==before,"Mob bars changed caller OpenGL state");
+        Pixels pixels(static_cast<std::size_t>(w)*h*4);
+        glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        require(glGetError()==GL_NO_ERROR,"Mob bars produced an OpenGL error");
+        return pixels;
+    };
+    const auto unhurt=draw(width,height);
+    game.equipment.selectedSlot=3;
+    InputActions attack;attack.active=true;attack.attack=true;
+    game.updateCombat(attack,.01f);
+    require(game.encounters().healthBars().front().visibleSeconds>0
+            && game.encounters().healthBars().front().current<game.encounters().healthBars().front().maximum,
+            "A sword hit must reveal a damaged mob health bar");
+    game.equipment.selectedSlot=0;
+    const auto hurt=draw(width,height);
+    require(difference(unhurt,hurt)>150,"Damaged mob bar did not appear above its head");
+    draw(640,360,2);
+    const auto midpoint=glm::ivec3(glm::floor((game.camera.position()+game.encounters().healthBars().front().position)*.5f));
+    for(int z=-1;z<=1;++z) for(int y=-2;y<=2;++y) for(int x=-1;x<=1;++x)
+        game.world.set(midpoint+glm::ivec3(x,y,z),Block::Stone);
+    require(difference(unhurt,draw(width,height))==0,"Mob health bars leaked through a cave wall");
+}
+
 } // namespace
 
 void verifyPlayHud(int width, int height)
@@ -96,7 +143,11 @@ void verifyPlayHud(int width, int height)
             glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
             glActiveTexture(GL_TEXTURE3);
             const auto before=state();
-            if (!healthOnly) hud.drawPlay(game,w,h,scale);
+            if (!healthOnly) {
+                hud.drawCombat(game,w,h,scale);
+                require(state()==before,"Combat HUD changed caller OpenGL state");
+                hud.drawPlay(game,w,h,scale);
+            }
             require(state()==before,"Play HUD changed caller OpenGL state");
             hud.drawHealth(game,w,h,scale);
             require(state()==before,"Health HUD changed caller OpenGL state");
@@ -113,6 +164,16 @@ void verifyPlayHud(int width, int height)
         const auto compass=draw(width,height);
         game.camera.rotate(70,0);
         require(difference(compass,draw(width,height))>30,"Compass did not respond to the camera bearing");
+        game.equipment.selectedSlot=3;
+        const auto sword=draw(width,height);
+        require(difference(compass,sword)>1500,"Sword selection did not display its fourth pocket and held blade");
+        InputActions swing;swing.active=true;swing.attack=true;
+        game.updateCombat(swing,.1f);
+        InputActions rest;rest.active=true;game.updateCombat(rest,.1f);
+        require(game.encounters().swordSwing()>0 && difference(sword,draw(width,height))>1000,
+                "Sword swing did not animate the held weapon");
+        for(int frame=0;frame<6;++frame) game.updateCombat(rest,.1f);
+        game.equipment.selectedSlot=2;
         const auto normalScale=draw(width,height);
         const auto highScale=draw(width,height,2);
         if (width>460 && height>440)
@@ -190,16 +251,19 @@ void verifyPlayHud(int width, int height)
         const auto before=state();
         hud.drawPlay(game,0,0);
         require(state()==before,"Minimized play HUD changed OpenGL state");
+        hud.drawCombat(game,0,0);
+        require(state()==before,"Minimized combat HUD changed OpenGL state");
         hud.drawHealth(game,0,0);
         require(state()==before,"Minimized health HUD changed OpenGL state");
         hud.draw("EDITOR - F5 SAVE",width,height);
         require(state()==before,"Text HUD no longer restores OpenGL state");
         require(glGetError()==GL_NO_ERROR,"HUD compatibility check generated an OpenGL error");
+        verifyCombatBars(width,height,hud);
     } catch (...) {
         cleanup(); throw;
     }
     cleanup();
-    std::cout << "Play HUD passed: health and death, tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
+    std::cout << "Play HUD passed: health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
 }
 
 } // namespace voxel
