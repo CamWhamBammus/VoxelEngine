@@ -474,6 +474,7 @@ std::string_view chestAssetName(HubAssetKind kind)
     case HubAssetKind::LootChest: return "Wooden chest";
     case HubAssetKind::CrystalChest: return "Crystal chest";
     case HubAssetKind::IronboundChest: return "Ironbound chest";
+    case HubAssetKind::TrialSpawner: return "Trial spawner rewards";
     default: return {};
     }
 }
@@ -485,7 +486,17 @@ bool validChestItems(const HubAsset& asset)
             && asset.pickupItem.count >= 1 && asset.pickupItem.count <= ChestStackLimit;
     }
     if (asset.pickupItem != ItemStack{}) return false;
-    return isChestAsset(asset.kind) ? validChestItems(asset.chestItems) : asset.chestItems.empty();
+    return isChestAsset(asset.kind) || isSpawnerAsset(asset.kind) ? validChestItems(asset.chestItems) : asset.chestItems.empty();
+}
+
+bool validSpawnerSettings(const SpawnerSettings& settings)
+{
+    int total = 0;
+    for (const int count : settings.counts) {
+        if (count < 0 || count > SpawnerMobLimit) return false;
+        total += count;
+    }
+    return total > 0;
 }
 
 ItemStack itemPickupStack(const HubAsset& asset)
@@ -515,7 +526,32 @@ std::pair<glm::vec3,glm::vec3> pickupVisualBounds(const HubAsset& asset)
 MeshData buildHubAsset(const HubAsset& asset)
 {
     MeshData mesh;
-    if (isChestAsset(asset.kind) || isItemPickup(asset.kind)) appendHubProp(mesh, asset);
+    if (isSpawnerAsset(asset.kind)) {
+        // A one-cell stone reliquary. The open brass crown makes the reward
+        // outlet readable while the cyan core marks it as a cave mechanism.
+        AssetBuilder b(mesh, asset);
+        const bool cleared = (asset.variation & 0x80000000u) != 0;
+        const float patina = static_cast<float>(asset.variation % 4) * .035f;
+        const glm::vec3 stone = glm::vec3(.37f,.43f,.46f) + glm::vec3(patina);
+        const glm::vec3 dark(.17f,.23f,.26f);
+        const glm::vec3 brass = (glm::vec3(.74f,.49f,.20f) - glm::vec3(patina,0,0)) * (cleared ? .6f : 1.0f);
+        const Block coreMaterial = cleared ? Block::Slate : Block::Crystal;
+        const glm::vec3 coreColor = cleared ? glm::vec3(.16f,.29f,.30f) : glm::vec3(.25f,.89f,.93f);
+        b.box({-.49f,0,-.49f},{.49f,.16f,.49f},Block::Stone,stone);
+        b.box({-.41f,.16f,-.41f},{.41f,.27f,.41f},Block::Stone,dark);
+        b.box({-.23f,.27f,-.23f},{.23f,.70f,.23f},coreMaterial,coreColor);
+        b.box({-.30f,.29f,-.30f},{.30f,.36f,.30f},Block::Slate,brass);
+        for (const float x : {-.37f,.37f}) for (const float z : {-.37f,.37f}) {
+            b.box({x-.07f,.24f,z-.07f},{x+.07f,.88f,z+.07f},Block::Stone,stone);
+            b.box({x-.08f,.72f,z-.08f},{x+.08f,.80f,z+.08f},Block::Slate,brass);
+            b.box({x-.045f,.38f,z-.08f},{x+.045f,.62f,z+.08f},coreMaterial,coreColor*.82f);
+        }
+        for (const float z : {-.38f,.38f})
+            b.box({-.45f,.84f,z-.07f},{.45f,.96f,z+.07f},Block::Stone,stone);
+        for (const float x : {-.38f,.38f})
+            b.box({x-.07f,.84f,-.31f},{x+.07f,.96f,.31f},Block::Stone,stone);
+    }
+    else if (isChestAsset(asset.kind) || isItemPickup(asset.kind)) appendHubProp(mesh, asset);
     else if (isFenceAsset(asset.kind)) appendHubFence(mesh, asset);
     else if (isBuildingKitAsset(asset.kind)) appendHubBuildingKit(mesh, asset);
     else if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
@@ -554,6 +590,8 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
             dressing.lights.push_back({asset.position + glm::vec3(0,0.2f,0), {1.05f,0.57f,0.23f},9.0f});
         if (asset.kind == HubAssetKind::CrystalBeacon)
             dressing.lights.push_back({asset.position + glm::vec3(0,1.4f,0), {0.12f,0.66f,0.88f},7.0f});
+        if (isSpawnerAsset(asset.kind) && !(asset.variation & 0x80000000u))
+            dressing.lights.push_back({asset.position + glm::vec3(0,.65f,0), {.12f,.58f,.65f},4.0f});
         if (asset.kind == HubAssetKind::Forge)
             dressing.lights.push_back({asset.position + glm::vec3(0,1.55f,0.45f), {1.35f,0.43f,0.10f},8.0f});
         if (asset.kind == HubAssetKind::GlowMushroomColony)

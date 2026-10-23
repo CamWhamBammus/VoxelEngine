@@ -104,13 +104,14 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::WindowFrame, "Window frame", "Buildings / 1 x 1 window / wall"},
     SectionAssetInfo{HubAssetKind::WoodenStairs, "Wooden stairs", "Buildings / six steps / ground"},
     SectionAssetInfo{HubAssetKind::Barrel, "Barrel", "Buildings / 1 block barrel / ground"},
+    SectionAssetInfo{HubAssetKind::TrialSpawner, "Trial spawner", "Encounters / E to set enemies and rewards"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
-constexpr std::uint32_t Version = 3;
+constexpr std::uint32_t Version = 4;
 constexpr std::size_t MaxNameLength = 64;
 constexpr std::size_t WorldBytes = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size + 40;
-constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (36 + ChestSlotCount * 8) + 256;
+constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (48 + ChestSlotCount * 8) + 256;
 
 bool validWorld(SectionWorld id)
 {
@@ -152,6 +153,8 @@ void validate(const SectionMetadata& meta, std::span<const HubAsset> assets)
         }
         if (!validChestItems(asset))
             throw std::runtime_error("Invalid chest or pickup contents: use valid items in stacks of 1 to 99");
+        if (isSpawnerAsset(asset.kind) ? !validSpawnerSettings(asset.spawner) : asset.spawner != SpawnerSettings{})
+            throw std::runtime_error("Spawners need 1 or more enemies, with 0 to 20 of each kind");
     }
 }
 
@@ -233,6 +236,8 @@ std::string encode(const World& world, const SectionMetadata& meta, std::span<co
         }
         append(bytes, static_cast<std::uint32_t>(asset.pickupItem.item));
         append(bytes, static_cast<std::uint32_t>(asset.pickupItem.count));
+        if (isSpawnerAsset(asset.kind))
+            for (const int count : asset.spawner.counts) append(bytes, static_cast<std::uint32_t>(count));
     }
     std::ostringstream snapshot(std::ios::binary);
     encodeWorld(world, snapshot);
@@ -288,6 +293,7 @@ ParsedSection read(const std::filesystem::path& path)
         const auto kind = reader.integer();
         const auto kindCount = version == 1 ? static_cast<std::size_t>(HubAssetKind::LootChest) + 1
                              : version == 2 ? static_cast<std::size_t>(HubAssetKind::KeyPickup) + 1
+                             : version == 3 ? static_cast<std::size_t>(HubAssetKind::Barrel) + 1
                                             : HubAssetCount;
         if (kind >= kindCount)
             throw std::runtime_error("Invalid section asset kind");
@@ -299,7 +305,7 @@ ParsedSection read(const std::filesystem::path& path)
         asset.variation = reader.integer();
         if (version >= 2) {
             const auto count = reader.integer();
-            if (count > ChestSlotCount || (count != 0 && !isChestAsset(asset.kind)))
+            if (count > ChestSlotCount || (count != 0 && !isChestAsset(asset.kind) && !isSpawnerAsset(asset.kind)))
                 throw std::runtime_error("Invalid chest contents size");
             asset.chestItems.reserve(count);
             for (std::uint32_t stack = 0; stack < count; ++stack) {
@@ -325,6 +331,13 @@ ParsedSection read(const std::filesystem::path& path)
             if (item >= ItemCount || amount > ChestStackLimit)
                 throw std::runtime_error("Invalid pickup item or quantity");
             asset.pickupItem = {static_cast<ItemId>(item), static_cast<int>(amount)};
+        }
+        if (version >= 4 && isSpawnerAsset(asset.kind)) {
+            for (int& count : asset.spawner.counts) {
+                const auto value = reader.integer();
+                if (value > SpawnerMobLimit) throw std::runtime_error("Spawner enemy count exceeds 20");
+                count = static_cast<int>(value);
+            }
         }
         result.assets.push_back(std::move(asset));
     }

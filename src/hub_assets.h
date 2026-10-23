@@ -29,10 +29,19 @@ enum class HubAssetKind {
     LootChest, CrystalChest, IronboundChest, KeyPickup, ItemPickup,
     // Append new kinds: numeric IDs are stored in authored section files.
     TimberFence, PicketFence, FenceCorner, GardenGate, IronRailing,
-    TimberPillar, TimberBeam, DiagonalBrace, StoneDoorway, WindowFrame, WoodenStairs, Barrel
+    TimberPillar, TimberBeam, DiagonalBrace, StoneDoorway, WindowFrame, WoodenStairs, Barrel,
+    TrialSpawner
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::Barrel) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::TrialSpawner) + 1;
+
+inline constexpr int SpawnerMobLimit = 20;
+struct SpawnerSettings {
+    // Skeleton, wizard, slime. The order matches MonsterKind.
+    std::array<int, 3> counts{2, 1, 1};
+    bool operator==(const SpawnerSettings&) const = default;
+};
+bool validSpawnerSettings(const SpawnerSettings& settings);
 
 struct HubAsset {
     HubAssetKind kind;
@@ -44,6 +53,7 @@ struct HubAsset {
     // Generic ground pickups hold one explicit stack. Older KeyPickup assets
     // retain their implicit single key and keep this field empty.
     ItemStack pickupItem{};
+    SpawnerSettings spawner{};
     bool operator==(const HubAsset&) const = default;
 };
 
@@ -53,6 +63,7 @@ constexpr bool isChestAsset(HubAssetKind kind)
         || kind == HubAssetKind::IronboundChest;
 }
 constexpr bool isKeyPickup(HubAssetKind kind) { return kind == HubAssetKind::KeyPickup; }
+constexpr bool isSpawnerAsset(HubAssetKind kind) { return kind == HubAssetKind::TrialSpawner; }
 constexpr bool isItemPickup(HubAssetKind kind)
 {
     return isKeyPickup(kind) || kind == HubAssetKind::ItemPickup;
@@ -113,7 +124,7 @@ constexpr glm::ivec3 buildingGridSize(HubAssetKind kind, int facing = 0)
         return facing & 1 ? glm::ivec3(1,3,3) : glm::ivec3(3,3,1);
     if (isFenceAsset(kind) || kind == HubAssetKind::TimberPillar
         || kind == HubAssetKind::TimberBeam || kind == HubAssetKind::DiagonalBrace
-        || kind == HubAssetKind::WindowFrame || kind == HubAssetKind::Barrel)
+        || kind == HubAssetKind::WindowFrame || kind == HubAssetKind::Barrel || isSpawnerAsset(kind))
         return {1,1,1};
     return {};
 }
