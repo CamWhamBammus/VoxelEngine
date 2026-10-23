@@ -17,7 +17,7 @@ namespace voxel {
 class Game;
 struct InputActions;
 
-enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents };
+enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents, SpawnerSettings };
 enum class SectionBuildMode { Single, Select, Brush, Paste };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
@@ -56,6 +56,8 @@ inline constexpr int SectionUiChestMinus = 3600, SectionUiChestPlus = 3601;
 inline constexpr int SectionUiChestRemove = 3602, SectionUiChestClear = 3603;
 inline constexpr int SectionUiChestApply = 3604, SectionUiChestCancel = 3605, SectionUiChestQuantity = 3606;
 inline constexpr int SectionUiPickupMinus = 3610, SectionUiPickupPlus = 3611;
+inline constexpr int SectionUiSpawnerMinusBase = 3700, SectionUiSpawnerPlusBase = 3710;
+inline constexpr int SectionUiSpawnerRewards = 3720, SectionUiSpawnerApply = 3721, SectionUiSpawnerCancel = 3722;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.
@@ -122,6 +124,8 @@ public:
     const std::string& chestQuantityText() const { return chestQuantityText_; }
     bool chestQuantitySelected() const { return chestQuantitySelected_; }
     HubAssetKind editingChestKind() const;
+    const std::array<int, 3>& spawnerCounts() const { return spawnerCounts_; }
+    const std::vector<ItemStack>& spawnerRewards() const { return spawnerRewards_; }
 
 private:
     struct Edit {
@@ -163,6 +167,9 @@ private:
     void updateChestContents(Game& game, const InputActions& actions);
     void closeChestContents();
     void selectChestSlot(int slot);
+    void openSpawnerSettings(Game& game, std::size_t index);
+    void updateSpawnerSettings(Game& game, const InputActions& actions);
+    void closeSpawnerSettings();
 
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
@@ -215,5 +222,8 @@ private:
     int chestSelection_ = 0;
     std::string chestQuantityText_ = "1";
     bool chestQuantitySelected_ = true;
+    std::optional<std::size_t> editingSpawner_;
+    std::array<int, 3> spawnerCounts_{2, 1, 1};
+    std::vector<ItemStack> spawnerRewards_;
 };
 } // namespace voxel

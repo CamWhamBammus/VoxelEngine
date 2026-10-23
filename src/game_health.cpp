@@ -36,6 +36,7 @@ bool Game::damagePlayer(int amount)
 void Game::restoreHealth()
 {
     health_.restore();
+    encounters_.resetUnfinished();
     player.consumeFallDistance();
 }
 

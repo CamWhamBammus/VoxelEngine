@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "editing.h"
 #include "equipment.h"
+#include "encounters.h"
 #include "health.h"
 #include "level_editor.h"
 #include "loot.h"
@@ -81,10 +82,13 @@ public:
     void restoreHealth();
     // Called after movement, before checking checkpoints or section exits.
     bool checkPlayerDamage(float deathHeight);
+    bool updateCombat(const InputActions& actions, float seconds);
+    const EncounterSession& encounters() const { return encounters_; }
+    bool sectionEncountersCleared() const { return encounters_.remaining() == 0; }
     bool monsterPreviewActive() const { return monsterPreviewActive_; }
     const MonsterPreview& monsterPreview() const { return monsterPreview_; }
     std::span<const MonsterInstance> monsters() const
-    { return monsterPreviewActive_ ? monsterPreview_.monsters() : std::span<const MonsterInstance>{}; }
+    { return monsterPreviewActive_ ? monsterPreview_.monsters() : encounters_.monsters(); }
     bool editorMode() const { return editorMode_; }
     bool devMode() const { return devMode_; }
     bool devFlying() const { return devMode_ && sectionEditor_.flying(); }
@@ -179,6 +183,8 @@ private:
     void editTarget(const InputActions& actions);
 
     Health health_;
+    EncounterSession encounters_;
+    float encounterSaveRetry_ = 0;
     MonsterPreview monsterPreview_;
     bool monsterPreviewActive_ = false;
     SectionEditor sectionEditor_;

@@ -81,6 +81,7 @@ std::shared_ptr<const AssetCollision> SectionEditor::assetCollision() const
 }
 void SectionEditor::enter(Game& game)
 {
+    closeSpawnerSettings();
     closeChestContents();
     screen_ = SectionEditorScreen::Worlds;
     selection_ = static_cast<int>(selectedWorld_);
@@ -90,6 +91,7 @@ void SectionEditor::enter(Game& game)
 bool SectionEditor::leave(Game& game)
 {
     if (hasSection_ && dirty_ && !saveDraft(game)) return false;
+    closeSpawnerSettings();
     closeChestContents();
     game.endSectionLoot();
     preview_.reset(); targetAsset_.reset();
@@ -225,6 +227,11 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
         if (!actions.active && !actions.closeMenu) return;
         if (screen_ == SectionEditorScreen::ChestContents) {
             updateChestContents(game, actions);
+            game.status = message_;
+            return;
+        }
+        if (screen_ == SectionEditorScreen::SpawnerSettings) {
+            updateSpawnerSettings(game, actions);
             game.status = message_;
             return;
         }
@@ -495,6 +502,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
     if (actions.devPalette) {
         refreshTarget(game);
         if (targetAsset_ && isChestAsset(assets_[*targetAsset_].kind)) openChestContents(game, *targetAsset_);
+        else if (targetAsset_ && isSpawnerAsset(assets_[*targetAsset_].kind)) openSpawnerSettings(game, *targetAsset_);
         else { screen_ = SectionEditorScreen::Palette; preview_.reset(); game.target.reset(); }
         return;
     }
@@ -600,6 +608,7 @@ void SectionEditor::updateBuild(Game& game, const InputActions& actions)
         assets_ = std::move(plan.assets); changed(std::move(edit));
         message_ = item.pickup ? "DROPPED " + std::to_string(pickupQuantity_) + " " + item.name + " | WALK OVER TO COLLECT IN PLAY"
             : isChestAsset(*item.asset) ? "PLACED EMPTY " + item.name + " | AIM AT IT AND PRESS E TO SET ITEMS"
+            : isSpawnerAsset(*item.asset) ? "PLACED TRIAL SPAWNER | AIM AT IT AND PRESS E TO SET ENEMIES AND REWARDS"
                                        : "PLACED " + item.name + " | F8 TEST SOLID SURFACES";
         refreshTarget(game);
         return;
@@ -640,15 +649,16 @@ void SectionEditor::selectChestSlot(int slot)
 
 void SectionEditor::openChestContents(Game& game, std::size_t index)
 {
-    if (index >= assets_.size() || !isChestAsset(assets_[index].kind)) return;
+    if (index >= assets_.size() || (!isChestAsset(assets_[index].kind)
+        && !(isSpawnerAsset(assets_[index].kind) && editingSpawner_ == index))) return;
     editingChest_ = index;
     chestSlots_ = {};
-    const auto& items = assets_[index].chestItems;
+    const auto& items = isSpawnerAsset(assets_[index].kind) ? spawnerRewards_ : assets_[index].chestItems;
     std::copy_n(items.begin(), std::min(items.size(), chestSlots_.size()), chestSlots_.begin());
     selectChestSlot(0);
     screen_ = SectionEditorScreen::ChestContents;
     preview_.reset(); game.target.reset();
-    message_ = "SELECT A CHEST SLOT, CHOOSE AN ITEM, THEN SET ITS QUANTITY | SAVE APPLIES / ESC CANCELS";
+    message_ = "SELECT A SLOT, CHOOSE AN ITEM, THEN SET ITS QUANTITY | SAVE APPLIES / ESC CANCELS";
 }
 
 void SectionEditor::closeChestContents()
@@ -656,7 +666,8 @@ void SectionEditor::closeChestContents()
     editingChest_.reset();
     chestSlots_ = {};
     selectChestSlot(0);
-    if (screen_ == SectionEditorScreen::ChestContents) screen_ = SectionEditorScreen::Build;
+    if (screen_ == SectionEditorScreen::ChestContents)
+        screen_ = editingSpawner_ ? SectionEditorScreen::SpawnerSettings : SectionEditorScreen::Build;
 }
 
 void SectionEditor::updateChestContents(Game& game, const InputActions& actions)
@@ -664,11 +675,12 @@ void SectionEditor::updateChestContents(Game& game, const InputActions& actions)
     const int click = actions.devClick.value_or(-1);
     if (actions.closeMenu || click == SectionUiChestCancel || click == SectionUiBack) {
         closeChestContents();
-        message_ = "CHEST EDIT CANCELLED | ORIGINAL CONTENTS KEPT";
+        message_ = "ITEM EDIT CANCELLED | ORIGINAL CONTENTS KEPT";
         refreshTarget(game);
         return;
     }
-    if (!editingChest_ || *editingChest_ >= assets_.size() || !isChestAsset(assets_[*editingChest_].kind)) {
+    if (!editingChest_ || *editingChest_ >= assets_.size()
+        || (!isChestAsset(assets_[*editingChest_].kind) && !isSpawnerAsset(assets_[*editingChest_].kind))) {
         closeChestContents();
         message_ = "CHEST NO LONGER EXISTS";
         return;
@@ -727,6 +739,12 @@ void SectionEditor::updateChestContents(Game& game, const InputActions& actions)
         if (selected.count > 0 && !validQuantity) return;
         std::vector<ItemStack> items;
         for (const auto& stack : chestSlots_) if (stack.count > 0) items.push_back(stack);
+        if (editingSpawner_) {
+            spawnerRewards_ = std::move(items);
+            closeChestContents();
+            message_ = "REWARDS SET | SAVE SPAWNER TO APPLY ENEMIES AND REWARDS";
+            return;
+        }
         auto& chest = assets_[*editingChest_];
         if (items != chest.chestItems) {
             Edit edit;
@@ -736,6 +754,76 @@ void SectionEditor::updateChestContents(Game& game, const InputActions& actions)
             message_ = "CHEST CONTENTS APPLIED | CTRL/CMD+Z UNDO | F8 TEST LOOT";
         } else message_ = "CHEST CONTENTS UNCHANGED";
         closeChestContents();
+        refreshTarget(game);
+    }
+}
+
+void SectionEditor::openSpawnerSettings(Game& game, std::size_t index)
+{
+    if (index >= assets_.size() || !isSpawnerAsset(assets_[index].kind)) return;
+    editingSpawner_ = index;
+    spawnerCounts_ = assets_[index].spawner.counts;
+    spawnerRewards_ = assets_[index].chestItems;
+    screen_ = SectionEditorScreen::SpawnerSettings;
+    preview_.reset(); game.target.reset();
+    message_ = "SET ENEMY COUNTS AND REWARDS | ACTIVATES WHEN A PLAYER WALKS NEARBY";
+}
+
+void SectionEditor::closeSpawnerSettings()
+{
+    closeChestContents();
+    editingSpawner_.reset();
+    spawnerCounts_ = SpawnerSettings{}.counts;
+    spawnerRewards_.clear();
+    if (screen_ == SectionEditorScreen::SpawnerSettings) screen_ = SectionEditorScreen::Build;
+}
+
+void SectionEditor::updateSpawnerSettings(Game& game, const InputActions& actions)
+{
+    const int click = actions.devClick.value_or(-1);
+    if (actions.closeMenu || click == SectionUiSpawnerCancel || click == SectionUiBack) {
+        closeSpawnerSettings();
+        message_ = "SPAWNER EDIT CANCELLED | ORIGINAL ENEMIES AND REWARDS KEPT";
+        refreshTarget(game);
+        return;
+    }
+    if (!editingSpawner_ || *editingSpawner_ >= assets_.size() || !isSpawnerAsset(assets_[*editingSpawner_].kind)) {
+        closeSpawnerSettings();
+        message_ = "SPAWNER NO LONGER EXISTS";
+        return;
+    }
+    if (actions.save || actions.devTest || actions.devAccept || actions.devLibrary || actions.undo || actions.redo
+        || click == SectionUiSave || click == SectionUiTest || click == SectionUiAccept || click == SectionUiLibrary) {
+        message_ = "SAVE OR CANCEL THE SPAWNER EDIT FIRST";
+        return;
+    }
+    for (int kind = 0; kind < 3; ++kind) {
+        const int step = actions.sprint ? 5 : 1;
+        if (click == SectionUiSpawnerMinusBase + kind)
+            spawnerCounts_[kind] = std::max(0, spawnerCounts_[kind] - step);
+        if (click == SectionUiSpawnerPlusBase + kind)
+            spawnerCounts_[kind] = std::min(SpawnerMobLimit, spawnerCounts_[kind] + step);
+    }
+    if (click == SectionUiSpawnerRewards) {
+        openChestContents(game, *editingSpawner_);
+        return;
+    }
+    if (actions.upgrade || click == SectionUiSpawnerApply || click == SectionUiConfirm) {
+        const SpawnerSettings settings{spawnerCounts_};
+        if (!validSpawnerSettings(settings)) {
+            message_ = "ADD AT LEAST ONE ENEMY BEFORE SAVING THE SPAWNER";
+            return;
+        }
+        auto& asset = assets_[*editingSpawner_];
+        if (asset.spawner != settings || asset.chestItems != spawnerRewards_) {
+            Edit edit;
+            edit.beforeMeta = meta_; edit.beforeAssets = assets_;
+            asset.spawner = settings;
+            asset.chestItems = spawnerRewards_;
+            changed(std::move(edit));
+            message_ = "SPAWNER SAVED | CTRL/CMD+Z UNDO | F8 TEST ENCOUNTER";
+        } else message_ = "SPAWNER UNCHANGED";
+        closeSpawnerSettings();
         refreshTarget(game);
     }
 }
@@ -1119,6 +1207,10 @@ void SectionEditor::respawnAfterDeath(Game& game)
 void SectionEditor::updateTest(Game& game, const InputActions& actions, float deltaSeconds)
 {
     if (actions.respawn) { resetTest(game, actions.restartCrossing); return; }
+    if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
+        game.equipment.selectedSlot = *actions.selectedTool;
+    else if (actions.toolStep) game.equipment.selectedSlot = ((game.equipment.selectedSlot
+        + actions.toolStep % ToolCount) % ToolCount + ToolCount) % ToolCount;
     game.player.update(game.world, actions.movement, game.camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     game.camera.setPosition(game.player.eyePosition());
     if (!testComplete_ && std::isfinite(deltaSeconds) && deltaSeconds > 0) testElapsed_ += std::min(deltaSeconds, .1f);
@@ -1126,6 +1218,7 @@ void SectionEditor::updateTest(Game& game, const InputActions& actions, float de
     // Check lethal landings before markers so death cannot accept a test or
     // activate a checkpoint the player only reached by a fatal fall.
     if (game.checkPlayerDamage(SectionInteriorMin.y - 2.0f)) return;
+    if (game.updateCombat(actions,deltaSeconds)) return;
     const auto reaches = [&](glm::vec3 marker) {
         const auto delta = feet - marker;
         return game.player.grounded() && std::abs(delta.y) < .6f && delta.x * delta.x + delta.z * delta.z < 1.2f * 1.2f;
@@ -1135,6 +1228,10 @@ void SectionEditor::updateTest(Game& game, const InputActions& actions, float de
         checkpointReached_ = true;
     }
     if (!testComplete_ && reaches(meta_.finish)) {
+        if (!game.sectionEncountersCleared()) {
+            message_ = "CLEAR THE SECTION'S SPAWNERS BEFORE FINISHING THE TEST";
+            return;
+        }
         testComplete_ = meta_.tested = true; dirty_ = true;
         message_ = "TEST PASSED | F10 ACCEPT SECTION | F8 KEEP BUILDING";
     }

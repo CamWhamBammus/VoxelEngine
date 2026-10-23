@@ -404,8 +404,13 @@ void LevelController::updatePlay(Game& game, const InputActions& actions, float 
     game.camera.setPosition(game.player.eyePosition());
     elapsed_ += stepTime(deltaSeconds);
     if (game.checkPlayerDamage(SectionInteriorMin.y - 2.0f)) return;
+    if (game.updateCombat(actions,deltaSeconds)) return;
     if (meta_.checkpoint && atMarker(game, *meta_.checkpoint)) checkpointReached_ = true;
     if (!atMarker(game, meta_.finish)) return;
+    if (!game.sectionEncountersCleared()) {
+        message_ = "CLEAR THE SECTION'S SPAWNERS TO OPEN THE EXIT";
+        return;
+    }
     game.discardSectionKeys();
     if (sectionIndex_ + 1 == definition_.sections.size()) {
         screen_ = LevelScreen::Complete;

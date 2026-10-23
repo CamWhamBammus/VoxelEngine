@@ -417,6 +417,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
     camera.setPosition(player.eyePosition());
     if (checkPlayerDamage(rootCrossingActive() ? crossingCourse_.resetY : -16.0f)) return;
+    if (updateCombat(actions,deltaSeconds)) return;
     if (rootCrossingActive()) updateRootCrossing(deltaSeconds);
 }
 

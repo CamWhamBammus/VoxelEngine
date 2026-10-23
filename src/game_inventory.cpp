@@ -23,6 +23,8 @@ void Game::endSectionLoot()
     closeInventory();
     discardSectionKeys();
     loot_.clear();
+    encounters_.clear();
+    encounterSaveRetry_ = 0;
     pickupAttempts_.clear();
     lootPrompt_.clear();
     sectionLootActive_ = false;
@@ -55,7 +57,8 @@ void Game::beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std
     endSectionLoot();
     if (playtest) playtestEquipment_ = equipment;
     // Authoring always tests a fresh room without touching real collection history.
-    loot_.begin(assets, section, playtest ? std::map<std::string, LootProgress>{} : equipment.lootProgress);
+    loot_.begin(assets, section, playtest ? std::map<std::string, LootProgress>{} : equipment.lootProgress, &world);
+    encounters_.begin(assets,loot_.collision(),loot_.clearedSpawners());
     pickupAttempts_.resize(loot_.size());
     sectionLootActive_ = true;
     player.setAssetCollision(loot_.collision());
@@ -217,6 +220,7 @@ bool Game::updateInventory(const InputActions& actions, float deltaSeconds)
     if (!inventoryOpen_) {
         if (!actions.devToggle && !actions.devTest && !actions.levelMenu && !actions.levelCreator
             && !actions.returnToHub && !actions.respawn && !actions.restartCrossing) {
+            loot_.updateRewardAnimations(deltaSeconds);
             collectNearbyItems(deltaSeconds);
             refreshLootPrompt();
         }
