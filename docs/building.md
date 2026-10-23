@@ -83,6 +83,22 @@ During normal level play, collected resources and unlocked chests stay that way 
 
 **F8 playtests use temporary loot**, so testing won't empty the section's real rewards or change your saved inventory.
 
+## Enemy encounters
+
+Choose **Trial spawner** from the Assets tab and place it on a floor. Leave several blocks of clear floor around it for enemies to appear. Aim at the spawner and press **E** to configure it:
+
+1. Set the number of skeletons, wizards, and slimes with **− / +**. Each can be 0–20, with at least one enemy overall.
+2. Open **Rewards** and choose the item stacks it should release, just as you would for a chest.
+3. Save the rewards, then save the spawner settings. Cancel discards the draft settings; undo restores the previous configuration.
+
+![Choosing enemy counts and reward items for a Trial spawner](screenshots/spawner-settings.png)
+
+In play, approaching within eight blocks with a clear view activates the spawner. Enemies appear gradually, with at most eight alive at once. The sword is tool **4**; aim and left click to swing. Skeletons slash at close range, slimes leap, and wizards throw slow spells. Solid walls and scenery block attacks.
+
+Defeating the encounter makes the spawner go dark and toss its rewards from the top. Walk over the drops to collect them. A section's End stays locked until every spawner is cleared. Avoid putting spawners behind unreachable walls or in spaces too small for enemies to appear.
+
+Completed spawners stay cleared in published levels. Their uncollected rewards remain available, including if your bag was full. Death or **R** resets unfinished fights. Each fresh **F8** test starts with fresh encounters and temporary rewards, without changing your real progress.
+
 ## Test and accept
 
 Place a **Start** marker and an **End** marker from the Markers tab. Placing another moves the existing marker. You can also place one checkpoint. Markers need enough floor and headroom for a player.
