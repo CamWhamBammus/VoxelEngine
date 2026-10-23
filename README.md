@@ -2,7 +2,7 @@
 
 A voxel game set entirely underground, written in C++20 with OpenGL. The idea is to head out from a cave village, find ore and loot, then come home to upgrade your gear. Deeper expeditions will lead to different cave worlds.
 
-It's still early. You can explore the village, build and play your own levels, collect loot, and upgrade a pickaxe at the blacksmith. Mining, combat, procedural expeditions, and the central tree's skill tree aren't built yet.
+It's still early. You can explore the village, build and play your own levels, fight encounters, collect loot, and upgrade a pickaxe at the blacksmith. Mining, procedural expeditions, sword upgrades, and the central tree's skill tree aren't built yet.
 
 ![The underground village, with its central tree, bridges, and water](docs/screenshots/village.png)
 
@@ -42,7 +42,8 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | WASD / mouse | Move / look |
 | Space / Shift | Jump / sprint |
 | Space / Ctrl in water | Swim up / dive |
-| 1–3 or mouse wheel | Select pickaxe, lantern, or compass |
+| 1–4 or mouse wheel | Select pickaxe, lantern, compass, or sword |
+| Left click with sword | Swing at the enemy you're aiming at |
 | E | Use a nearby chest, blacksmith, or expedition gate |
 | I | Open the 20-slot inventory |
 | R | Return to the village spawn, or the current expedition checkpoint |
@@ -52,6 +53,12 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 You walk up stairs automatically. Full blocks need a jump. The lantern lights your surroundings; the compass points toward the village tree or your current expedition exit.
 
 You have 100 health. Long falls deal damage; landing in water cushions the fall. If you die, you return at full health to the checkpoint you reached, or the current section's Start. Your inventory and collected loot stay as they were. Health carries over when you move to the next section, but checkpoints belong to their own section.
+
+Trial spawners wake when you approach. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hitting an enemy reveals its health bar. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
+
+Completed spawners stay cleared, even after closing the game. Uncollected rewards wait beside them on your next visit. Dying or pressing **R** resets unfinished encounters, while cleared spawners and collected loot stay as they were.
+
+![Fighting a skeleton with the sword in an authored trial chamber](docs/screenshots/combat.png)
 
 Chests and floating drops provide resources. Ironbound chests need a cave key, and keys only work within the section where you found them. Collected loot stays collected when you replay a section. Unused keys return to their source when you leave and come back.
 
@@ -63,7 +70,7 @@ Press **F3** in the village, or run `./build/VoxelEngine --monsters`. The grotto
 
 **1** plays idle, **2** plays walk/hop cycles in place, **3** plays attacks, and **E** cycles through all three. **R** resets the view; **B** or **F3** returns to the village. Escape pauses the animations along with the game.
 
-These are animation prototypes. They don't chase, damage, or drop loot yet.
+The preview is for inspecting animations. To fight these creatures, place a Trial spawner in a section and use **F8** to test it, or play a published level containing one.
 
 ![The skeleton, wizard, and slime in the creature preview](docs/screenshots/creatures.png)
 
@@ -119,6 +126,7 @@ The main loop in [src/main.cpp](src/main.cpp) reads input, updates the game, and
 | Creature rigs and animation | [monsters.cpp](src/monsters.cpp), [monster_preview.cpp](src/monster_preview.cpp), [monster_skeleton.cpp](src/graphics/monster_skeleton.cpp) |
 | Movement and collision | [player.cpp](src/player.cpp), [asset_collision.cpp](src/asset_collision.cpp) |
 | Health and respawning | [health.cpp](src/health.cpp), [game_health.cpp](src/game_health.cpp) |
+| Spawners and combat | [encounters.cpp](src/encounters.cpp), [game_combat.cpp](src/game_combat.cpp), [spawner_loot.cpp](src/spawner_loot.cpp) |
 | Village layout and buildings | [scene.cpp](src/scene.cpp), [hub_buildings.cpp](src/hub_buildings.cpp) |
 | Blocks and chunk meshes | [world.h](src/world.h), [mesh.cpp](src/mesh.cpp) |
 | Building tools and section files | [section_editor.cpp](src/section_editor.cpp), [section_tools.cpp](src/section_tools.cpp), [sections.cpp](src/sections.cpp) |
