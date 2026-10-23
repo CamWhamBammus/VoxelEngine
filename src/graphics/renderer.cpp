@@ -109,6 +109,13 @@ float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) 
 )glsl" + waterShader + R"glsl(
 
 void main() {
+    if (decorative == 4) {
+        // Spell cores use authored cyan/violet colors and bloom, with ordinary
+        // scene depth so a wall or a creature can hide the projectile.
+        float haze = smoothstep(35.0, 100.0, length(cameraPosition-worldPosition)) * .45;
+        fragmentColor = vec4(mix(surfaceColor*2.1,vec3(.025,.027,.044),haze),1.0-haze);
+        return;
+    }
     MaterialSurface surface = evaluateMaterial();
     vec3 normal = normalize(surface.normal);
     vec3 color = surface.albedo;
@@ -259,7 +266,8 @@ void WorldRenderer::uploadLights(const World& world)
 void WorldRenderer::render(const World& world, const Camera& camera, int width, int height,
                            bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets,
                            std::span<const HubAsset> placedAssets, std::span<const glm::vec3> pickupOffsets,
-                           std::span<const MonsterInstance> monsters)
+                           std::span<const MonsterInstance> monsters,
+                           std::span<const EncounterProjectile> projectiles)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -540,6 +548,38 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     }
     shader_.setMat4("model",glm::mat4(1));
     shader_.setInt("decorative",0);
+    if(!projectiles.empty()) {
+        if(!spellBolt_.indexCount()) {
+            MeshData mesh;
+            const HubAsset origin{};
+            AssetBuilder model(mesh,origin);
+            model.box({-.105f,-.105f,-.105f},{.105f,.105f,.105f},Block::Crystal,{.48f,.92f,1});
+            for(int spoke=0;spoke<8;++spoke) {
+                const float angle=spoke*.785398163f;
+                const glm::vec3 point(std::cos(angle)*.22f,std::sin(angle)*.22f,0);
+                model.box(point-glm::vec3(.035f),point+glm::vec3(.035f),Block::Crystal,{.65f,.26f,1});
+            }
+            spellBolt_.upload(mesh);
+        }
+        shader_.setInt("decorative",4);
+        for(const auto& bolt:projectiles) {
+            if(!frustum.intersects(bolt.position-glm::vec3(1.5f),bolt.position+glm::vec3(1.5f))) continue;
+            const float speed=glm::length(bolt.velocity);
+            if(!std::isfinite(speed)) continue;
+            const auto direction=speed>.001f ? bolt.velocity/speed : glm::vec3(0,0,1);
+            for(int segment=5;segment>=0;--segment) {
+                const float size=segment==0 ? 1.0f : .62f-segment*.085f;
+                const auto position=bolt.position-direction*(segment*.16f);
+                auto model=glm::translate(glm::mat4(1),position);
+                model=glm::rotate(model,timeSeconds*5+segment*.3f,glm::normalize(glm::vec3(1,1,.3f)));
+                shader_.setMat4("model",glm::scale(model,glm::vec3(size)));
+                spellBolt_.draw();
+                drawnTriangles_+=spellBolt_.indexCount()/3;
+            }
+        }
+        shader_.setMat4("model",glm::mat4(1));
+        shader_.setInt("decorative",0);
+    }
     if (!visibleWater.empty()) {
         if (underground && !wireframe) {
             postProcess_.captureScene();

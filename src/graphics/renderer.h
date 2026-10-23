@@ -6,6 +6,7 @@
 #include "editing.h"
 #include "hub_assets.h"
 #include "monsters.h"
+#include "encounters.h"
 #include <memory>
 
 #include <array>
@@ -27,7 +28,8 @@ public:
                 bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false,
                 bool hubAssets = true, std::span<const HubAsset> placedAssets = {},
                 std::span<const glm::vec3> pickupOffsets = {},
-                std::span<const MonsterInstance> monsters = {});
+                std::span<const MonsterInstance> monsters = {},
+                std::span<const EncounterProjectile> projectiles = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -45,6 +47,7 @@ private:
     std::array<GpuMesh, World::ChunkCount> assets_;
     std::array<GpuMesh, ItemCount> pickups_; // Local meshes; animated with per-draw transforms.
     std::array<std::vector<std::unique_ptr<GpuMesh>>,3> monsters_; // Uploaded once per joint.
+    GpuMesh spellBolt_; // Shared by glowing wizard bolts and their short trails.
     std::size_t monsterTriangles_ = 0;
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.
