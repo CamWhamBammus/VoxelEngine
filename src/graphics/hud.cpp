@@ -1793,13 +1793,6 @@ void Hud::drawCombat(const Game& game,int framebufferWidth,int framebufferHeight
         const auto value=std::to_string(bar.current)+"/"+std::to_string(bar.maximum);
         drawing.centered(value,x,y-15,1,Cream);
     }
-    if(game.equipment.selectedTool()==Tool::Sword) {
-        const float remaining=std::clamp(encounter.swordSwing(),0.0f,1.0f);
-        const float elapsed=1-remaining;
-        const float arc=remaining>0 ? std::sin(std::clamp(elapsed/.70f,0.0f,1.0f)*3.14159265f) : 0;
-        const glm::vec2 grip(width*.80f-arc*width*.19f,height*.83f+arc*34);
-        swordIcon(drawing,grip,std::min(height/155.0f,4.3f),.35f-arc*1.65f);
-    }
     if(!encounter.pendingCompletions().empty()) {
         const float y=game.devMode() || game.levelActive() ? 130 : 16;
         drawing.frame(width*.5f-220,y,440,48,{.76f,.30f,.18f,1},Panel);

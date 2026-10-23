@@ -106,7 +106,10 @@ int main(int argc, char** argv)
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
                             !game.rootCrossingActive() && !game.devMode() && !game.levelActive() && !game.monsterPreviewActive(),
                             game.sectionSceneAssets(), game.sectionPickupOffsets(), game.monsters(),
-                            game.encounters().projectiles());
+                            game.encounters().projectiles(),
+                            game.healthVisible() && !game.health().dead()
+                                && game.equipment.selectedTool() == voxel::Tool::Sword
+                                ? std::optional<float>(game.encounters().swordSwing()) : std::nullopt);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {

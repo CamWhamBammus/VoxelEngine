@@ -27,6 +27,7 @@ add_library(VoxelCore
     src/graphics/monster_skeleton.cpp
     src/graphics/monster_wizard.cpp
     src/graphics/monster_slime.cpp
+    src/graphics/held_sword.cpp
     src/game_inventory.cpp
     src/equipment.cpp
     src/items.cpp
@@ -85,6 +86,7 @@ if(VOXEL_BUILD_APP)
         tests/graphics_smoke.cpp
         tests/water_graphics_smoke.cpp
         tests/hud_play_smoke.cpp
+        tests/held_sword_smoke.cpp
         tests/inventory_hud_smoke.cpp
         tests/root_crossing_hud_smoke.cpp
         tests/section_hud_smoke.cpp
@@ -105,7 +107,7 @@ if(BUILD_TESTING)
         root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools
         levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
-        lush_hub monsters health spawner_editor spawner_loot encounters encounter_game
+        lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

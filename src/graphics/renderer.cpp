@@ -10,6 +10,7 @@
 #include "sections.h"
 #include "section_editor.h"
 #include "graphics/asset_builder.h"
+#include "graphics/held_sword.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -71,6 +72,7 @@ uniform vec3 cameraForward;
 uniform int underground;
 uniform int cameraInWater;
 uniform int decorative;
+uniform int firstPerson;
 uniform float timeSeconds;
 uniform int carriedLantern;
 uniform int monsterCount;
@@ -117,6 +119,8 @@ void main() {
         return;
     }
     MaterialSurface surface = evaluateMaterial();
+    if (firstPerson != 0 && (materialId == 8 || materialId == 9))
+        surface.roughness = materialId == 9 ? .28 : .36;
     vec3 normal = normalize(surface.normal);
     vec3 color = surface.albedo;
     vec3 toCamera = cameraPosition - worldPosition;
@@ -146,13 +150,16 @@ void main() {
                       + vec3(1.0, 0.60, 0.24) * lantern) * ao;
         vec3 pointLight = vec3(0.0);
         vec3 highlight = vec3(0.0);
-        vec3 start = worldPosition + surfaceNormal * 0.03;
+        // A viewmodel can extend visually into a nearby wall. Sample its light
+        // at the player's eyes, while its real normals still shape the shading.
+        vec3 lightPosition = firstPerson != 0 ? cameraPosition : worldPosition;
+        vec3 start = firstPerson != 0 ? cameraPosition : worldPosition + surfaceNormal * 0.03;
         // Every source that reaches this surface contributes. A nearest-light
         // cap would cause visible boundaries wherever the source ranking swaps,
         // even if the ranking were based on world position instead of the camera.
         for (int i = 0; i < lightCount; ++i) {
             vec4 source = lightData(i, 0);
-            vec3 offset = source.xyz - worldPosition;
+            vec3 offset = source.xyz - lightPosition;
             float distanceSquared = dot(offset, offset);
             if (distanceSquared >= source.w * source.w || dot(surfaceNormal, offset) <= 0.0) continue;
             vec3 lightColor = lightData(i, 1).rgb;
@@ -200,7 +207,7 @@ void main() {
     // Shade those surfaces here; looking out through a water face is handled
     // by shadeWater(), so dry scenery beyond the surface is not tinted twice.
     if (cameraInWater != 0 && materialId != 16
-        && waterCell(ivec3(floor(worldPosition + surfaceNormal * 0.04)))) {
+        && (firstPerson != 0 || waterCell(ivec3(floor(worldPosition + surfaceNormal * 0.04))))) {
         vec3 transmission = exp(-vec3(0.22, 0.075, 0.05) * min(cameraDistance, 36.0));
         fragmentColor.rgb = fragmentColor.rgb * transmission
             + vec3(0.012, 0.095, 0.105) * (1.0 - transmission);
@@ -267,7 +274,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            bool wireframe, bool underground, float timeSeconds, bool carriedLantern, bool hubAssets,
                            std::span<const HubAsset> placedAssets, std::span<const glm::vec3> pickupOffsets,
                            std::span<const MonsterInstance> monsters,
-                           std::span<const EncounterProjectile> projectiles)
+                           std::span<const EncounterProjectile> projectiles,
+                           std::optional<float> heldSwordSwing)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -460,11 +468,12 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         shader_.setVec3(("monsterFeet[" + std::to_string(i) + "]").c_str(), feet);
     }
     shader_.setInt("decorative", 0);
+    shader_.setInt("firstPerson", 0);
     shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
-    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
+    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = heldSwordTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -603,6 +612,44 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glEnable(GL_CULL_FACE);
     }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    if (heldSwordSwing) {
+        if (!heldSword_.indexCount()) heldSword_.upload(buildHeldSword());
+        const auto view = camera.viewMatrix();
+        const float aspect = static_cast<float>(width) / height;
+        const auto handProjection = glm::perspective(glm::radians(65.0f),aspect,.03f,10.0f);
+        shader_.setMat4("viewProjection",handProjection*view);
+        shader_.setMat4("model",glm::inverse(view)*heldSwordPose(*heldSwordSwing,aspect));
+        shader_.setInt("decorative",3);
+        shader_.setInt("firstPerson",1);
+        shader_.setInt("refractiveWater",0);
+        const auto cell = glm::clamp(glm::ivec3(glm::floor(eye)),World::Min,World::MaxExclusive-1)-World::Min;
+        const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
+            + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
+        shader_.setInt("lightOffset",lightOffsets_[chunk]);
+        shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+        // Keep ordinary depth ordering between the blade, guard and glove,
+        // while reserving a near band so scenery cannot cut off the hand.
+        // The rest of the scene depth remains intact for selection overlays.
+        GLdouble depthRange[2];
+        GLint depthFunction;
+        GLboolean depthWrite;
+        glGetDoublev(GL_DEPTH_RANGE,depthRange);
+        glGetIntegerv(GL_DEPTH_FUNC,&depthFunction);
+        glGetBooleanv(GL_DEPTH_WRITEMASK,&depthWrite);
+        glDepthRange(0.0,0.01);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(GL_TRUE);
+        heldSword_.draw();
+        heldSwordTriangles_ = heldSword_.indexCount()/3;
+        drawnTriangles_ += heldSwordTriangles_;
+        glDepthRange(depthRange[0],depthRange[1]);
+        glDepthFunc(static_cast<GLenum>(depthFunction));
+        glDepthMask(depthWrite);
+        shader_.setInt("firstPerson",0);
+        shader_.setInt("decorative",0);
+        shader_.setMat4("model",glm::mat4(1));
+        shader_.setMat4("viewProjection",viewProjection);
+    }
     if (underground) postProcess_.finish();
     for (int unit = 2; unit <= 3; ++unit) {
         glActiveTexture(GL_TEXTURE0 + unit);
@@ -617,7 +664,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
 
 std::size_t WorldRenderer::triangleCount() const
 {
-    std::size_t total = monsterTriangles_;
+    std::size_t total = monsterTriangles_ + heldSwordTriangles_;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
     for (const auto& mesh : water_) total += mesh.indexCount() / 3;
     if (underground_) {

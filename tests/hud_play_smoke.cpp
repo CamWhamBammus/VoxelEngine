@@ -166,12 +166,12 @@ void verifyPlayHud(int width, int height)
         require(difference(compass,draw(width,height))>30,"Compass did not respond to the camera bearing");
         game.equipment.selectedSlot=3;
         const auto sword=draw(width,height);
-        require(difference(compass,sword)>1500,"Sword selection did not display its fourth pocket and held blade");
+        require(difference(compass,sword)>150,"Sword selection did not display its fourth pocket and icon");
         InputActions swing;swing.active=true;swing.attack=true;
         game.updateCombat(swing,.1f);
         InputActions rest;rest.active=true;game.updateCombat(rest,.1f);
-        require(game.encounters().swordSwing()>0 && difference(sword,draw(width,height))>1000,
-                "Sword swing did not animate the held weapon");
+        require(game.encounters().swordSwing()>0 && difference(sword,draw(width,height))==0,
+                "World weapon animation leaked into the flat HUD layer");
         for(int frame=0;frame<6;++frame) game.updateCombat(rest,.1f);
         game.equipment.selectedSlot=2;
         const auto normalScale=draw(width,height);
