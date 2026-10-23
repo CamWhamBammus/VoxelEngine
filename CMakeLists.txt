@@ -31,6 +31,7 @@ add_library(VoxelCore
     src/items.cpp
     src/inventory.cpp
     src/loot.cpp
+    src/spawner_loot.cpp
     src/scene.cpp
     src/root_crossings.cpp
     src/sections.cpp

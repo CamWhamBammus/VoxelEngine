@@ -16,7 +16,7 @@ class World;
 class LootSession {
 public:
     void begin(std::span<const HubAsset> assets, std::string_view section = {},
-               const std::map<std::string, LootProgress>& progress = {});
+               const std::map<std::string, LootProgress>& progress = {}, const World* world = nullptr);
     void clear();
     std::optional<std::size_t> target(const World& world, glm::vec3 eye, glm::vec3 direction) const;
     std::size_t size() const { return chests_.size(); }
@@ -34,6 +34,10 @@ public:
     const std::vector<HubAsset>& sceneAssets() const { return sceneAssets_; }
     const std::vector<glm::vec3>& scenePickupOffsets() const { return scenePickupOffsets_; }
     std::shared_ptr<const AssetCollision> collision() const { return obstacles_; }
+    const std::vector<std::size_t>& clearedSpawners() const { return clearedSpawners_; }
+    const std::string& spawnerRecord(std::size_t assetIndex) const;
+    void releaseSpawnerRewards(std::size_t assetIndex);
+    void updateRewardAnimations(float seconds);
 
 private:
     struct Chest {
@@ -47,7 +51,19 @@ private:
         std::size_t sceneIndex = 0;
         glm::vec3 pickupOffset{};
         float pullSeconds = 0;
+        bool enabled = true;
+        std::optional<std::size_t> spawnerAsset = {};
+        glm::vec3 launchOffset{};
+        float launchSeconds = 1;
     };
+    struct SpawnerReward {
+        std::size_t assetIndex;
+        std::string key;
+    };
+    void prepareSpawnerRewards(const World* world, std::string_view section,
+                               const std::map<std::string, LootProgress>& progress);
+    std::vector<SpawnerReward> spawnerRewards_;
+    std::vector<std::size_t> clearedSpawners_;
     std::shared_ptr<AssetCollision> obstacles_;
     std::vector<HubAsset> authoredAssets_, sceneAssets_;
     std::vector<glm::vec3> scenePickupOffsets_;

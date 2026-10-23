@@ -38,7 +38,7 @@ std::optional<float> pickupRay(glm::vec3 center, glm::vec3 eye, glm::vec3 direct
 } // namespace
 
 void LootSession::begin(std::span<const HubAsset> assets, std::string_view section,
-                        const std::map<std::string, LootProgress>& progress)
+                        const std::map<std::string, LootProgress>& progress, const World* world)
 {
     clear();
     authoredAssets_.assign(assets.begin(), assets.end());
@@ -58,6 +58,8 @@ void LootSession::begin(std::span<const HubAsset> assets, std::string_view secti
         chests_.push_back(std::move(chest));
     }
     refreshAssets();
+    prepareSpawnerRewards(world, section, progress);
+    refreshAssets();
 }
 
 void LootSession::clear()
@@ -67,6 +69,8 @@ void LootSession::clear()
     sceneAssets_.clear();
     scenePickupOffsets_.clear();
     obstacles_.reset();
+    spawnerRewards_.clear();
+    clearedSpawners_.clear();
 }
 
 void LootSession::refreshAssets()
@@ -79,6 +83,7 @@ void LootSession::refreshAssets()
         if (reward < chests_.size() && chests_[reward].assetIndex == i) {
             auto& chest = chests_[reward++];
             chest.sceneIndex = sceneAssets_.size();
+            if (!chest.enabled) continue;
             if (isItemPickup(chest.kind) && chest.contents[0].count == 0) continue;
             offset = chest.pickupOffset;
         }
@@ -88,7 +93,9 @@ void LootSession::refreshAssets()
     // Pickup visibility changes without changing any physical scenery.
     if (!obstacles_) {
         obstacles_ = std::make_shared<AssetCollision>();
-        obstacles_->rebuild(sceneAssets_);
+        // Filtering claimed pickups changes drawing indices. Collision queries
+        // still refer to authored indices, including the spawner to ignore.
+        obstacles_->rebuild(authoredAssets_);
     }
 }
 
@@ -108,6 +115,7 @@ std::optional<std::size_t> LootSession::target(const World& world, glm::vec3 eye
     if (block) nearest = std::min(nearest, block->distance);
     std::optional<std::size_t> result;
     for (std::size_t i = 0; i < chests_.size(); ++i) {
+        if (!chests_[i].enabled) continue;
         if (pickup(i) && chests_[i].contents[0].count == 0) continue;
         if (pickup(i)) {
             const auto hit = pickupRay(pickupCenter(chests_[i].position) + chests_[i].pickupOffset, eye, direction);
@@ -122,7 +130,8 @@ std::optional<std::size_t> LootSession::target(const World& world, glm::vec3 eye
 
 bool LootSession::canCollectPickup(std::size_t index, const World& world, glm::vec3 feet) const
 {
-    if (!pickup(index) || chests_[index].contents[0].count == 0 || !obstacles_) return false;
+    if (!pickup(index) || !chests_[index].enabled || chests_[index].launchSeconds < .8f
+        || chests_[index].contents[0].count == 0 || !obstacles_) return false;
     const auto anchor = chests_[index].position;
     const auto delta = feet - anchor;
     if (std::hypot(delta.x, delta.z) > 1.5f || std::abs(delta.y) > .8f) return false;
@@ -138,6 +147,7 @@ bool LootSession::pullPickup(std::size_t index, glm::vec3 feet, float deltaSecon
     if (!pickup(index) || chests_[index].contents[0].count == 0
         || !std::isfinite(deltaSeconds) || deltaSeconds <= 0) return false;
     auto& chest = chests_[index];
+    if (!chest.enabled || chest.launchSeconds < .8f) return false;
     const float seconds = std::min(deltaSeconds, .1f);
     const auto goal = feet + glm::vec3(0, .65f, 0) - pickupCenter(chest.position);
     const auto delta = goal - chest.pickupOffset;
@@ -153,6 +163,7 @@ void LootSession::stopPickupPull(std::size_t index)
 {
     if (!pickup(index)) return;
     auto& chest = chests_[index];
+    if (!chest.enabled || chest.launchSeconds < .8f) return;
     chest.pickupOffset = {};
     chest.pullSeconds = 0;
     if (chest.contents[0].count > 0) scenePickupOffsets_[chest.sceneIndex] = {};
