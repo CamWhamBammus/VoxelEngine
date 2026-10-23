@@ -294,6 +294,60 @@ void compassIcon(Drawing& out, glm::vec2 center, float scale, glm::vec2 directio
     out.quad(center.x-1.5f*scale,center.y-1.5f*scale,3*scale,3*scale,Gold);
 }
 
+// The same bevelled blade, brass guard and wrapped grip appear in the pocket
+// and in hand. Keeping its silhouette consistent makes slot four recognizable.
+void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0)
+{
+    const float c=std::cos(angle),s=std::sin(angle);
+    const auto p=[&](float x,float y) {return center+glm::vec2(c*x-s*y,s*x+c*y)*scale;};
+    const auto face=[&](glm::vec2 a,glm::vec2 b,glm::vec2 c,glm::vec2 d,glm::vec4 color) {
+        out.triangle(p(a.x,a.y),p(b.x,b.y),p(c.x,c.y),color);
+        out.triangle(p(a.x,a.y),p(c.x,c.y),p(d.x,d.y),color);
+    };
+    constexpr glm::vec4 steel{.58f,.72f,.77f,1},shadow{.25f,.37f,.43f,1};
+    constexpr glm::vec4 edge{.87f,.95f,.92f,1},brass{.73f,.44f,.17f,1};
+    face({-6,1},{-6,-39},{0,-50},{0,1},steel);
+    face({0,1},{0,-50},{6,-39},{6,1},shadow);
+    face({-6,-39},{0,-50},{-3,-38},{-3,1},edge);
+    out.triangle(p(-6,-39),p(-3,1),p(-6,1),edge);
+    face({0,-45},{1,-38},{1,-2},{0,-2},{.72f,.87f,.88f,1});
+    face({-13,0},{-5,-2},{5,-2},{13,0},Gold);
+    face({-13,0},{13,0},{12,5},{-12,5},brass);
+    face({-4,5},{4,5},{4,23},{-4,23},{.23f,.13f,.09f,1});
+    for(int wrap=0;wrap<4;++wrap)
+        out.bar(p(-3,7+wrap*4),p(3,9+wrap*4),1.2f*scale,{.48f,.29f,.15f,1});
+    face({-5,23},{5,23},{4,28},{-4,28},brass);
+    out.triangle(p(-4,23),p(4,23),p(0,26),Gold);
+    out.triangle(p(0,-1),p(3,2),p(0,5),{.18f,.72f,.70f,1});
+    out.triangle(p(0,-1),p(0,5),p(-3,2),{.51f,.92f,.81f,1});
+}
+
+void toolBelt(Drawing& out,const Equipment& equipment,float center,float top,glm::vec2 needle={0,-1})
+{
+    constexpr float slotWidth=58,gap=7,total=ToolCount*slotWidth+(ToolCount-1)*gap;
+    const float left=center-total*.5f;
+    out.frame(left-7,top-7,total+14,72,Edge,Panel);
+    for(int slot=0;slot<ToolCount;++slot) {
+        const float x=left+slot*(slotWidth+gap);
+        const bool active=slot==equipment.selectedSlot;
+        out.frame(x,top,slotWidth,58,active ? Gold : Edge,active ? Selected : Panel);
+        out.quad(x+5,top+5,10,11,Panel);
+        out.text(std::to_string(slot+1),x+8,top+7,1,active ? Gold : Muted);
+        const glm::vec2 icon(x+29,top+31);
+        switch(static_cast<Tool>(slot)) {
+        case Tool::Pickaxe: pickaxeIcon(out,icon,.95f,equipment.pickaxeTier); break;
+        case Tool::Lantern: lanternIcon(out,icon,.95f); break;
+        case Tool::Compass: compassIcon(out,icon,.95f,needle); break;
+        case Tool::Sword: swordIcon(out,icon+glm::vec2(-3,5),.47f,.46f); break;
+        }
+        if(slot==0) {
+            out.quad(x+35,top+43,19,11,Panel);
+            out.text("T"+std::to_string(equipment.pickaxeTier),x+39,top+45,1,Gold);
+        }
+        if(active) out.quad(x+6,top+54,slotWidth-12,2,Gold);
+    }
+}
+
 std::string crossingTime(float seconds)
 {
     const int tenths = std::isfinite(seconds)
@@ -632,6 +686,7 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
         const auto hint=item.pickup ? "DROP ON GROUND / WALK OVER TO COLLECT"
+            : item.asset && isSpawnerAsset(*item.asset) ? "PLACE / AIM AT SPAWNER AND PRESS E TO SET ENEMIES AND REWARDS"
             : item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
             : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
             : item.block && isStair(*item.block) ? "HALF-HEIGHT STEPS / T ROTATE / WALK UP WITHOUT JUMPING"
@@ -784,16 +839,18 @@ void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     constexpr float w=700,h=478;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
     const bool locked=editor.editingChestKind()==HubAssetKind::IronboundChest;
-    sectionPanel(out,width,height,x,y,w,h,"CHEST CONTENTS",
-        std::string(chestAssetName(editor.editingChestKind()))
-            +(locked ? " / REQUIRES A CAVE KEY" : " / EXACT ITEMS SAVED WITH THIS CHEST"));
+    const bool rewards=isSpawnerAsset(editor.editingChestKind());
+    sectionPanel(out,width,height,x,y,w,h,rewards ? "TRIAL REWARDS" : "CHEST CONTENTS",
+        rewards ? "ITEMS POP OUT OF THE SPAWNER WHEN EVERY ENEMY IS DEFEATED"
+            : std::string(chestAssetName(editor.editingChestKind()))
+                +(locked ? " / REQUIRES A CAVE KEY" : " / EXACT ITEMS SAVED WITH THIS CHEST"));
     const auto& slots=editor.chestSlots();
     const int selection=std::clamp(editor.chestSelection(),0,ChestSlotCount-1);
     const auto& selected=slots[selection];
     const bool occupied=selected.count>0 && validItem(selected.item);
     const auto used=std::count_if(slots.begin(),slots.end(),[](const ItemStack& stack){return stack.count>0;});
     out.text("ITEM CATALOG",x+22,y+73,1,Muted);
-    out.text("CHEST / "+std::to_string(used)+" OF 20 SLOTS",x+324,y+73,1,Gold);
+    out.text(std::string(rewards ? "REWARDS / " : "CHEST / ")+std::to_string(used)+" OF 20 SLOTS",x+324,y+73,1,Gold);
     // Two columns leave enough width for readable names even on small displays.
     const auto catalog=itemCatalog();
     for (std::size_t index=0;index<catalog.size();++index) {
@@ -839,7 +896,39 @@ void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     sectionFeedback(out,editor,x+22,y+422,w-44);
     sectionButton(out,hits,x+22,y+441,140,27,"CLEAR ALL",SectionUiChestClear,false,used>0);
     sectionButton(out,hits,x+324,y+441,132,27,"ESC - CANCEL",SectionUiChestCancel);
-    sectionButton(out,hits,x+466,y+441,212,27,"ENTER - SAVE CONTENTS",SectionUiChestApply,true);
+    sectionButton(out,hits,x+466,y+441,212,27,rewards ? "ENTER - DONE" : "ENTER - SAVE CONTENTS",SectionUiChestApply,true);
+}
+
+void sectionSpawnerMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=610,h=440;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,"TRIAL SPAWNER","ACTIVATES AUTOMATICALLY WHEN A PLAYER COMES WITHIN 8 BLOCKS");
+    const auto& counts=editor.spawnerCounts();
+    constexpr std::array<std::string_view,3> labels{"SKELETON","WIZARD","SLIME"};
+    constexpr std::array<std::string_view,3> details{"CHASES AND SLASHES","CASTS DODGEABLE BOLTS","HOPS TOWARD THE PLAYER"};
+    constexpr std::array<glm::vec4,3> tints{Cream,glm::vec4(.74f,.52f,.94f,1),Leaf};
+    int total=0;
+    for(int kind=0;kind<3;++kind) {
+        total+=counts[kind];
+        const float top=y+81+kind*66;
+        out.frame(x+22,top,w-44,57,Edge,Canvas,5);
+        out.quad(x+24,top+9,3,39,tints[kind]);
+        out.text(labels[kind],x+40,top+11,1.5f,tints[kind]);
+        out.text(details[kind],x+40,top+34,1,Muted);
+        sectionButton(out,hits,x+w-180,top+13,33,31,"-",SectionUiSpawnerMinusBase+kind,false,counts[kind]>0);
+        out.centered(std::to_string(counts[kind]),x+w-112,top+23,1.5f,Cream);
+        sectionButton(out,hits,x+w-75,top+13,33,31,"+",SectionUiSpawnerPlusBase+kind,false,counts[kind]<SpawnerMobLimit);
+    }
+    out.text(std::to_string(total)+(total==1 ? " ENEMY TOTAL" : " ENEMIES TOTAL"),x+24,y+290,1.25f,Gold);
+    out.text("UP TO 8 ACTIVE AT ONCE",x+w-230,y+293,1,Muted);
+    sectionButton(out,hits,x+22,y+318,w-44,35,
+        "EDIT REWARDS / "+std::to_string(editor.spawnerRewards().size())
+            +(editor.spawnerRewards().size()==1 ? " ITEM STACK" : " ITEM STACKS"),SectionUiSpawnerRewards);
+    fittedText(out,"CLEARS PERMANENTLY / UNFINISHED TRIALS RESET ON DEATH",x+24,y+365,w-48,1,Muted);
+    sectionFeedback(out,editor,x+24,y+384,w-48);
+    sectionButton(out,hits,x+22,y+405,172,27,"ESC - CANCEL",SectionUiSpawnerCancel);
+    sectionButton(out,hits,x+w-273,y+405,251,27,"ENTER - SAVE SPAWNER",SectionUiSpawnerApply,true,total>0);
 }
 
 void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
@@ -866,6 +955,9 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             out.centered("SECTION TEST COMPLETE",center,149,1.8f,Leaf);
             out.centered("F10 - NAME AND ACCEPT / F8 - KEEP BUILDING",center,178,1,Cream);
         }
+        toolBelt(out,game.equipment,center,height-147);
+        out.centered(game.equipment.selectedTool()==Tool::Sword ? "SWORD / LEFT CLICK TO SWING" : "1-4 / SCROLL - SELECT TOOL",
+            center,height-169,1,Gold);
         out.frame(center-255,height-66,510,49,Edge);
         out.centered(game.player.inWater() ? "WASD SWIM / SPACE RISE / CTRL DIVE / SHIFT FASTER"
                      : "WASD MOVE / SPACE JUMP / SHIFT SPRINT",center,height-54,1,Cream);
@@ -886,6 +978,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
             : item.pickup ? "RIGHT DROP ITEM / WALK OVER TO COLLECT IN PLAY"
+            : item.asset && isSpawnerAsset(*item.asset) ? "RIGHT PLACE / E SET ENEMIES AND REWARDS"
             : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
             : item.asset == HubAssetKind::GardenGate ? std::string("T ROTATE / Y OPEN-CLOSED / ")+(editor.variation()%2 ? "OPEN" : "CLOSED")
             : item.block && isStair(*item.block) ? "T ROTATE "+std::to_string(stairFacing(*item.block)*90)+" DEG / RIGHT PLACE STAIR"
@@ -908,9 +1001,9 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         } else fittedText(out,help,center-264,labelY+20,528,.9f,Muted);
         sectionHotbar(out,hits,editor,center,height-86,false);
         out.centered("G TOOLS / E ITEMS / F8 TEST / F10 ACCEPT / F5 SAVE / F9 LIBRARY",center,height-20,.9f,Cream);
-        if (const auto target=editor.targetedAsset(); target && isChestAsset(target->kind)) {
+        if (const auto target=editor.targetedAsset(); target && (isChestAsset(target->kind) || isSpawnerAsset(target->kind))) {
             out.frame(center-180,height*.5f+31,360,30,Gold);
-            fittedText(out,"E EDIT "+std::string(chestAssetName(target->kind)),center-166,height*.5f+41,332,1,Gold);
+            fittedText(out,"E EDIT "+std::string(isSpawnerAsset(target->kind) ? "TRIAL SPAWNER" : chestAssetName(target->kind)),center-166,height*.5f+41,332,1,Gold);
         }
         out.frame(15,97,264,119,Edge);
         fittedText(out,"WASD FLY / SPACE UP / CTRL DOWN",27,109,240,.95f,Cream);
@@ -935,6 +1028,7 @@ void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float
     case SectionEditorScreen::Tools: sectionToolsMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::PasteSettings: sectionPasteMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::ChestContents: sectionChestMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::SpawnerSettings: sectionSpawnerMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Build:
     case SectionEditorScreen::Test: sectionBuildHud(out,hits,game,width,height); break;
     }
@@ -1542,8 +1636,8 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (game.editorMode() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
     if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
     // Preserve the layout on small windows, then apply the display's DPI scale.
-    const float minWidth=game.crossingMenuOpen() ? 620.0f : 460.0f;
-    const float minHeight=game.crossingMenuOpen() ? 470.0f : 440.0f;
+    const float minWidth=game.crossingMenuOpen() ? 620.0f : game.levelActive() ? 776.0f : 460.0f;
+    const float minHeight=game.crossingMenuOpen() ? 470.0f : game.levelActive() ? 550.0f : 440.0f;
     const float scale = std::min({std::clamp(contentScale,0.5f,4.0f),
                                  framebufferWidth / minWidth, framebufferHeight / minHeight});
     const float width = framebufferWidth / scale, height = framebufferHeight / scale;
@@ -1564,26 +1658,7 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     else needle = {0,-1};
     const float center = width * 0.5f;
     const float barTop = height - 80;
-    constexpr float slotWidth = 58, gap = 7;
-    const float barLeft = center - (3 * slotWidth + 2 * gap) * 0.5f;
-    drawing.frame(barLeft-7,barTop-7,202,72,Edge,Panel);
-    for (int slot=0; slot<ToolCount; ++slot) {
-        const float x = barLeft + slot * (slotWidth+gap);
-        const bool active = slot == equipment.selectedSlot;
-        drawing.frame(x,barTop,slotWidth,58,active ? Gold : Edge,
-                      active ? Selected : Panel);
-        drawing.quad(x+5,barTop+5,10,11,Panel);
-        drawing.text(std::to_string(slot+1),x+8,barTop+7,1,active ? Gold : Muted);
-        const glm::vec2 icon(x+29,barTop+31);
-        if (slot == 0) pickaxeIcon(drawing,icon,0.95f,equipment.pickaxeTier);
-        else if (slot == 1) lanternIcon(drawing,icon,0.95f);
-        else compassIcon(drawing,icon,0.95f,needle);
-        if (slot == 0) {
-            drawing.quad(x+35,barTop+43,19,11,Panel);
-            drawing.text("T"+std::to_string(equipment.pickaxeTier),x+39,barTop+45,1,Gold);
-        }
-        if (active) drawing.quad(x+6,barTop+54,slotWidth-12,2,Gold);
-    }
+    toolBelt(drawing,equipment,center,barTop,needle);
     std::string title(toolName(selected));
     std::string hint;
     if (selected == Tool::Pickaxe) {
@@ -1591,6 +1666,8 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
         hint = game.rootCrossingActive() || game.levelController().active() ? "MINING COMING LATER" : "UPGRADE AT THE BLACKSMITH";
     } else if (selected == Tool::Lantern) {
         hint = "WARM LIGHT WHILE EQUIPPED";
+    } else if(selected==Tool::Sword) {
+        hint="LEFT CLICK - SWING";
     } else {
         const int distance = static_cast<int>(std::round(glm::length(target)));
         const int bearing = static_cast<int>(std::round(glm::degrees(std::atan2(needle.x,-needle.y))));
@@ -1670,6 +1747,72 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     }
     if (game.crossingMenuOpen()) crossingPicker(drawing,game,width,height);
     render(drawing, shader_, vao_, buffer_);
+}
+
+void Hud::drawCombat(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    if(!game.healthVisible() || game.health().dead() || framebufferWidth<=0 || framebufferHeight<=0) return;
+    if(!std::isfinite(contentScale) || contentScale<=0) contentScale=1;
+    const float scale=std::min({std::clamp(contentScale,.5f,4.0f),framebufferWidth/780.0f,framebufferHeight/440.0f});
+    const float width=framebufferWidth/scale,height=framebufferHeight/scale;
+    Drawing drawing(width,height,scale);
+    const auto& encounter=game.encounters();
+    const auto projection=game.camera.projectionMatrix(float(framebufferWidth)/framebufferHeight)*game.camera.viewMatrix();
+    const auto eye=game.camera.position();
+    const auto collision=game.sectionSceneCollision();
+    for(const auto& bar:encounter.healthBars()) {
+        if(bar.visibleSeconds<=0 || bar.current<=0 || bar.maximum<=0) continue;
+        const auto delta=bar.position-eye;
+        const float distance=glm::length(delta);
+        if(!std::isfinite(distance) || distance<.01f || distance>28) continue;
+        const auto clip=projection*glm::vec4(bar.position,1);
+        if(clip.w<=0) continue;
+        const auto ndc=glm::vec3(clip)/clip.w;
+        if(std::abs(ndc.x)>1 || ndc.y< -1 || ndc.z< -1 || ndc.z>1) continue;
+        if(ndc.y>1) {
+            const auto chest=projection*glm::vec4(bar.position-glm::vec3(0,1.5f,0),1);
+            if(chest.w<=0 || chest.y/chest.w>1) continue;
+        }
+        // Do not reveal enemies through cave walls, stair geometry or props.
+        if(raycast(eye,delta,distance-.08f,[&](glm::ivec3 point) {
+            const auto block=game.world.get(point);
+            return isSolid(block) ? block : Block::Air;
+        })) continue;
+        if(collision && collision->raycast(eye,delta,distance-.08f)) continue;
+        const float x=(ndc.x*.5f+.5f)*width;
+        // At melee range a tall enemy's head can meet the section title panel.
+        // Keep the damaged bar just below that panel instead of hiding it.
+        const float minimumY=game.devMode() ? 142 : game.levelActive() ? 130 : 20;
+        const float y=std::max(minimumY,(.5f-ndc.y*.5f)*height);
+        const float w=std::clamp(260.0f/distance,44.0f,88.0f);
+        drawing.frame(x-w*.5f-3,y-3,w+6,13,Edge,Panel,3);
+        const float fill=w*std::clamp(float(bar.current)/bar.maximum,0.0f,1.0f);
+        drawing.quad(x-w*.5f,y,w,7,{.22f,.10f,.075f,1});
+        drawing.quad(x-w*.5f,y,fill,7,{.72f,.20f,.16f,1});
+        drawing.quad(x-w*.5f,y,fill,2,{.98f,.49f,.33f,1});
+        const auto value=std::to_string(bar.current)+"/"+std::to_string(bar.maximum);
+        drawing.centered(value,x,y-15,1,Cream);
+    }
+    if(game.equipment.selectedTool()==Tool::Sword) {
+        const float remaining=std::clamp(encounter.swordSwing(),0.0f,1.0f);
+        const float elapsed=1-remaining;
+        const float arc=remaining>0 ? std::sin(std::clamp(elapsed/.70f,0.0f,1.0f)*3.14159265f) : 0;
+        const glm::vec2 grip(width*.80f-arc*width*.19f,height*.83f+arc*34);
+        swordIcon(drawing,grip,std::min(height/155.0f,4.3f),.35f-arc*1.65f);
+    }
+    if(!encounter.pendingCompletions().empty()) {
+        const float y=game.devMode() || game.levelActive() ? 130 : 16;
+        drawing.frame(width*.5f-220,y,440,48,{.76f,.30f,.18f,1},Panel);
+        drawing.centered("CLEAR NOT SAVED / RETRYING",width*.5f,y+10,1,Gold);
+        fittedCentered(drawing,game.inventoryMessage(),width*.5f,y+28,414,.9f,Cream);
+    } else if(encounter.active()) {
+        const auto remaining=encounter.remaining();
+        const std::string text="TRIAL / "+std::to_string(remaining)+(remaining==1 ? " SPAWNER REMAINS" : " SPAWNERS REMAIN");
+        const float y=game.devMode() || game.levelActive() ? 130 : 16;
+        drawing.frame(18,y,240,28,Edge,Panel);
+        fittedCentered(drawing,text,138,y+10,214,1,Gold);
+    }
+    render(drawing,shader_,vao_,buffer_);
 }
 
 void Hud::drawHealth(const Game& game, int framebufferWidth, int framebufferHeight, float contentScale)

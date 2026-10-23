@@ -29,6 +29,9 @@ public:
                       float contentScale = 1.0f);
     void drawPlay(const Game& game, int framebufferWidth, int framebufferHeight,
                   float contentScale = 1.0f);
+    // Draw before the tool belt and menus: held sword and hit-revealed mob bars.
+    void drawCombat(const Game& game, int framebufferWidth, int framebufferHeight,
+                    float contentScale = 1.0f);
     // Draw last so damage and the automatic respawn message remain visible.
     void drawHealth(const Game& game, int framebufferWidth, int framebufferHeight,
                     float contentScale = 1.0f);
