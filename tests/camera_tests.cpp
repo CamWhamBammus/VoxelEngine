@@ -139,6 +139,19 @@ int main()
     const voxel::Camera defaults;
     check(near(camera.position(), defaults.position()) && near(camera.forward(), defaults.forward())
         && near(camera.fieldOfView(), 70.0f), "reset restores position, angles, and field of view");
+    const auto unrolled = camera.viewMatrix();
+    const auto aim = camera.forward();
+    camera.setRoll(2);
+    check(camera.viewMatrix() != unrolled && near(camera.forward(), aim)
+        && near(camera.position(), defaults.position()), "visual roll tilts the view without changing aim or eye position");
+    const auto rolled = camera.viewMatrix();
+    camera.setRoll(std::numeric_limits<float>::quiet_NaN());
+    check(camera.viewMatrix() == rolled, "invalid visual roll is ignored");
+    camera.setRoll(0);
+    check(camera.viewMatrix() == unrolled, "clearing visual roll restores the exact view");
+    camera.setRoll(-2);
+    camera.reset();
+    check(camera.viewMatrix() == unrolled, "camera reset clears temporary roll");
     camera.move({0.0f, 0.0f, 1.0f}, 3.0f);
     check(near(camera.position(), defaults.position() + defaults.forward() * 3.0f),
         "movement still works after reset and rejected inputs");

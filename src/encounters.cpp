@@ -101,6 +101,13 @@ glm::vec3 horizontal(glm::vec3 vector)
     return length > .001f ? vector / length : glm::vec3(0, 0, 1);
 }
 
+glm::vec3 hitDirection(glm::vec3 vector)
+{
+    vector.y = 0;
+    const float length = glm::length(vector);
+    return std::isfinite(length) && length > .001f ? vector / length : glm::vec3(0);
+}
+
 bool slimeFits(const World& world, const AssetCollision* assets, glm::vec3 feet)
 {
     // Player supplies gravity, step handling and swept movement; the slime's
@@ -149,6 +156,7 @@ void EncounterSession::clear()
     spawners_.clear(); mobs_.clear(); monsters_.clear(); bars_.clear();
     projectiles_.clear(); hits_.clear(); completions_.clear();
     swordCooldown_ = hurtCooldown_ = 0;
+    playerHitDirection_ = glm::vec3(0);
 }
 
 bool EncounterSession::active() const
@@ -179,6 +187,7 @@ void EncounterSession::resetUnfinished()
 {
     mobs_.clear(); monsters_.clear(); bars_.clear(); projectiles_.clear(); hits_.clear();
     swordCooldown_ = hurtCooldown_ = 0;
+    playerHitDirection_ = glm::vec3(0);
     for (auto& spawner : spawners_) {
         if (spawner.cleared || spawner.complete) continue;
         spawner.toSpawn = spawner.counts;
@@ -445,6 +454,7 @@ void EncounterSession::refreshViews()
 int EncounterSession::update(const World& world, const Player& player, glm::vec3 aimDirection,
                              bool swordAttack, float deltaSeconds)
 {
+    playerHitDirection_ = glm::vec3(0);
     if (!std::isfinite(deltaSeconds) || deltaSeconds <= 0) return 0;
     const float seconds = std::min(deltaSeconds, .1f);
     swordCooldown_ = std::max(0.0f, swordCooldown_ - seconds);
@@ -467,7 +477,12 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
     if (swordAttack && swordCooldown_ == 0) swingSword(world, player, aimDirection);
     std::erase_if(mobs_, [](const Mob& mob) { return mob.health <= 0; });
     int damage = 0;
-    for (auto& mob : mobs_) damage = std::max(damage, updateMob(mob, world, player, seconds));
+    glm::vec3 damageDirection(0);
+    for (auto& mob : mobs_) {
+        const auto away = hitDirection(player.feetPosition() - mob.body.feetPosition());
+        const int hit = updateMob(mob, world, player, seconds);
+        if (hit > damage) { damage = hit; damageDirection = away; }
+    }
     std::erase_if(mobs_, [](const Mob& mob) { return mob.health <= 0; });
     for (auto& projectile : projectiles_) {
         projectile.previousPosition = projectile.position;
@@ -477,7 +492,12 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
         const auto feet = player.feetPosition();
         const float hit = bodyHit(projectile.position, direction, feet + glm::vec3(-.44f, -.1f, -.44f),
                                   feet + glm::vec3(.44f, Player::Height + .1f, .44f), travel);
-        if (hit >= 0 && hit < wall) { damage = std::max(damage, 18); projectile.remainingSeconds = 0; }
+        if (hit >= 0 && hit < wall) {
+            // Direction follows the bolt that actually landed, even if its
+            // caster has moved. The strongest same-frame hit owns the feedback.
+            if (damage < 18) { damage = 18; damageDirection = hitDirection(projectile.velocity); }
+            projectile.remainingSeconds = 0;
+        }
         else if (wall < travel) projectile.remainingSeconds = 0;
         projectile.position += direction * wall;
         projectile.remainingSeconds -= seconds;
@@ -485,7 +505,11 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
     std::erase_if(projectiles_, [](const EncounterProjectile& projectile) { return projectile.remainingSeconds <= 0; });
     checkCompletions();
     refreshViews();
-    if (damage && hurtCooldown_ == 0) { hurtCooldown_ = PlayerHitCooldown; return damage; }
+    if (damage && hurtCooldown_ == 0) {
+        hurtCooldown_ = PlayerHitCooldown;
+        playerHitDirection_ = damageDirection;
+        return damage;
+    }
     return 0;
 }
 

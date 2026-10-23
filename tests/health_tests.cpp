@@ -96,6 +96,93 @@ void unitChecks()
             && fallDamage(std::numeric_limits<float>::quiet_NaN()) == 0,
             "invalid landing distances cannot produce invalid damage");
 }
+
+void knockbackChecks(Game& game)
+{
+    game.world = World{};
+    buildBlankSection(game.world);
+    game.player.setAssetCollision({});
+    const glm::vec3 start(.5f, 9, .5f);
+    position(game, start);
+    InputActions active; active.active = true;
+    require(game.damagePlayer(5, {10, 7, 0}) && game.playerHitDirection() == glm::vec3(1, 0, 0),
+            "damage retains a normalized horizontal source direction");
+    const float flash = game.health().damageFlash();
+    for (int i = 0; i < 5; ++i) game.updateCombat({}, .05f);
+    require(game.player.feetPosition() == start && game.health().damageFlash() == flash,
+            "inactive combat never advances the knockback or feedback timers");
+    float previousDistance = 1;
+    for (int i = 0; i < 5; ++i) {
+        const auto before = game.player.feetPosition();
+        game.updateCombat(active, .05f);
+        const float distance = game.player.feetPosition().x - before.x;
+        require(distance >= 0 && distance < previousDistance,
+                "the short player shove decelerates smoothly across frames");
+        previousDistance = distance;
+    }
+    require(std::abs(game.player.feetPosition().x - start.x - .4f) < .0001f
+            && game.player.feetPosition().y == start.y
+            && game.camera.position() == game.player.eyePosition(),
+            "a free shove travels four tenths of a block and keeps the camera with the body");
+    require(game.health().damageFlash() == flash,
+            "combat never double-decrements the health feedback timer");
+    game.restoreHealth(); position(game, start);
+    game.damagePlayer(5, {1, 0, 0});
+    for (int i = 0; i < 3; ++i) game.updateCombat(active, .1f);
+    require(std::abs(game.player.feetPosition().x - start.x - .4f) < .0001f,
+            "the integrated shove distance stays the same at different frame rates");
+
+    game.restoreHealth(); position(game, start);
+    for (int y = 9; y <= 11; ++y) game.world.set({1, y, 0}, Block::Stone);
+    game.damagePlayer(5, {1, 0, 0});
+    for (int i = 0; i < 5; ++i) game.updateCombat(active, .05f);
+    require(game.player.feetPosition().x > start.x
+            && game.player.feetPosition().x <= 1 - Player::Width / 2 + .0001f,
+            "player knockback stops the full body at a voxel wall");
+    for (int y = 9; y <= 11; ++y) game.world.set({1, y, 0}, Block::Air);
+
+    game.restoreHealth(); position(game, start);
+    const std::array fence{HubAsset{HubAssetKind::TimberFence, {.5f, 9, 1.15f}}};
+    auto collision = std::make_shared<AssetCollision>(); collision->rebuild(fence);
+    game.player.setAssetCollision(collision);
+    require(game.player.setFeetPosition(game.world, start), "fence fixture starts outside its collider");
+    game.damagePlayer(5, {0, 0, 1});
+    for (int i = 0; i < 5; ++i) game.updateCombat(active, .05f);
+    const auto feet = game.player.feetPosition();
+    require(feet.z > start.z && feet.z < start.z + .4f
+            && !collision->overlaps(feet + glm::vec3(-.3f, .001f, -.3f),
+                                    feet + glm::vec3(.3f, Player::Height, .3f)),
+            "player knockback also stops on thin decorative fence geometry");
+    game.player.setAssetCollision({});
+
+    game.restoreHealth(); position(game, start);
+    game.damagePlayer(5, {1, 0, 0});
+    game.restoreHealth(); game.updateCombat(active, .1f);
+    require(game.player.feetPosition() == start && game.playerHitDirection() == glm::vec3(0)
+            && game.health().damageFlash() == 0,
+            "restoring health cancels the old room's direction, shove and flash");
+    game.damagePlayer(5, {1, 0, 0});
+    game.endSectionLoot(); game.updateCombat(active, .1f);
+    require(game.player.feetPosition() == start && game.playerHitDirection() == glm::vec3(0)
+            && game.health().damageFlash() == 0 && game.health().current() == 95,
+            "leaving a section clears damage feedback without healing the player");
+    game.restoreHealth();
+    require(game.damagePlayer(5) && game.playerHitDirection() == glm::vec3(0),
+            "environmental damage has feedback without inventing an attacker");
+    game.updateCombat(active, .1f);
+    require(game.player.feetPosition() == start && game.health().damageFlash() > 0,
+            "environmental damage never causes a sideways shove");
+    for (const float invalid : {std::numeric_limits<float>::quiet_NaN(),
+                                std::numeric_limits<float>::infinity()}) {
+        game.damagePlayer(1, {invalid, 0, 1}); game.updateCombat(active, .1f);
+        require(game.playerHitDirection() == glm::vec3(0) && game.player.feetPosition() == start,
+                "invalid damage directions cannot corrupt player coordinates");
+    }
+    game.restoreHealth();
+    game.damagePlayer(100, {1, 0, 0}); game.updateCombat(active, .1f);
+    require(game.player.feetPosition() == start, "a lethal hit cancels displacement during the death screen");
+    game.restoreHealth();
+}
 }
 
 int main()
@@ -129,6 +216,7 @@ int main()
         options.sectionLibrary = sections.string(); options.levelLibrary = (root / "levels").string();
         options.progressPath = (root / "progress.vxp").string();
         Game game(options);
+        knockbackChecks(game);
         auto& controller = game.levelController();
         require(controller.start(game, level) && game.healthVisible() && game.health().current() == 100,
                 "an expedition begins at full health with the health display enabled");
@@ -197,7 +285,8 @@ int main()
         // Actual player physics reports landing damage, while water breaks a fall.
         position(game, {18.5f, 14, 18.5f});
         for (int i = 0; i < 60 && !game.player.grounded(); ++i) tick(game);
-        require(game.player.grounded() && game.health().current() == 80,
+        require(game.player.grounded() && game.health().current() == 80
+                && game.playerHitDirection() == glm::vec3(0),
                 "a five-block dry fall takes twenty health through normal gameplay updates");
         game.restoreHealth();
         position(game, {22.5f, 22, 22.5f}); tick(game, 30);

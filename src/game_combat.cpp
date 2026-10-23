@@ -11,7 +11,18 @@ bool Game::updateCombat(const InputActions& actions, float seconds)
     if (!actions.active || !healthVisible() || health_.dead()
         || !std::isfinite(seconds) || seconds <= 0) return health_.dead();
     const bool swing = equipment.selectedTool() == Tool::Sword && actions.attack;
-    damagePlayer(encounters_.update(world,player,camera.forward(),swing,seconds));
+    const int damage = encounters_.update(world,player,camera.forward(),swing,seconds);
+    damagePlayer(damage, encounters_.playerHitDirection());
+    if (playerKnockbackRemaining_ > 0 && !health_.dead()) {
+        const float before = playerKnockbackRemaining_ / PlayerKnockbackDuration;
+        playerKnockbackRemaining_ = std::max(0.0f, playerKnockbackRemaining_ - std::min(seconds, .1f));
+        const float after = playerKnockbackRemaining_ / PlayerKnockbackDuration;
+        // The regular movement update still owns gravity and controls. This
+        // small additional sweep decelerates without teleporting through walls.
+        player.move(world, playerHitDirection_ * PlayerKnockbackDistance
+                           * (before * before - after * after));
+        camera.setPosition(player.eyePosition());
+    }
     encounterSaveRetry_ = std::max(0.0f,encounterSaveRetry_-std::min(seconds,.1f));
     if (encounterSaveRetry_ > 0) return health_.dead();
     // Persist the clear before exposing rewards. A failed write stays pending,

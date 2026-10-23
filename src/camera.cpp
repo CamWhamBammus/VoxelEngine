@@ -34,6 +34,11 @@ void Camera::reset()
     *this = Camera{};
 }
 
+void Camera::setRoll(float degrees)
+{
+    if (std::isfinite(degrees)) rollDegrees_ = std::clamp(degrees, -10.0f, 10.0f);
+}
+
 glm::vec3 Camera::forward() const
 {
     const float yaw = glm::radians(yawDegrees_);
@@ -47,7 +52,8 @@ glm::vec3 Camera::forward() const
 
 glm::mat4 Camera::viewMatrix() const
 {
-    return glm::lookAt(position_, position_ + forward(), worldUp);
+    return glm::rotate(glm::mat4(1), glm::radians(-rollDegrees_), glm::vec3(0,0,1))
+        * glm::lookAt(position_, position_ + forward(), worldUp);
 }
 
 glm::mat4 Camera::projectionMatrix(float aspectRatio) const

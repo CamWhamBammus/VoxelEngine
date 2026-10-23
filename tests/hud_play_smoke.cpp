@@ -56,6 +56,29 @@ std::size_t difference(const Pixels& a, const Pixels& b)
     return changed;
 }
 
+float redChange(const Pixels& before,const Pixels& after,int width,int height,
+                float left,float bottom,float right,float top)
+{
+    float sum=0;
+    int count=0;
+    for (int y=int(bottom*height);y<int(top*height);++y)
+        for (int x=int(left*width);x<int(right*width);++x) {
+            const auto index=(static_cast<std::size_t>(y)*width+x)*4;
+            sum+=int(after[index])-int(before[index]);
+            ++count;
+        }
+    return count>0 ? sum/count : 0;
+}
+
+void requireClearCenter(const Pixels& before,const Pixels& after,int width,int height)
+{
+    for (int y=height/5;y<height*4/5;++y) for (int x=width/5;x<width*4/5;++x) {
+        const auto index=(static_cast<std::size_t>(y)*width+x)*4;
+        for (int channel=0;channel<3;++channel)
+            require(before[index+channel]==after[index+channel],"Player hit tint obscured the center of the view");
+    }
+}
+
 void verifyCombatBars(int width,int height,Hud& hud)
 {
     Options options;options.smokeTest=true;
@@ -188,6 +211,14 @@ void verifyPlayHud(int width, int height)
         require(game.damagePlayer(35),"HUD fixture cannot damage the player");
         const auto hurt=draw(width,height,1,true);
         require(difference(healthy,hurt)>350,"Health damage did not visibly change the meter and feedback");
+        const auto leftEdge=[&](const Pixels& pixels) {
+            return redChange(healthy,pixels,width,height,0,.35f,.04f,.65f);
+        };
+        const auto rightEdge=[&](const Pixels& pixels) {
+            return redChange(healthy,pixels,width,height,.96f,.35f,1,.65f);
+        };
+        require(leftEdge(hurt)>45 && rightEdge(hurt)>45,"Player damage needs a clearly visible screen-edge pulse");
+        requireClearCenter(healthy,hurt,width,height);
         // Read inside the bar, away from the flash and frame: losing health must
         // shorten the red fill, not merely update the number or screen tint.
         const float healthScale=std::min({1.0f,width/780.0f,height/440.0f});
@@ -202,9 +233,39 @@ void verifyPlayHud(int width, int height)
             return count;
         };
         require(redFill(hurt)<redFill(healthy)*.8f,"Damaged health bar did not shorten its red fill");
-        draw(640,360,2,true);
+        const auto smallHurt=draw(640,360,2,true);
+        InputActions healing; healing.active=true;
+        game.update(healing,.1f); game.update(healing,.1f);
+        const auto fading=draw(width,height,1,true);
+        require(leftEdge(fading)>leftEdge(hurt)*.25f && leftEdge(fading)<leftEdge(hurt)*.65f,
+                "Player damage pulse did not fade after impact");
+        for (int frame=0;frame<3;++frame) game.update(healing,.1f);
+        require(leftEdge(draw(width,height,1,true))==0,"Player damage pulse remains after its duration");
         game.restoreHealth();
         require(difference(healthy,draw(width,height,1,true))==0,"Restoring health did not restore the full bar");
+        const auto smallHealthy=draw(640,360,2,true);
+        require(redChange(smallHealthy,smallHurt,640,360,0,.35f,.04f,.65f)>45,
+                "Player hit feedback disappeared in a small high-DPI window");
+        requireClearCenter(smallHealthy,smallHurt,640,360);
+        auto forward=game.camera.forward(); forward.y=0; forward=glm::normalize(forward);
+        const auto right=glm::cross(forward,glm::vec3(0,1,0));
+        require(game.damagePlayer(35,right),"HUD fixture cannot receive a hit from the left");
+        const auto leftHit=draw(width,height,1,true);
+        require(leftEdge(leftHit)>rightEdge(leftHit)*1.7f,"A hit from the left did not emphasize the left screen edge");
+        requireClearCenter(healthy,leftHit,width,height);
+        game.restoreHealth();
+        require(game.damagePlayer(35,-right),"HUD fixture cannot receive a hit from the right");
+        const auto rightHit=draw(width,height,1,true);
+        require(rightEdge(rightHit)>leftEdge(rightHit)*1.7f,"A hit from the right did not emphasize the right screen edge");
+        requireClearCenter(healthy,rightHit,width,height);
+        InputActions openInventory; openInventory.active=true; openInventory.inventory=true;
+        game.update(openInventory,0);
+        require(game.inventoryOpen(),"HUD fixture cannot open its inventory during a hit pulse");
+        const auto menu=draw(width,height,1,true);
+        require(leftEdge(menu)==0 && rightEdge(menu)==0,"Player hit feedback covers an open inventory");
+        InputActions closeInventory; closeInventory.closeMenu=true;
+        game.update(closeInventory,0);
+        game.restoreHealth();
         require(game.damagePlayer(Health::Maximum) && game.health().dead(),"HUD fixture cannot enter death state");
         const auto dead=draw(width,height,1,true);
         require(difference(healthy,dead)>static_cast<std::size_t>(width)*height/2,
@@ -263,7 +324,7 @@ void verifyPlayHud(int width, int height)
         cleanup(); throw;
     }
     cleanup();
-    std::cout << "Play HUD passed: health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
+    std::cout << "Play HUD passed: directional player hit pulse, clear aim, fade/reset, health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
 }
 
 } // namespace voxel

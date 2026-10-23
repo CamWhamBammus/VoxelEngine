@@ -12,10 +12,10 @@
 namespace {
 using namespace voxel;
 void require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
-void tick(Game& game, int frames = 1)
+void tick(Game& game, int frames = 1, float seconds = .1f)
 {
     InputActions input; input.active = true;
-    for (int i = 0; i < frames; ++i) game.update(input, .1f);
+    for (int i = 0; i < frames; ++i) game.update(input, seconds);
 }
 void press(Game& game, bool InputActions::*key)
 {
@@ -101,6 +101,92 @@ glm::vec3 dropPosition(const Game& game, ItemId item)
     });
     require(found != scene.end(), "fixture reward item remains visible");
     return found->position;
+}
+
+void playerHitChecks(const Options& options, const LevelDefinition& level, const SectionMetadata& meta)
+{
+    Options temporary = options; temporary.progressPath.clear();
+    Game game(temporary);
+    require(game.levelController().start(game,level), "player-hit fixture starts with a fresh encounter");
+    activate(game);
+    const auto enemy = game.encounters().monsters().front().position;
+    bool placed = false;
+    for (const auto offset : {glm::vec3(0,0,1.6f),glm::vec3(1.6f,0,0),glm::vec3(0,0,-1.6f),glm::vec3(-1.6f,0,0)})
+        if (game.player.setFeetPosition(game.world,enemy+offset)) { placed = true; break; }
+    require(placed, "player-hit fixture has room within the skeleton's reach");
+    game.camera.setPosition(game.player.eyePosition());
+    aim(game,enemy+glm::vec3(0,.9f,0));
+    const auto aimBefore = game.camera.forward();
+    auto beforeImpact = game.player.feetPosition();
+    for (int i = 0; i < 180 && game.health().current() == Health::Maximum; ++i) {
+        beforeImpact = game.player.feetPosition();
+        tick(game,1,1.0f/60);
+    }
+    require(game.health().current() == Health::Maximum-16 && game.health().damageFlash() > .99f,
+            "a skeleton's real slash damages the player and starts immediate visible hit feedback");
+    const auto direction = game.playerHitDirection();
+    auto away = beforeImpact-game.encounters().monsters().front().position; away.y = 0;
+    require(std::abs(glm::length(direction)-1) < .0001f && direction.y == 0
+            && glm::dot(direction,glm::normalize(away)) > .99f,
+            "player feedback points horizontally away from the skeleton that landed the hit");
+    require(game.viewCamera().position() == game.camera.position()
+            && glm::length(game.viewCamera().forward()-aimBefore) > .001f
+            && game.camera.forward() == aimBefore,
+            "a real incoming hit kicks only the rendered view without moving its origin or changing weapon aim");
+    const auto firstStep = game.player.feetPosition();
+    tick(game,3,1.0f/60);
+    require(glm::dot(game.player.feetPosition()-firstStep,direction) > .01f
+            && glm::dot(game.player.feetPosition()-beforeImpact,direction) < .4f,
+            "knockback continues smoothly over following frames instead of teleporting the whole distance");
+
+    const auto pausedFeet = game.player.feetPosition();
+    const auto pausedFlash = game.health().damageFlash();
+    const auto pausedView = game.viewCamera().forward();
+    InputActions inactive;
+    for (int i = 0; i < 10; ++i) game.update(inactive,.1f);
+    require(game.player.feetPosition() == pausedFeet && game.health().damageFlash() == pausedFlash
+            && game.playerHitDirection() == direction && game.viewCamera().forward() == pausedView,
+            "losing focus pauses the player's shove, hit flash, and view kick together");
+    press(game,&InputActions::inventory);
+    const auto menuFeet = game.player.feetPosition();
+    const auto menuFlash = game.health().damageFlash();
+    tick(game,12);
+    require(game.inventoryOpen() && game.player.feetPosition() == menuFeet
+            && game.health().damageFlash() == menuFlash && game.playerHitDirection() == direction
+            && game.viewCamera().forward() == game.camera.forward(),
+            "inventory pauses player-hit feedback and uses a steady view while the menu is open");
+    press(game,&InputActions::closeMenu);
+    float previousFlash = game.health().damageFlash();
+    for (int i = 0; i < 24; ++i) {
+        tick(game,1,1.0f/60);
+        require(game.health().current() == Health::Maximum-16 && game.health().damageFlash() <= previousFlash,
+                "one enemy attack cannot repeatedly damage the player or restart its fading feedback");
+        previousFlash = game.health().damageFlash();
+    }
+    require(std::abs(glm::dot(game.player.feetPosition()-beforeImpact,direction)-.4f) < .01f
+            && game.health().damageFlash() == 0 && game.viewCamera().forward() == aimBefore
+            && game.camera.forward() == aimBefore,
+            "the small shove finishes and the view returns exactly to the unchanged aiming direction");
+
+    require(game.damagePlayer(1,direction), "fixture can start fresh feedback before restoring health");
+    game.restoreHealth();
+    require(game.health().current() == Health::Maximum && game.health().damageFlash() == 0
+            && game.playerHitDirection() == glm::vec3(0) && game.viewCamera().forward() == game.camera.forward(),
+            "restoring health clears transient player hit feedback");
+    require(game.damagePlayer(100,direction), "player-hit fixture can die with an active hit direction");
+    respawn(game);
+    const auto respawnFeet = game.player.feetPosition();
+    tick(game,4);
+    require(respawnFeet == meta.spawn && game.player.feetPosition() == meta.spawn
+            && game.health().damageFlash() == 0 && game.playerHitDirection() == glm::vec3(0),
+            "respawning clears the old hit direction and cannot carry a shove into the section entrance");
+    require(game.damagePlayer(1,direction), "fixture can take damage just before changing sections");
+    auto safeLevel = level; safeLevel.sections.erase(safeLevel.sections.begin());
+    require(game.levelController().start(game,safeLevel), "the safe section loads after the damaged encounter");
+    tick(game,4);
+    require(game.health().damageFlash() == 0 && game.playerHitDirection() == glm::vec3(0)
+            && game.player.feetPosition() == meta.spawn && game.viewCamera().forward() == game.camera.forward(),
+            "loading a different section drops the previous section's hit flash, view kick, and knockback");
 }
 
 void auditChecks(const Options& options, const LevelDefinition& level, const World& room,
@@ -333,6 +419,7 @@ int main()
         press(builder,&InputActions::devTest);
         require(builder.equipment == equipmentBefore && read(options.progressPath) == profile && read(firstPath) == sectionBytes,
                 "leaving F8 restores equipment and never modifies real progress or accepted sections");
+        playerHitChecks(options,level,first);
         auditChecks(options,level,room,first,spawner,root);
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; result = 1; }
     std::filesystem::remove_all(root);

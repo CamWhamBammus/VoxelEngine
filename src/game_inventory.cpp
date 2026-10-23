@@ -20,6 +20,7 @@ void Game::closeInventory()
 
 void Game::endSectionLoot()
 {
+    resetPlayerHit();
     closeInventory();
     discardSectionKeys();
     loot_.clear();

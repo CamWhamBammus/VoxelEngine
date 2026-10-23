@@ -356,18 +356,43 @@ void attackChecks(World& world)
     bool telegraphed = false, damaged = false;
     int sinceHit = 100;
     for (int frame = 0; frame < 100; ++frame) {
+        auto away = player.feetPosition() - session.monsters().front().position;
+        away.y = 0; away = glm::normalize(away);
         const int damage = tick(session, world, player);
         telegraphed |= session.monsters().front().animation == MonsterAnimation::Attack;
         if (damage) {
             require(telegraphed && damage == 16 && sinceHit >= 6,
                     "skeleton slashes are telegraphed, timed and respect the player hit cooldown");
+            require(glm::dot(session.playerHitDirection(), away) > .999f
+                    && session.playerHitDirection().y == 0,
+                    "a successful melee hit reports the direction away from its attacker");
             damaged = true; sinceHit = 0;
-        }
+        } else require(session.playerHitDirection() == glm::vec3(0),
+                       "misses and cooldown frames cannot replay the previous player hit direction");
         ++sinceHit;
     }
     require(damaged, "a nearby skeleton eventually completes its melee attack");
 
     const auto wizard = spawner({0, 1, 0});
+    start(session, world, player, wizard);
+    bool boltHit = false;
+    glm::vec3 boltDirection(0);
+    for (int frame = 0; frame < 120 && !boltHit; ++frame) {
+        if (!session.projectiles().empty()) {
+            boltDirection = session.projectiles().front().velocity;
+            boltDirection.y = 0; boltDirection = glm::normalize(boltDirection);
+        }
+        const int damage = tick(session, world, player);
+        if (damage) {
+            require(damage == 18 && glm::dot(session.playerHitDirection(), boltDirection) > .999f,
+                    "a wizard hit reports the traveling bolt's horizontal direction");
+            boltHit = true;
+        } else require(session.playerHitDirection() == glm::vec3(0),
+                       "a bolt still in flight does not create player damage feedback");
+    }
+    require(boltHit, "a stationary player eventually receives a visible wizard bolt");
+    session.resetUnfinished();
+    require(session.playerHitDirection() == glm::vec3(0), "retrying combat clears the accepted hit direction");
     start(session, world, player, wizard);
     for (int frame = 0; frame < 80 && session.projectiles().empty(); ++frame) tick(session, world, player);
     require(!session.projectiles().empty(), "wizards visibly cast projectiles after their windup");
@@ -414,8 +439,11 @@ void attackChecks(World& world)
     for (float time : {-1.0f, 0.0f, std::numeric_limits<float>::quiet_NaN(),
                        std::numeric_limits<float>::infinity()})
         require(session.update(world, player, {0, 0, -1}, true, time) == 0
-                && session.monsters().front().position == before,
+                && session.monsters().front().position == before
+                && session.playerHitDirection() == glm::vec3(0),
                 "invalid time steps cannot move, swing, or damage anything");
+    session.clear();
+    require(session.playerHitDirection() == glm::vec3(0), "leaving combat clears the hit direction");
 }
 
 } // namespace

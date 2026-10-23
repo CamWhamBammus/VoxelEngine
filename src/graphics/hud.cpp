@@ -167,6 +167,14 @@ public:
         triangle({x,y}, {x+width,y}, {x+width,y+height}, color);
         triangle({x,y}, {x+width,y+height}, {x,y+height}, color);
     }
+    void gradientQuad(const std::array<glm::vec2,4>& points,
+                      const std::array<glm::vec4,4>& colors)
+    {
+        for (const int corner : {0,1,2,0,2,3}) {
+            const auto p=points[corner];
+            vertices.push_back({2*p.x/width_-1,1-2*p.y/height_,colors[corner]});
+        }
+    }
     void preview(int id, glm::vec2 center, float size)
     {
         previews.push_back(id);
@@ -1757,7 +1765,8 @@ void Hud::drawCombat(const Game& game,int framebufferWidth,int framebufferHeight
     const float width=framebufferWidth/scale,height=framebufferHeight/scale;
     Drawing drawing(width,height,scale);
     const auto& encounter=game.encounters();
-    const auto projection=game.camera.projectionMatrix(float(framebufferWidth)/framebufferHeight)*game.camera.viewMatrix();
+    const auto viewCamera=game.viewCamera();
+    const auto projection=viewCamera.projectionMatrix(float(framebufferWidth)/framebufferHeight)*viewCamera.viewMatrix();
     const auto eye=game.camera.position();
     const auto collision=game.sectionSceneCollision();
     for(const auto& bar:encounter.healthBars()) {
@@ -1818,17 +1827,38 @@ void Hud::drawHealth(const Game& game, int framebufferWidth, int framebufferHeig
     const float width=framebufferWidth/scale,height=framebufferHeight/scale;
     Drawing drawing(width,height,scale);
     const auto& health=game.health();
-    const float flash=std::clamp(health.damageFlash(),0.0f,1.0f);
-    if (flash>0 && !health.dead()) {
-        // A brief feathered edge leaves the route and crosshair unobscured.
-        const float edge=std::min(width,height)*.008f;
-        for (int band=0;band<6;++band) {
-            const float inset=band*edge;
-            const glm::vec4 tint{.55f,.06f,.025f,flash*(6-band)*.021f};
-            drawing.quad(inset,inset,width-2*inset,edge,tint);
-            drawing.quad(inset,height-inset-edge,width-2*inset,edge,tint);
-            drawing.quad(inset,inset+edge,edge,height-2*inset-2*edge,tint);
-            drawing.quad(width-inset-edge,inset+edge,edge,height-2*inset-2*edge,tint);
+    const float flash=health.dead() || game.menuOpen() ? 0 : std::clamp(health.damageFlash(),0.0f,1.0f);
+    if (flash>0) {
+        // Eight connected strips feather into clear space. Their vertex alpha
+        // keeps the short pulse smooth at any resolution, without tinting aim.
+        constexpr std::array<glm::vec2,8> rim{{{0,0},{.5f,0},{1,0},{1,.5f},
+            {1,1},{.5f,1},{0,1},{0,.5f}}};
+        auto forward=game.camera.forward(); forward.y=0;
+        if (glm::dot(forward,forward)>.0001f) forward=glm::normalize(forward);
+        else forward={0,0,-1};
+        const auto right=glm::cross(forward,glm::vec3(0,1,0));
+        auto source=-game.playerHitDirection(); source.y=0;
+        glm::vec2 side(0);
+        if (glm::dot(source,source)>.0001f) {
+            source=glm::normalize(source);
+            side={glm::dot(source,right),-glm::dot(source,forward)};
+        }
+        const auto point=[&](int index,float depth) {
+            return glm::mix(rim[index],glm::vec2(.5f),depth*.36f)*glm::vec2(width,height);
+        };
+        const auto color=[&](int index,float depth) {
+            const auto normal=glm::normalize(rim[index]-glm::vec2(.5f));
+            const float emphasis=glm::dot(normal,side);
+            const float fade=(1-depth)*(1-depth);
+            return glm::vec4(.84f,.13f,.055f,flash*fade*(.46f+.20f*emphasis));
+        };
+        for (int band=0;band<8;++band) {
+            const float outer=band/8.0f,inner=(band+1)/8.0f;
+            for (int edge=0;edge<8;++edge) {
+                const int next=(edge+1)%8;
+                drawing.gradientQuad({point(edge,outer),point(next,outer),point(next,inner),point(edge,inner)},
+                    {color(edge,outer),color(next,outer),color(next,inner),color(edge,inner)});
+            }
         }
     }
 
@@ -1838,7 +1868,8 @@ void Hud::drawHealth(const Game& game, int framebufferWidth, int framebufferHeig
     const glm::vec4 blood{.73f,.20f,.17f,1};
     const glm::vec4 bright{.97f,.44f,.31f,1};
     drawing.frame(x+2,y+3,w,h,{0,0,0,.3f},{0,0,0,.3f});
-    drawing.frame(x,y,w,h,glm::mix(Edge,bright,flash*.5f),Panel);
+    drawing.frame(x,y,w,h,glm::mix(Edge,bright,flash),
+        glm::mix(Panel,glm::vec4(.24f,.09f,.055f,Panel.a),flash*.7f));
     constexpr std::array<std::uint8_t,6> heart{0x66,0xff,0xff,0x7e,0x3c,0x18};
     for (int row=0;row<6;++row) for (int column=0;column<8;++column)
         if (heart[row]&(1u<<(7-column)))
@@ -1851,8 +1882,8 @@ void Hud::drawHealth(const Game& game, int framebufferWidth, int framebufferHeig
     drawing.quad(x+12,y+26,meterWidth,8,{.23f,.10f,.075f,1});
     const float fill=meterWidth*std::clamp(health.fraction(),0.0f,1.0f);
     if (fill>0) {
-        drawing.quad(x+12,y+26,fill,8,blood);
-        drawing.quad(x+12,y+26,fill,2,bright);
+        drawing.quad(x+12,y+26,fill,8,glm::mix(blood,bright,flash*.45f));
+        drawing.quad(x+12,y+26,fill,2,glm::mix(bright,Cream,flash*.55f));
         drawing.quad(x+12,y+32,fill,2,{.48f,.11f,.09f,1});
     }
     for (int tick=1;tick<4;++tick)

@@ -1,6 +1,8 @@
 #include "game.h"
 #include "input.h"
+#include <cmath>
 #include <stdexcept>
+#include <glm/geometric.hpp>
 
 namespace voxel {
 
@@ -22,9 +24,15 @@ std::string_view Game::respawnDestination() const
     return "VILLAGE";
 }
 
-bool Game::damagePlayer(int amount)
+bool Game::damagePlayer(int amount, glm::vec3 direction)
 {
     if (!healthVisible() || !health_.damage(amount)) return false;
+    direction.y = 0;
+    const float length = glm::length(direction);
+    playerHitDirection_ = std::isfinite(length) && length > .001f
+        ? direction / length : glm::vec3(0);
+    playerKnockbackRemaining_ = health_.dead() || playerHitDirection_ == glm::vec3(0)
+        ? 0 : PlayerKnockbackDuration;
     if (health_.dead()) {
         closeInventory();
         target.reset();
@@ -36,8 +44,16 @@ bool Game::damagePlayer(int amount)
 void Game::restoreHealth()
 {
     health_.restore();
+    resetPlayerHit();
     encounters_.resetUnfinished();
     player.consumeFallDistance();
+}
+
+void Game::resetPlayerHit()
+{
+    playerHitDirection_ = glm::vec3(0);
+    playerKnockbackRemaining_ = 0;
+    health_.clearDamageFlash();
 }
 
 bool Game::checkPlayerDamage(float deathHeight)

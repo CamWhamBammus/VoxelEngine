@@ -100,7 +100,8 @@ int main(int argc, char** argv)
                 glfwWaitEventsTimeout(0.05); // Avoid busy-looping when minimized.
                 continue;
             }
-            renderer.render(game.world, game.camera, width, height, input.wireframe(), !game.editorMode(),
+            const auto viewCamera = game.viewCamera();
+            renderer.render(game.world, viewCamera, width, height, input.wireframe(), !game.editorMode(),
                             static_cast<float>(now), !game.editorMode()
                                 && !game.monsterPreviewActive()
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
@@ -114,18 +115,18 @@ int main(int argc, char** argv)
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
-                selection.draw(game.target, game.camera, width, height, scaleY,
+                selection.draw(game.target, viewCamera, width, height, scaleY,
                                game.target ? game.world.get(game.target->position) : voxel::Block::Air);
             }
             if (game.devMode() && game.sectionEditor().hasSection() && !game.devMenuOpen())
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
                                       game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
-                                      game.camera, width, height, static_cast<float>(now));
+                                      viewCamera, width, height, static_cast<float>(now));
             if (game.devFlying() && !game.devMenuOpen())
-                selection.drawBuildTools(game.sectionEditor(), game.camera, width, height,
+                selection.drawBuildTools(game.sectionEditor(), viewCamera, width, height,
                                          static_cast<float>(now));
             if (game.levelActive() && !game.levelMenuOpen())
-                selection.drawSection(game.levelController().meta(), {}, {}, game.camera, width, height,
+                selection.drawSection(game.levelController().meta(), {}, {}, viewCamera, width, height,
                                       static_cast<float>(now));
 
             // Refresh text four times per second; draw the cached text every frame.

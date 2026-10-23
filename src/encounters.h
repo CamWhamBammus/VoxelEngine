@@ -55,6 +55,9 @@ public:
     bool active() const;
     std::size_t remaining() const;
     float swordSwing() const { return swordCooldown_ / SwordCooldown; }
+    // Horizontal direction away from the source of this update's accepted hit.
+    // Zero for misses, immunity, and reset/invalid updates.
+    glm::vec3 playerHitDirection() const { return playerHitDirection_; }
     std::span<const MonsterInstance> monsters() const { return monsters_; }
     std::span<const MobHealthBar> healthBars() const { return bars_; }
     std::span<const EncounterProjectile> projectiles() const { return projectiles_; }
@@ -106,6 +109,7 @@ private:
     std::vector<std::size_t> completions_;
     float swordCooldown_ = 0;
     float hurtCooldown_ = 0;
+    glm::vec3 playerHitDirection_{0};
 };
 
 } // namespace voxel

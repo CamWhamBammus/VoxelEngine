@@ -78,7 +78,9 @@ public:
     const Health& health() const { return health_; }
     bool healthVisible() const;
     std::string_view respawnDestination() const;
-    bool damagePlayer(int amount);
+    bool damagePlayer(int amount, glm::vec3 direction = glm::vec3(0));
+    glm::vec3 playerHitDirection() const { return playerHitDirection_; }
+    Camera viewCamera() const;
     void restoreHealth();
     // Called after movement, before checking checkpoints or section exits.
     bool checkPlayerDamage(float deathHeight);
@@ -150,6 +152,7 @@ public:
 
 private:
     friend class LevelController;
+    void resetPlayerHit();
     void updateDeath(const InputActions& actions, float deltaSeconds);
     void enterMonsterPreview();
     void resetMonsterCamera();
@@ -183,6 +186,10 @@ private:
     void editTarget(const InputActions& actions);
 
     Health health_;
+    static constexpr float PlayerKnockbackDuration = .22f;
+    static constexpr float PlayerKnockbackDistance = .40f;
+    glm::vec3 playerHitDirection_{0};
+    float playerKnockbackRemaining_ = 0;
     EncounterSession encounters_;
     float encounterSaveRetry_ = 0;
     MonsterPreview monsterPreview_;

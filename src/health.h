@@ -16,6 +16,7 @@ public:
     bool damage(int amount);
     void update(float seconds);
     void restore();
+    void clearDamageFlash() { flash_ = 0; }
 
 private:
     int current_ = Maximum;

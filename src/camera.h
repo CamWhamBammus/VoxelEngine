@@ -12,6 +12,8 @@ public:
     void setPosition(const glm::vec3& position);
     float fieldOfView() const { return fieldOfViewDegrees_; }
     void setFieldOfView(float degrees);
+    // Visual tilt only; aiming and movement still use the unrolled forward.
+    void setRoll(float degrees);
     void reset();
 
     glm::vec3 forward() const;
@@ -27,6 +29,7 @@ private:
     float yawDegrees_{-125.0f};
     float pitchDegrees_{-25.0f};
     float fieldOfViewDegrees_{70.0f};
+    float rollDegrees_ = 0;
 };
 
 class Frustum {
