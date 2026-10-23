@@ -47,6 +47,7 @@ std::string_view toolName(Tool tool)
     case Tool::Pickaxe: return "Pickaxe";
     case Tool::Lantern: return "Lantern";
     case Tool::Compass: return "Compass";
+    case Tool::Sword: return "Sword";
     }
     return "Pickaxe";
 }

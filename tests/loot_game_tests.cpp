@@ -80,7 +80,7 @@ int main()
         options.levelLibrary = (root / "levels").string(); options.progressPath = profile.string();
         Game game(options);
         require(game.equipment.inventory.slots.size() == 20 && game.equipment.inventory.count(ItemId::CopperOre) == 12,
-                "twenty inventory slots coexist with the three starter tools");
+                "twenty inventory slots coexist with the starter tools");
         press(game, &InputActions::inventory);
         require(game.inventoryOpen() && game.menuOpen(), "I opens the inventory as a modal");
         const auto feet = game.player.feetPosition();

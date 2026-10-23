@@ -120,7 +120,7 @@ int main()
         actions.active = true;
         actions.toolStep = -1;
         game.update(actions);
-        check(game.equipment.selectedTool() == voxel::Tool::Compass, "previous tool wraps to the compass");
+        check(game.equipment.selectedTool() == voxel::Tool::Sword, "previous tool wraps to the fourth tool, the sword");
         actions.toolStep = 1;
         game.update(actions);
         check(game.equipment.selectedTool() == voxel::Tool::Pickaxe, "next tool wraps to the pickaxe");

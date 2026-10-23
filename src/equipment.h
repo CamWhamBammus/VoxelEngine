@@ -10,8 +10,8 @@
 
 namespace voxel {
 
-enum class Tool { Pickaxe, Lantern, Compass };
-inline constexpr int ToolCount = 3;
+enum class Tool { Pickaxe, Lantern, Compass, Sword };
+inline constexpr int ToolCount = 4;
 std::string_view toolName(Tool tool);
 
 struct LootProgress {

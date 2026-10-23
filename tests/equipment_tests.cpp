@@ -47,12 +47,17 @@ int main()
         Equipment equipment;
         check(equipment.selectedTool() == Tool::Pickaxe && equipment.pickaxeTier == 1
               && equipment.inventory.count(ItemId::CopperOre) == 12 && equipment.inventory.occupiedSlots() == 1,
-              "new players receive the three-tool kit and twelve starter copper");
+              "new players receive the four-tool kit and twelve starter copper");
         for (int slot = 0; slot < ToolCount; ++slot) {
             equipment.selectedSlot = slot;
             check(static_cast<int>(equipment.selectedTool()) == slot && !toolName(equipment.selectedTool()).empty(),
                   "each hotbar slot selects a named tool");
         }
+        equipment.selectedSlot=3;
+        check(equipment.selectedTool()==Tool::Sword && toolName(Tool::Sword)=="Sword",
+              "fourth tool is the sword without changing the original three slots");
+        equipment.selectedSlot=ToolCount;
+        check(equipment.selectedTool()==Tool::Pickaxe,"out-of-range tool selection safely falls back");
         equipment.selectedSlot = 0;
         check(pickaxeUpgradeCost(1)->copper == 8 && pickaxeUpgradeCost(1)->iron == 0
               && pickaxeUpgradeCost(2)->copper == 0 && pickaxeUpgradeCost(2)->iron == 8
