@@ -22,8 +22,9 @@ struct InputActions {
     bool descend = false; // Held Ctrl: dive in water; ignored on land.
     bool sprint = false;
     bool respawn = false;
-    std::optional<int> selectedTool; // Play hotbar, numbered 1–3 on the keyboard.
+    std::optional<int> selectedTool; // Play hotbar, numbered 1–4 on the keyboard.
     int toolStep = 0;
+    bool attack = false; // One swing per physical left click during play.
     bool interact = false;
     bool upgrade = false;
     bool closeMenu = false;
@@ -187,7 +188,7 @@ private:
         bool interact = false;
         bool upgrade = false;
         bool inventory = false, inventorySort = false;
-        std::array<bool, 3> tools{};
+        std::array<bool, 4> tools{};
         std::array<bool, 10> courses{};
         bool monsterPreview = false;
         bool crossingMenu = false;

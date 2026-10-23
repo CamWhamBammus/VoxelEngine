@@ -65,7 +65,7 @@ Input::Buttons Input::readButtons() const
         .upgrade = keyDown(GLFW_KEY_ENTER) || keyDown(GLFW_KEY_KP_ENTER),
         .inventory = keyDown(GLFW_KEY_I),
         .inventorySort = keyDown(GLFW_KEY_S),
-        .tools = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3)},
+        .tools = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3), keyDown(GLFW_KEY_4)},
         .courses = {keyDown(GLFW_KEY_1), keyDown(GLFW_KEY_2), keyDown(GLFW_KEY_3),
                     keyDown(GLFW_KEY_4), keyDown(GLFW_KEY_5), keyDown(GLFW_KEY_6),
                     keyDown(GLFW_KEY_7), keyDown(GLFW_KEY_8), keyDown(GLFW_KEY_9), keyDown(GLFW_KEY_0)},
@@ -239,6 +239,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
             if (keyDown(key)) actions_.selectedBlock = PlaceableBlocks[static_cast<std::size_t>(key - GLFW_KEY_1)];
         }
     } else {
+        actions_.attack = !modal && pressed(buttons.remove, previous.remove);
         actions_.interact = pressed(buttons.interact, previous.interact);
         actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
         actions_.crossingMenu = pressed(buttons.crossingMenu, previous.crossingMenu);
@@ -252,7 +253,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
             actions_.crossingMenuStep = static_cast<int>(pressed(buttons.menuNext, previous.menuNext))
                 - static_cast<int>(pressed(buttons.menuPrevious, previous.menuPrevious));
         }
-        for (int slot = 0; slot < 3; ++slot)
+        for (int slot = 0; slot < 4; ++slot)
             if (pressed(buttons.tools[slot], previous.tools[slot])) actions_.selectedTool = slot;
         actions_.toolStep = static_cast<int>(pressed(buttons.nextMaterial, previous.nextMaterial))
             - static_cast<int>(pressed(buttons.previousMaterial, previous.previousMaterial));
@@ -358,18 +359,25 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
             if (!clipboardShortcut && !buttons.remove && !buttons.place && !buttons.pick) suppressDevMouse_ = false;
             removeRepeat_ = placeRepeat_ = 0;
         } else {
-            actions_.pick = pressed(buttons.pick, previous.pick);
-            actions_.removePressed = pressed(buttons.remove, previous.remove);
-            actions_.placePressed = pressed(buttons.place, previous.place);
-            actions_.remove = repeating(buttons.remove, previous.remove, removeRepeat_);
-            actions_.place = repeating(buttons.place, previous.place, placeRepeat_);
+            if (flying) {
+                actions_.pick = pressed(buttons.pick, previous.pick);
+                actions_.removePressed = pressed(buttons.remove, previous.remove);
+                actions_.placePressed = pressed(buttons.place, previous.place);
+                actions_.remove = repeating(buttons.remove, previous.remove, removeRepeat_);
+                actions_.place = repeating(buttons.place, previous.place, placeRepeat_);
+            } else actions_.attack = pressed(buttons.remove, previous.remove);
         }
-        actions_.materialStep = hotbarScroll_.update(scroll_);
+        if (flying) actions_.materialStep = hotbarScroll_.update(scroll_);
+        else {
+            actions_.toolStep = hotbarScroll_.update(scroll_);
+            for (int slot=0;slot<4;++slot)
+                if (pressed(buttons.tools[slot],previous.tools[slot])) actions_.selectedTool=slot;
+        }
         scroll_ = 0;
         // Dev hotbar consumes scrolling; camera FOV stays fixed while building.
         updateCamera(camera, deltaSeconds, clipboardShortcut || (modifier && (keyDown(GLFW_KEY_Z) || keyDown(GLFW_KEY_Y))), flying);
     }
-    if (!typing)
+    if (!typing && (flying || modal))
         for (int slot = 0; slot < 9; ++slot)
             if (pressed(buttons.courses[slot], previous.courses[slot])) actions_.devSlot = slot;
 }
