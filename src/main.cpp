@@ -105,7 +105,8 @@ int main(int argc, char** argv)
                                 && !game.monsterPreviewActive()
                                 && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
                             !game.rootCrossingActive() && !game.devMode() && !game.levelActive() && !game.monsterPreviewActive(),
-                            game.sectionSceneAssets(), game.sectionPickupOffsets(), game.monsters());
+                            game.sectionSceneAssets(), game.sectionPickupOffsets(), game.monsters(),
+                            game.encounters().projectiles());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
@@ -147,6 +148,7 @@ int main(int argc, char** argv)
                 && !game.menuOpen() && !game.devMode() && !game.levelController().open()
                 && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
                 hud.draw(statusText, width, height, scaleY);
+            hud.drawCombat(game,width,height,scaleY);
             if (game.monsterPreviewActive()) hud.drawMonsters(game, width, height, scaleY);
             else if (game.devMode()) hud.drawSection(game, width, height, scaleY);
             else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
