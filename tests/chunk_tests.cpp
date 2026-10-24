@@ -59,8 +59,13 @@ int main()
         voxel::Block::AgedPlanks, voxel::Block::Calcite, voxel::Block::Moss,
         voxel::Block::BlossomLeaves, voxel::Block::AmberCrystal, voxel::Block::GlowMoss
     };
-    check(expectedMaterials.size() == 33 && voxel::BlockCount == expectedMaterials.size() + 8 * 4,
-          "new stair IDs append after all original material IDs with four orientations each");
+    const std::array appendedOres{voxel::Block::TinOre, voxel::Block::SilverOre, voxel::Block::GoldOre,
+        voxel::Block::QuartzOre, voxel::Block::JadeOre, voxel::Block::AmethystOre, voxel::Block::RubyOre,
+        voxel::Block::SapphireOre, voxel::Block::EmeraldOre, voxel::Block::CobaltOre,
+        voxel::Block::TitaniumOre, voxel::Block::MithrilOre, voxel::Block::Obsidian};
+    check(expectedMaterials.size() == 33
+          && voxel::BlockCount == expectedMaterials.size() + 8 * 4 + appendedOres.size(),
+          "new ores append after the original material and rotated stair IDs");
     for (std::size_t value = 0; value < expectedMaterials.size(); ++value) {
         const auto block = expectedMaterials[value];
         check(static_cast<std::size_t>(block) == value, "material IDs must remain save-compatible");
@@ -104,8 +109,17 @@ int main()
     const std::array stairMaterials{voxel::Block::Planks, voxel::Block::Stone, voxel::Block::Brick,
         voxel::Block::Limestone, voxel::Block::Slate, voxel::Block::MossStone,
         voxel::Block::Path, voxel::Block::AgedPlanks};
-    check(voxel::PlaceableBlocks.size() == expectedMaterials.size() - 2 + stairMaterials.size(),
+    check(voxel::PlaceableBlocks.size() == expectedMaterials.size() - 2 + stairMaterials.size() + appendedOres.size(),
           "the palette exposes one stair entry per material, not four rotation duplicates");
+    for (std::size_t i = 0; i < appendedOres.size(); ++i) {
+        const auto block = appendedOres[i];
+        check(static_cast<std::size_t>(block) == 65+i && inPalette[65+i],
+              "appended ores have stable IDs and individual creative slots");
+        check(!voxel::isStair(block) && voxel::isOpaque(block) && voxel::blockShape(block).count == 1,
+              "new ores are opaque full cubes, not additional stair rotations");
+        check(chunk.set(15, 15, 15, block) && chunk.get(15, 15, 15) == block,
+              "every appended ore survives chunk storage");
+    }
     for (std::size_t material = 0; material < stairMaterials.size(); ++material) {
         for (int facing = 0; facing < 4; ++facing) {
             const auto block = voxel::stairBlock(stairMaterials[material], facing);
