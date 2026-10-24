@@ -1,5 +1,6 @@
 #include "graphics/block_relief.h"
 #include "block_shapes.h"
+#include "ores.h"
 
 #include <algorithm>
 #include <array>
@@ -61,7 +62,7 @@ float paintHash(glm::vec2 p)
     return static_cast<float>(value & 0x00ffffffu) / 16777216.0f;
 }
 
-bool paintedOre(glm::vec2 uv, float seed)
+bool paintedOre(glm::vec2 uv, float seed, voxel::Block material)
 {
     const auto tile = glm::floor(uv * 2.0f);
     const float h = paintHash(tile + seed), h2 = paintHash(tile + seed + 11.0f);
@@ -71,11 +72,25 @@ bool paintedOre(glm::vec2 uv, float seed)
     const float sign = paintHash(glm::floor(tile / 3.0f) + seed + 47.0f) > 0.5f ? 1.0f : -1.0f;
     const glm::vec2 q(glm::dot(local, glm::vec2(0.8f, sign * 0.6f)),
                       glm::dot(local, glm::vec2(-sign * 0.6f, 0.8f)));
-    const float length = 0.32f + 0.13f * h2, width = 0.10f + 0.05f * h3;
-    const std::array<glm::vec2, 4> corners{{
-        {-length, -width * 0.15f}, {-length * 0.25f, -width},
-        {length, width * 0.20f}, {length * 0.20f, width},
+    // Independent reference to the shader's authored mineral proportions.
+    constexpr std::array<glm::vec2, 13> aspects{{
+        {.90f, .75f}, {1.10f, .85f}, {.85f, 1.20f}, {1.12f, 1.50f},
+        {1.12f, 1.80f}, {.88f, 1.60f}, {.80f, 1.80f}, {.92f, 1.60f},
+        {1.20f, 1.40f}, {1.22f, .72f}, {1.32f, .70f}, {1.30f, .75f}, {1.35f, .90f}
     }};
+    const int id = static_cast<int>(material);
+    const auto aspect = id >= 65 && id <= 77 ? aspects[id - 65] : glm::vec2(1);
+    const float length = (0.32f + 0.13f * h2) * aspect.x;
+    const float width = (0.10f + 0.05f * h3) * aspect.y;
+    std::vector<glm::vec2> corners;
+    if (id >= 68 && id <= 73) {
+        corners = {{-length, -width * .15f}, {-length * .45f, -width},
+            {length * .45f, -width * .85f}, {length, width * .20f},
+            {length * .45f, width}, {-length * .40f, width * .85f}};
+    } else {
+        corners = {{-length, -width * .15f}, {-length * .25f, -width},
+            {length, width * .20f}, {length * .20f, width}};
+    }
     for (std::size_t i = 0; i < corners.size(); ++i) {
         const auto edge = corners[(i + 1) % corners.size()] - corners[i];
         const auto point = q - corners[i];
@@ -105,7 +120,7 @@ glm::ivec2 paintedStone(glm::vec2 uv, float seed, bool slate)
 void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
               voxel::Block material, float minimumPeak, float maximumPeak)
 {
-    const bool mineral = material == voxel::Block::CoalOre || material == voxel::Block::CopperOre || material == voxel::Block::IronOre;
+    const bool mineral = voxel::oreInfo(material) != nullptr;
     check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 68 : 39),
           "one decorated face has a bounded, nonempty triangle mesh");
     const glm::vec3 normal(face);
@@ -129,7 +144,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         check(std::abs(glm::dot(projected - faceCenter, normal)) < 0.00001f,
               "projected texture positions lie on the original block face");
         if (mineral) {
-            check(paintedOre(uv(projected), paintSeed), "raised ore vertices lie inside painted mineral veins");
+            check(paintedOre(uv(projected), paintSeed, material), "raised ore vertices lie inside painted mineral veins");
             const glm::ivec2 tile(glm::floor(uv(projected) * 2.0f));
             if (std::find(oreTiles.begin(), oreTiles.end(), tile) == oreTiles.end()) oreTiles.push_back(tile);
         }
@@ -184,7 +199,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
                   "raised stone caps stay within a single painted Voronoi plate");
         }
     }
-    check(capArea > 0.003f && capArea < (mineral ? 0.12f : 0.20f),
+    check(capArea > 0.003f && capArea < (material >= voxel::Block::TinOre ? .23f : mineral ? .12f : .20f),
           "raised geometry occupies narrow fragments rather than complete slabs");
     check(tapered && flushEnd, "raised caps taper from a shallow ridge to the underlying face");
     if (mineral) check(buriedEdge, "ore hides a complete cap edge below the host surface");
@@ -496,6 +511,37 @@ int main()
             check(buildBlockRelief(world, centerChunk).indices.empty(), "covering any face removes its relief");
         }
     }
+
+    // Appended ore IDs include thin metal seams and wider six-sided crystals.
+    // Probe several cells per orientation because some naturally contain no vein.
+    for (const auto& ore : oreCatalog()) {
+        if (ore.block < Block::TinOre) continue;
+        std::array<bool, 6> seen{};
+        for (int sample = 0; sample < 4; ++sample) {
+            const glm::ivec3 position{15, 6 + sample, 4 + sample};
+            world.set(anchor, Block::Air);
+            for (const auto face : faces) world.set(anchor + face, Block::Air);
+            world.set(position, ore.block);
+            cover(world, position);
+            check(buildBlockRelief(world, centerChunk).indices.empty(), "new ores never grow hidden geometry");
+            for (std::size_t faceIndex = 0; faceIndex < faces.size(); ++faceIndex) {
+                const auto face = faces[faceIndex];
+                world.set(position + face, Block::Air);
+                const auto mesh = buildBlockRelief(world, centerChunk);
+                if (!mesh.indices.empty()) {
+                    validate(mesh, position, face, ore.block, .001f, .050f);
+                    check(same(mesh, buildBlockRelief(world, centerChunk)), "new mineral shapes are deterministic");
+                    seen[faceIndex] = true;
+                }
+                world.set(position + face, Block::Dirt);
+            }
+            world.set(position, Block::Air);
+            for (const auto face : faces) world.set(position + face, Block::Air);
+        }
+        check(std::all_of(seen.begin(), seen.end(), [](bool face) { return face; }),
+              "every new mineral has paint-aligned embedded geometry on all six face orientations");
+    }
+    cover(world, anchor);
 
     world.set(anchor, Block::CopperOre);
     world.set(anchor + faces[0], Block::Air); // x=16 belongs to the next chunk.
