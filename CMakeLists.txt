@@ -37,6 +37,7 @@ add_library(VoxelCore
     src/ores.cpp
     src/inventory.cpp
     src/loot.cpp
+    src/mining_loot.cpp
     src/spawner_loot.cpp
     src/scene.cpp
     src/root_crossings.cpp

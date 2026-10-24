@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_set>
 #include <vector>
 
 namespace voxel {
@@ -38,6 +39,12 @@ public:
     const std::string& spawnerRecord(std::size_t assetIndex) const;
     void releaseSpawnerRewards(std::size_t assetIndex);
     void updateRewardAnimations(float seconds);
+    // The profile stores the break before the session changes the voxel. These
+    // drops use ordinary pickup claims, leaving authored section files intact.
+    std::string oreRecord(glm::ivec3 cell, Block block) const;
+    void releaseOre(World& world, glm::ivec3 cell, Block block);
+    void restoreMinedOres(World& world, std::string_view section,
+                          const std::map<std::string, LootProgress>& progress);
 
 private:
     struct Chest {
@@ -55,6 +62,7 @@ private:
         std::optional<std::size_t> spawnerAsset = {};
         glm::vec3 launchOffset{};
         float launchSeconds = 1;
+        std::optional<glm::ivec3> oreSource = {};
     };
     struct SpawnerReward {
         std::size_t assetIndex;
@@ -62,6 +70,10 @@ private:
     };
     void prepareSpawnerRewards(const World* world, std::string_view section,
                                const std::map<std::string, LootProgress>& progress);
+    void appendOreDrop(const World& world, glm::ivec3 cell, Block block, bool animate);
+    void settleOreDrops(const World& world);
+    std::string section_;
+    std::unordered_set<std::string> minedOreRecords_;
     std::vector<SpawnerReward> spawnerRewards_;
     std::vector<std::size_t> clearedSpawners_;
     std::shared_ptr<AssetCollision> obstacles_;

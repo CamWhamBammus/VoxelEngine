@@ -41,6 +41,7 @@ void LootSession::begin(std::span<const HubAsset> assets, std::string_view secti
                         const std::map<std::string, LootProgress>& progress, const World* world)
 {
     clear();
+    section_ = section.empty() ? "playtest" : section;
     authoredAssets_.assign(assets.begin(), assets.end());
     for (std::size_t i = 0; i < assets.size(); ++i) {
         const auto& asset = assets[i];
@@ -64,6 +65,8 @@ void LootSession::begin(std::span<const HubAsset> assets, std::string_view secti
 
 void LootSession::clear()
 {
+    section_.clear();
+    minedOreRecords_.clear();
     chests_.clear();
     authoredAssets_.clear();
     sceneAssets_.clear();
