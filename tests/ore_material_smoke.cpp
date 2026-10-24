@@ -137,11 +137,9 @@ void verifyOreMaterials(int width, int height)
                 "An appended ore ID lost its solid rendered face");
         std::set<Pixel> colors(pixels.begin(), pixels.end());
         require(colors.size() > 100, "World ore material collapsed to a flat color");
-        if (ore.block != Block::Crystal && ore.block != Block::AmberCrystal) {
-            std::size_t raised = 0;
-            for (std::size_t i = 0; i < depth.size(); ++i) raised += depth[i] < flatDepth[i] - .00001f;
-            require(raised > 40, "Ore has painted veins but no visible embedded relief: " + std::string(blockName(ore.block)));
-        }
+        std::size_t raised = 0;
+        for (std::size_t i = 0; i < depth.size(); ++i) raised += depth[i] < flatDepth[i] - .00001f;
+        require(raised > 40, "Ore has painted veins but no visible embedded relief: " + std::string(blockName(ore.block)));
         const auto rebuilds = renderer.sceneRebuildCount();
         const auto repeated = draw();
         require(repeated == pixels, "Still ore material changes between identical frames");
@@ -154,6 +152,6 @@ void verifyOreMaterials(int width, int height)
                     "World ore shader maps distinct source blocks onto the same material");
     require(world.takeDirtyChunks().size() == World::ChunkCount,
             "Rendering ore materials consumed the world's unrelated pending chunk updates");
-    std::cout << "Ore materials passed: 18 distinct painted blocks, 16 embedded relief materials, creative previews and stable cached draws\n";
+    std::cout << "Ore materials passed: 18 distinct blocks with embedded relief, creative previews and stable cached draws\n";
 }
 } // namespace voxel

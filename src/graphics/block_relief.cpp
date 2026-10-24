@@ -1,4 +1,5 @@
 #include "graphics/block_relief.h"
+#include "graphics/built_surface_relief.h"
 #include "block_shapes.h"
 
 #include <algorithm>
@@ -154,7 +155,8 @@ void keepLargest(std::vector<Polygon>& polygons, std::size_t count)
     if (polygons.size() > count) polygons.resize(count);
 }
 
-std::vector<Patch> stoneFracture(glm::vec2 low, glm::vec2 high, float seed, bool slate)
+std::vector<Patch> stoneFracture(glm::vec2 low, glm::vec2 high, float seed, bool slate,
+                               bool stair)
 {
     const glm::vec2 scale(1.35f, slate ? 3.2f : 1.65f);
     const glm::ivec2 first(glm::floor(low * scale)), last(glm::floor(high * scale));
@@ -204,6 +206,19 @@ std::vector<Patch> stoneFracture(glm::vec2 low, glm::vec2 high, float seed, bool
         keepLargest(strip, 1);
         if (!strip.empty()) return {{std::move(strip[0]), -inward}};
     }
+    if (stair && !polygons.empty()) {
+        // A small tread can lie entirely within one painted rock plate. Give
+        // it a shallow cut across that plate instead of randomly leaving a
+        // whole stair face flat; the cut still fits inside the same pigment.
+        auto polygon = polygons.front();
+        glm::vec2 center(0);
+        for (const auto point : polygon) center += point;
+        center /= static_cast<float>(polygon.size());
+        const auto direction = glm::normalize(glm::vec2(1, .35f));
+        polygon = clip(polygon, direction, glm::dot(center, direction) + .055f);
+        polygon = clip(polygon, -direction, -glm::dot(center, direction) + .075f);
+        if (polygon.size() >= 3 && area(polygon) > .004f) return {{std::move(polygon), direction}};
+    }
     return {};
 }
 
@@ -244,7 +259,7 @@ std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, float seed, Block mat
             polygons.push_back(std::move(polygon));
         }
     }
-    keepLargest(polygons, 2);
+    keepLargest(polygons, 3);
     std::vector<Patch> patches;
     for (auto& polygon : polygons) {
         glm::vec2 center(0);
@@ -257,12 +272,54 @@ std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, float seed, Block mat
     return patches;
 }
 
+std::vector<Polygon> crystalFacets(glm::vec2 low, glm::vec2 high, float seed, bool top)
+{
+    // The same elongated Voronoi cells color crystal and amber in materials.h.
+    // A few broad facets lift from the body of the mineral, not a scattering
+    // of separate protruding stones.
+    const auto metric = [top](glm::vec2 point) {
+        return top ? point * 1.8f : glm::vec2(point.x * 2.8f + point.y * .22f, point.y * .70f);
+    };
+    const auto inverse = [top](glm::vec2 point) {
+        return top ? point / 1.8f : glm::vec2((point.x - point.y / .70f * .22f) / 2.8f, point.y / .70f);
+    };
+    const auto first = glm::ivec2(glm::floor(metric(low)));
+    const auto last = glm::ivec2(glm::floor(metric(high)));
+    std::vector<glm::vec2> sites;
+    for (int y = first.y - 1; y <= last.y + 1; ++y) {
+        for (int x = first.x - 1; x <= last.x + 1; ++x) {
+            const glm::vec2 tile(x, y);
+            const float h = mineralHash(tile + seed);
+            sites.push_back(tile + .2f + .6f * glm::vec2(h, glm::fract(h * 13.71f)));
+        }
+    }
+    std::vector<Polygon> polygons;
+    for (const auto site : sites) {
+        auto polygon = rectangle(low, high);
+        for (auto& point : polygon) point = metric(point) - site;
+        for (const auto other : sites) {
+            const auto offset = other - site;
+            if (offset == glm::vec2(0)) continue;
+            polygon = clip(polygon, offset, glm::dot(offset, offset) * .5f);
+            if (polygon.empty()) break;
+        }
+        for (auto& point : polygon) point = inverse(point + site);
+        polygons.push_back(std::move(polygon));
+    }
+    keepLargest(polygons, 3);
+    return polygons;
+}
+
 void triangle(MeshData& mesh, glm::vec3 a, glm::vec3 b, glm::vec3 c, Block material,
               glm::vec3 faceNormal, glm::vec3 faceCenter, bool reverse)
 {
     if (reverse) std::swap(b, c);
+    const auto cross = glm::cross(b - a, c - a);
+    // A clipped outline can leave a near-zero skirt at a half-block edge.
+    // Skip that sliver before normalizing so lighting never receives NaNs.
+    if (glm::length(cross) <= .000001f) return;
     const auto first = static_cast<std::uint32_t>(mesh.vertices.size());
-    const auto normal = glm::normalize(glm::cross(b - a, c - a));
+    const auto normal = glm::normalize(cross);
     for (const auto point : {a, b, c}) {
         mesh.vertices.push_back({point, normal, blockColor(material), static_cast<float>(material),
                                  glm::vec4(faceNormal, glm::dot(point - faceCenter, faceNormal))});
@@ -347,6 +404,29 @@ void wedge(MeshData& mesh, const Patch& patch, glm::vec3 faceCenter, glm::vec3 n
     }
 }
 
+void crystalFacet(MeshData& mesh, const Polygon& polygon, glm::vec3 faceCenter, glm::vec3 normal,
+                  glm::vec3 u, glm::vec3 v, float height, Block material)
+{
+    glm::vec2 center(0);
+    for (const auto point : polygon) center += point;
+    center /= static_cast<float>(polygon.size());
+    const glm::vec2 faceUV(glm::dot(faceCenter, u), glm::dot(faceCenter, v));
+    const bool reverse = glm::dot(glm::cross(u, v), normal) < 0;
+    const auto position = [&](glm::vec2 point, float depth) {
+        const auto offset = point - faceUV;
+        return faceCenter + u * offset.x + v * offset.y + normal * depth;
+    };
+    // The perimeter sinks into the crystal body. An off-center ridge makes
+    // wide planes catch a light at different angles without a raised collar.
+    const auto peak = center + (polygon[0] - center) * .18f;
+    for (std::size_t i = 0; i < polygon.size(); ++i) {
+        const auto a = center + (polygon[i] - center) * .98f;
+        const auto b = center + (polygon[(i + 1) % polygon.size()] - center) * .98f;
+        triangle(mesh, position(peak, height), position(a, -.004f), position(b, -.004f),
+                 material, normal, faceCenter, reverse);
+    }
+}
+
 } // namespace
 
 MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
@@ -360,18 +440,25 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
                 const auto block = chunk.get(x, y, z);
                 const auto material = stairMaterial(block);
                 const bool mineral = ore(material);
-                if (!mineral && material != Block::Stone && material != Block::Limestone && material != Block::Slate) continue;
+                const bool crystal = material == Block::Crystal || material == Block::AmberCrystal;
+                const bool built = hasBuiltSurfaceRelief(material);
+                if (!mineral && !crystal && !built && material != Block::Stone && material != Block::Limestone
+                    && material != Block::Slate && material != Block::MossStone && material != Block::Calcite) continue;
                 const auto cell = origin + glm::ivec3(x, y, z);
                 const auto surfaces = blockSurfaces(block);
                 for (int surfaceIndex = 0; surfaceIndex < surfaces.count; ++surfaceIndex) {
                     auto surface = surfaces.faces[surfaceIndex];
                     if (!exposedSurface(world, cell, surface)) continue;
+                    if (built) {
+                        appendBuiltSurfaceRelief(mesh, cell, surface, material, world.seed());
+                        continue;
+                    }
                     const glm::vec3 normal(surface.normal);
                     const auto faceCenter = glm::vec3(cell) + (surface.minimum + surface.maximum) * .5f;
                     const int face = surface.normal.x != 0 ? (surface.normal.x > 0 ? 0 : 1)
                         : surface.normal.y != 0 ? (surface.normal.y > 0 ? 2 : 3) : (surface.normal.z > 0 ? 4 : 5);
                     const auto hash = faceHash(cell, face, world.seed());
-                    if (!mineral && hash % (normal.y > 0 ? 12u : 5u) != 0) continue;
+                    if (!mineral && !crystal && !isStair(block) && hash % (normal.y > 0 ? 12u : 5u) != 0) continue;
                     const glm::vec3 u = normal.x != 0 ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
                     const glm::vec3 v = normal.y != 0 ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
                     const auto minimum = glm::vec3(cell) + surface.minimum;
@@ -380,11 +467,20 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
                     const glm::vec2 high = glm::vec2(glm::dot(maximum, u), glm::dot(maximum, v)) - .008f;
                     const float seed = glm::dot(glm::vec3(cell) * glm::abs(normal), glm::vec3(17, 37, 57))
                         + static_cast<float>(material) * 19.0f;
+                    if (crystal) {
+                        const auto facets = crystalFacets(low, high, seed, normal.y != 0);
+                        for (std::size_t piece = 0; piece < facets.size(); ++piece) {
+                            const float variation = float(mix(hash ^ static_cast<std::uint32_t>(piece)) & 0xffffu) / 65535.0f;
+                            crystalFacet(mesh, facets[piece], faceCenter, normal, u, v,
+                                         .030f + variation * .030f, material);
+                        }
+                        continue;
+                    }
                     const auto patches = mineral ? oreVeins(low, high, seed, material)
-                        : stoneFracture(low, high, seed, material == Block::Slate);
+                        : stoneFracture(low, high, seed, material == Block::Slate, isStair(block));
                     for (std::size_t piece = 0; piece < patches.size(); ++piece) {
                         const float variation = float(mix(hash ^ static_cast<std::uint32_t>(piece)) & 0xffffu) / 65535.0f;
-                        const float height = mineral ? 0.025f + variation * 0.025f : 0.012f + variation * 0.018f;
+                        const float height = mineral ? 0.040f + variation * 0.030f : 0.012f + variation * 0.018f;
                         wedge(mesh, patches[piece], faceCenter, normal, u, v, low, high, height, material);
                     }
                 }

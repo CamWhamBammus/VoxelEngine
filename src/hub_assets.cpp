@@ -134,7 +134,8 @@ std::vector<HubAsset> planHubAssets(const World& world)
                         const auto top = glm::vec3(cell) + glm::vec3(0.5f,1.0f,0.5f);
                         if (!air(world, top)) continue;
                         const auto seed = variation(cell.x, cell.z, world.seed());
-                        paths.push_back({HubAssetKind::PathPaving, top, int(seed % 4), seed});
+                        // Paving and risers are now part of the block surface.
+                        // Only border curbs need a separate decorative model.
                         constexpr glm::ivec3 sides[4]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
                         for (int side = 0; side < 4; ++side) {
                             const auto next = cell + sides[side];
@@ -142,7 +143,7 @@ std::vector<HubAsset> planHubAssets(const World& world)
                             // A tread cap faces downhill, never into an adjoining
                             // tread or doorway. Models stay attached to this tile.
                             if (neighbor == Block::Air && world.get(next - glm::ivec3(0,1,0)) == Block::Path) {
-                                paths.push_back({HubAssetKind::PathStep, top, side, seed});
+                                continue;
                             } else if ((neighbor == Block::Air || neighbor == Block::Water || soil(neighbor))
                                        && world.get(next + glm::ivec3(0,1,0)) == Block::Air) {
                                 paths.push_back({HubAssetKind::PathEdging, top, side, seed});

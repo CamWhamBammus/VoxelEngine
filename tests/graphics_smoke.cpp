@@ -4,6 +4,7 @@
 #include "held_sword_smoke.h"
 #include "held_pickaxe_smoke.h"
 #include "ore_material_smoke.h"
+#include "surface_relief_smoke.h"
 #include "mining_hud_smoke.h"
 #include "damage_feedback_smoke.h"
 #include "inventory_hud_smoke.h"
@@ -601,7 +602,7 @@ void verifyUndergroundMaterials(int width, int height)
             + "/" + std::to_string(lantern.z) + ", crystal RGB " + std::to_string(crystal.x)
             + "/" + std::to_string(crystal.y) + "/" + std::to_string(crystal.z));
     }
-    sample(Block::Planks); // Neither crystal details nor rock relief belong here.
+    sample(Block::Dirt); // A plain replacement must remove all crystal detail.
     if (renderer.triangleCount() != 12) {
         throw std::runtime_error("Replacing a crystal retained stale decorative geometry");
     }
@@ -1013,9 +1014,9 @@ void verifyBlockRelief(int width, int height)
     std::size_t raisedPixels = 0;
     for (std::size_t pixel = 0; pixel < raised.size(); ++pixel) {
         const float displacement = distance(flat[pixel]) - distance(raised[pixel]);
-        // Ore rises at most 0.050 units; allow a small margin for resolved
+        // Ore rises at most 0.070 units; allow a small margin for resolved
         // depth and projection precision without accepting the old tall caps.
-        if (flat[pixel] >= 1 || displacement < -0.002f || displacement > 0.060f) {
+        if (flat[pixel] >= 1 || displacement < -0.002f || displacement > 0.080f) {
             throw std::runtime_error("Block relief exceeded its shallow surface bounds: "
                 + std::to_string(displacement));
         }
@@ -1059,7 +1060,7 @@ void verifyBlockRelief(int width, int height)
     world.set({0, 31, 0}, Block::Crystal);
     depth(true);
     const auto crystalTriangles = renderer.triangleCount();
-    world.set({0, 32, 0}, Block::Planks);
+    world.set({0, 32, 0}, Block::Dirt);
     depth(true);
     depth(true, &freshRenderer);
     if (renderer.triangleCount() != freshRenderer.triangleCount()
@@ -1492,6 +1493,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyLevelHud(width, height);
     verifyLushMaterials(width, height);
     verifyOreMaterials(width, height);
+    verifySurfaceRelief(width, height);
     verifyMonsters(width, height);
     verifyDamageFeedback();
 

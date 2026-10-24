@@ -121,7 +121,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
               voxel::Block material, float minimumPeak, float maximumPeak)
 {
     const bool mineral = voxel::oreInfo(material) != nullptr;
-    check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 68 : 39),
+    check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 102 : 39),
           "one decorated face has a bounded, nonempty triangle mesh");
     const glm::vec3 normal(face);
     const auto faceCenter = glm::vec3(anchor) + glm::vec3(0.5f) + normal * 0.5f;
@@ -165,7 +165,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         check(cell == anchor || cell == anchor + face, "every vertex stays in the anchor or its adjacent air cell");
     }
     check(embedded && peak >= minimumPeak, "each face has real raised depth and an anchored skirt");
-    check(oreTiles.size() <= 2, "each ore face raises at most two painted fragments");
+    check(oreTiles.size() <= 3, "each ore face raises at most three painted fragments");
     float capArea = 0;
     bool tapered = false, flushEnd = false, buriedEdge = false;
     for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
@@ -199,7 +199,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
                   "raised stone caps stay within a single painted Voronoi plate");
         }
     }
-    check(capArea > 0.003f && capArea < (material >= voxel::Block::TinOre ? .23f : mineral ? .12f : .20f),
+    check(capArea > 0.003f && capArea < (material >= voxel::Block::TinOre ? .35f : mineral ? .18f : .20f),
           "raised geometry occupies narrow fragments rather than complete slabs");
     check(tapered && flushEnd, "raised caps taper from a shallow ridge to the underlying face");
     if (mineral) check(buriedEdge, "ore hides a complete cap edge below the host surface");
@@ -334,7 +334,7 @@ void shapeSurfaces()
 void stairRelief(voxel::World& world)
 {
     using namespace voxel;
-    for (const auto material : {Block::Stone, Block::Limestone, Block::Slate}) {
+    for (const auto material : {Block::Stone, Block::Limestone, Block::Slate, Block::MossStone}) {
         for (int facing = 0; facing < 4; ++facing) {
             clear(world);
             const auto block = stairBlock(material, facing);
@@ -346,6 +346,7 @@ void stairRelief(voxel::World& world)
                   "each rocky stair orientation has bounded real surface geometry");
             check(same(mesh, buildBlockRelief(world, centerChunk)), "stair surface detail is deterministic");
             bool lowerTread = false, upperTread = false, riser = false, side = false, raised = false, embedded = false;
+            std::array<unsigned, 256> stairCoverage{};
             for (const auto& vertex : mesh.vertices) {
                 const glm::vec3 normal(vertex.relief);
                 const auto projected = vertex.position - normal * vertex.relief.w;
@@ -374,6 +375,8 @@ void stairRelief(voxel::World& world)
                 upperTread |= normal.y == 1 && std::abs(local.y - 1) < .0001f;
                 const bool innerRiser = normal.y == 0 && std::abs(glm::dot(local - .5f, normal)) < .0001f;
                 riser |= innerRiser;
+                stairCoverage[cell.x + cell.z * 16] |= (normal.y == 1 && std::abs(local.y - .5f) < .0001f ? 1 : 0)
+                    | (normal.y == 1 && std::abs(local.y - 1) < .0001f ? 2 : 0) | (innerRiser ? 4 : 0);
                 side |= normal.y == 0 && !innerRiser;
                 raised |= vertex.relief.w > .004f;
                 embedded |= vertex.relief.w < -.003f;
@@ -381,6 +384,10 @@ void stairRelief(voxel::World& world)
             check(lowerTread && upperTread && riser && side,
                   "rocky stair material reaches both treads, the inner riser, and exterior sides");
             check(raised && embedded, "stair chips rise from and sink into their supporting faces");
+            for (int z = 0; z < 16; z += 2) {
+                for (int x = 0; x < 16; x += 2) check(stairCoverage[x + z * 16] == 7,
+                    "every individual rocky stair has relief on both treads and its inner riser");
+            }
             for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
                 const auto& a = mesh.vertices[mesh.indices[i]];
                 const auto& b = mesh.vertices[mesh.indices[i + 1]];
@@ -426,7 +433,7 @@ void stairNeighbors(voxel::World& world)
     for (const auto anchor : {glm::ivec3(15, 6, 6), glm::ivec3(0, 8, 10),
                               glm::ivec3(6, 7, 15), glm::ivec3(-1, 6, -1)}) {
         const auto chunkIndex = anchor.x < 0 ? centerChunk - World::Width - 1 : centerChunk;
-        for (const auto block : {Block::CopperOre, Block::StoneStairs, Block::StoneStairsWest,
+        for (const auto block : {Block::CopperOre, Block::Crystal, Block::AmberCrystal, Block::StoneStairs, Block::StoneStairsWest,
                                  Block::StoneStairsSouth, Block::StoneStairsEast}) {
             world.set(anchor, block);
             cover(world, anchor);
@@ -485,6 +492,85 @@ void stairNeighbors(voxel::World& world)
     check(survivingFaces > 30, "cube and stair relief remains visible through many partial openings at chunk seams");
 }
 
+void crystalRelief(voxel::World& world)
+{
+    using namespace voxel;
+    clear(world);
+    for (const auto material : {Block::Crystal, Block::AmberCrystal}) {
+        for (const auto anchor : {glm::ivec3(15, 6, 6), glm::ivec3(-1, 6, -1)}) {
+            const auto chunk = anchor.x < 0 ? centerChunk - World::Width - 1 : centerChunk;
+            world.set(anchor, material);
+            cover(world, anchor);
+            check(buildBlockRelief(world, chunk).indices.empty(), "covered crystals have no hidden facets");
+            for (const auto face : faces) {
+                world.set(anchor + face, Block::Air);
+                const auto mesh = buildBlockRelief(world, chunk);
+                check(!mesh.indices.empty() && mesh.indices.size() / 3 <= 36,
+                      "crystal faces contain at most three broad, bounded facets");
+                const glm::vec3 normal(face);
+                const glm::vec3 u = face.x != 0 ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
+                const glm::vec3 v = face.y != 0 ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+                const float seed = glm::dot(glm::vec3(anchor) * glm::abs(normal), glm::vec3(17, 37, 57))
+                    + static_cast<float>(material) * 19.0f;
+                const auto paintedFacet = [&](glm::vec3 position) {
+                    const glm::vec2 uv(glm::dot(position, u), glm::dot(position, v));
+                    const auto metric = face.y != 0 ? uv * 1.8f
+                        : glm::vec2(uv.x * 2.8f + uv.y * .22f, uv.y * .70f);
+                    const glm::ivec2 tile(glm::floor(metric));
+                    float nearest = 100;
+                    glm::ivec2 selected{};
+                    for (int y = -1; y <= 1; ++y) {
+                        for (int x = -1; x <= 1; ++x) {
+                            const auto site = tile + glm::ivec2(x, y);
+                            const float h = paintHash(glm::vec2(site) + seed);
+                            const auto delta = metric - (glm::vec2(site) + .2f + .6f * glm::vec2(h, glm::fract(h * 13.71f)));
+                            if (glm::dot(delta, delta) < nearest) {
+                                nearest = glm::dot(delta, delta);
+                                selected = site;
+                            }
+                        }
+                    }
+                    return selected;
+                };
+                bool raised = false, embedded = false;
+                float coverage = 0;
+                for (const auto& vertex : mesh.vertices) {
+                    check(vertex.material == static_cast<float>(material) && vertex.color == blockColor(material),
+                          "crystal facets preserve their mineral color and emissive material");
+                    check(glm::vec3(vertex.relief) == normal && vertex.relief.w >= -.0041f && vertex.relief.w <= .0601f,
+                          "crystal facets have a buried perimeter and modest raised depth");
+                    const auto projected = vertex.position - normal * vertex.relief.w;
+                    for (int axis = 0; axis < 3; ++axis) {
+                        if (face[axis] == 0) check(projected[axis] > anchor[axis] && projected[axis] < anchor[axis] + 1,
+                                                  "crystal facets remain inside tangential block boundaries");
+                    }
+                    raised |= vertex.relief.w >= .03f;
+                    embedded |= vertex.relief.w < -.003f;
+                }
+                for (std::size_t i = 0; i < mesh.indices.size(); i += 3) {
+                    const auto& a = mesh.vertices[mesh.indices[i]];
+                    const auto& b = mesh.vertices[mesh.indices[i + 1]];
+                    const auto& c = mesh.vertices[mesh.indices[i + 2]];
+                    const auto cross = glm::cross(b.position - a.position, c.position - a.position);
+                    check(glm::length(cross) > .000001f && glm::dot(glm::normalize(cross), a.normal) > .9999f,
+                          "crystal facets supply real outward lighting normals");
+                    check(paintedFacet(a.position) == paintedFacet(b.position)
+                          && paintedFacet(a.position) == paintedFacet(c.position),
+                          "each crystal facet stays inside one independently evaluated painted mineral plane");
+                    coverage += glm::dot(cross, normal) * .5f;
+                }
+                check(raised && embedded && coverage > .40f && coverage < .98f,
+                      "broad crystal planes visibly lift the mineral body without separate floating gems");
+                check(same(mesh, buildBlockRelief(world, chunk)), "crystal facet geometry is stable across repeated builds");
+                world.set(anchor + face, Block::Dirt);
+                check(buildBlockRelief(world, chunk).indices.empty(), "covering crystals removes their relief");
+            }
+            world.set(anchor, Block::Air);
+            for (const auto face : faces) world.set(anchor + face, Block::Air);
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -504,7 +590,7 @@ int main()
             world.set(anchor + face, Block::Air);
             const auto before = world;
             const auto mesh = buildBlockRelief(world, centerChunk);
-            validate(mesh, anchor, face, material, 0.025f, 0.050f);
+            validate(mesh, anchor, face, material, 0.040f, 0.070f);
             check(world.sameContents(before), "building relief leaves voxel contents unchanged");
             check(same(mesh, buildBlockRelief(world, centerChunk)), "relief is deterministic");
             world.set(anchor + face, Block::Dirt);
@@ -529,7 +615,7 @@ int main()
                 world.set(position + face, Block::Air);
                 const auto mesh = buildBlockRelief(world, centerChunk);
                 if (!mesh.indices.empty()) {
-                    validate(mesh, position, face, ore.block, .001f, .050f);
+                    validate(mesh, position, face, ore.block, .001f, .070f);
                     check(same(mesh, buildBlockRelief(world, centerChunk)), "new mineral shapes are deterministic");
                     seen[faceIndex] = true;
                 }
@@ -554,9 +640,9 @@ int main()
     check(same(seam, buildBlockRelief(world, centerChunk)), "reopening the neighboring chunk restores the same geometry");
     world.set(anchor, Block::Air);
     check(buildBlockRelief(world, centerChunk).indices.empty(), "mining an anchor removes its relief");
-    for (const auto material : {Block::Grass, Block::Dirt, Block::Sand, Block::Crystal,
-                               Block::Timber, Block::Planks, Block::Brick, Block::Lantern, Block::Bedrock,
-                               Block::Water, Block::Leaves, Block::GlowLeaves, Block::RoofTiles}) {
+    for (const auto material : {Block::Grass, Block::Dirt, Block::Sand,
+                               Block::Timber, Block::Lantern, Block::Bedrock,
+                               Block::Water, Block::Leaves, Block::GlowLeaves}) {
         world.set(anchor, material);
         check(buildBlockRelief(world, centerChunk).indices.empty(), "other materials never grow stone or ore plates");
     }
@@ -590,7 +676,7 @@ int main()
     cover(world, negative);
     world.set(negative + faces[0], Block::Air);
     constexpr auto negativeChunk = centerChunk - World::Width - 1;
-    validate(buildBlockRelief(world, negativeChunk), negative, faces[0], Block::IronOre, 0.025f, 0.050f);
+    validate(buildBlockRelief(world, negativeChunk), negative, faces[0], Block::IronOre, 0.040f, 0.070f);
     world.set(negative + faces[0], Block::Stone);
     check(buildBlockRelief(world, negativeChunk).indices.empty(), "negative-coordinate chunk seams also suppress hidden relief");
 
@@ -607,8 +693,8 @@ int main()
     world.set(visibleOre, Block::CopperOre);
     cover(world, visibleOre);
     world.set(visibleOre + faces[4], Block::Air);
-    check(raisedArea(buildBlockRelief(world, centerChunk), {0, 0, 1}, 0.010f) > 0.01f,
-          "the native ore fixture raises more than one percent of its face by at least one hundredth of a block");
+    check(raisedArea(buildBlockRelief(world, centerChunk), {0, 0, 1}, 0.020f) > 0.01f,
+          "the native ore fixture raises more than one percent of its face by at least 0.020 blocks");
 
     clear(world);
     constexpr auto upperChunk = centerChunk + World::Width * World::Width;
@@ -630,12 +716,13 @@ int main()
     check(same(upperRelief, buildBlockRelief(world, upperChunk)), "reopening an upper seam restores the same ore relief");
 
     // Whole surfaces exercise sparse density and endpoint taper on every orientation.
-    for (const auto material : {Block::Stone, Block::Limestone, Block::Slate}) {
+    for (const auto material : {Block::Stone, Block::Limestone, Block::Slate, Block::MossStone, Block::Calcite}) {
         for (const auto face : faces) stoneSurface(world, material, face);
     }
 
     stairRelief(world);
     stairNeighbors(world);
+    crystalRelief(world);
 
     bool threw = false;
     try { buildBlockRelief(world, World::ChunkCount); }

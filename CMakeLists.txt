@@ -59,6 +59,7 @@ add_library(VoxelCore
     src/mesh.cpp
     src/graphics/cave_details.cpp
     src/graphics/block_relief.cpp
+    src/graphics/built_surface_relief.cpp
     src/graphics/hub_props.cpp
     src/graphics/hub_foliage.cpp
     src/graphics/hub_paths.cpp
@@ -96,6 +97,7 @@ if(VOXEL_BUILD_APP)
         tests/held_sword_smoke.cpp
         tests/held_pickaxe_smoke.cpp
         tests/ore_material_smoke.cpp
+        tests/surface_relief_smoke.cpp
         tests/mining_hud_smoke.cpp
         tests/damage_feedback_smoke.cpp
         tests/inventory_hud_smoke.cpp
@@ -119,7 +121,7 @@ if(BUILD_TESTING)
         sections section_editor section_tools section_build_tools section_gap_tools
         levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
         lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe
-        mining mining_loot mining_game
+        mining mining_loot mining_game built_surface_relief
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

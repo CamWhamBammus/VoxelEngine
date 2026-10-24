@@ -342,7 +342,7 @@ MaterialSurface evaluateMaterial() {
         roughness = 0.84;
         emission = materialId == 18 ? mix(0.14, 0.09, crown) : 0.025;
     } else if (materialId == 19) {
-        vec2 tiles = p * vec2(2.0, 2.5);
+        vec2 tiles = (decorative == 2 ? uv : p) * vec2(2.0, 2.5);
         tiles.x += mod(floor(tiles.y), 2.0) * 0.5;
         vec2 f = fract(tiles);
         float tileSeed = materialHash(floor(tiles) + seed);
@@ -387,8 +387,9 @@ MaterialSurface evaluateMaterial() {
             slope = (timber ? vec2(fibers - 0.5, 0.0) : vec2(0.0, fibers - 0.5)) * 0.09;
         }
         if (!timber) {
-            float row = floor(p.y * 2.0);
-            vec2 board = vec2(p.x / 2.0 + mod(row, 3.0) / 3.0, p.y * 2.0);
+            vec2 boardUV = decorative == 2 ? uv : p;
+            float row = floor(boardUV.y * 2.0);
+            vec2 board = vec2(boardUV.x / 2.0 + mod(row, 3.0) / 3.0, boardUV.y * 2.0);
             vec2 f = fract(board), edge = min(f, 1.0 - f) * vec2(2.0, 0.5);
             float timberTone = materialHash(floor(board) + seed);
             color *= mix(vec3(0.82, 0.87, 0.93), vec3(1.13, 1.04, 0.89), timberTone);
@@ -406,8 +407,9 @@ MaterialSurface evaluateMaterial() {
         }
         roughness = materialId >= 26 ? 0.93 : 0.78;
     } else if (materialId == 13 || materialId == 22) {
-        float row = floor(p.y * 2.0);
-        vec2 brick = vec2(p.x + mod(row, 2.0) * 0.5, p.y * 2.0);
+        vec2 brickUV = decorative == 2 ? uv : p;
+        float row = floor(brickUV.y * 2.0);
+        vec2 brick = vec2(brickUV.x + mod(row, 2.0) * 0.5, brickUV.y * 2.0);
         vec2 f = fract(brick), edge = min(f, 1.0 - f) * vec2(1.0, 0.5);
         color *= 0.88 + 0.22 * materialHash(floor(brick) + seed);
         if (min(edge.x, edge.y) < 0.024) color = vec3(0.24, 0.225, 0.20) * (0.94 + chips * 0.09);
@@ -423,17 +425,19 @@ MaterialSurface evaluateMaterial() {
         }
     } else if (materialId == 10 || materialId == 31) {
         // Long angular mineral planes continue across voxels rather than stamping
-        // the same X onto every cube. Sparse edge gleams preserve deep jewel hues.
-        vec2 mineral = p * (top ? vec2(1.8) : vec2(2.8, 0.70));
-        mineral.x += top ? 0.0 : p.y * 0.22;
+        // the same X onto every cube. The integer hash and anisotropic Voronoi
+        // cells also bound the real crystal facets in block_relief.cpp.
+        vec2 crystalUV = decorative == 2 ? uv : p;
+        vec2 mineral = crystalUV * (top ? vec2(1.8) : vec2(2.8, 0.70));
+        mineral.x += top ? 0.0 : crystalUV.y * 0.22;
         vec2 tile = floor(mineral), within = fract(mineral), plane = vec2(0.0);
         float nearest = 10.0, second = 10.0, facet = 0.0;
         for (int y = -1; y <= 1; ++y) {
             for (int x = -1; x <= 1; ++x) {
                 vec2 offset = vec2(x, y);
-                float h = materialHash(tile + offset + seed);
+                float h = mineralHash(tile + offset + seed);
                 vec2 delta = within - offset - 0.2 - 0.6 * vec2(h, fract(h * 13.71));
-                float distance = max(abs(delta.x), abs(delta.y) * 0.85) + 0.22 * abs(delta.x + delta.y);
+                float distance = dot(delta, delta);
                 if (distance < nearest) {
                     second = nearest; nearest = distance; plane = delta; facet = h;
                 } else second = min(second, distance);
@@ -454,10 +458,17 @@ MaterialSurface evaluateMaterial() {
         }
         roughness = 0.20; emission = 0.26 + 0.14 * facet;
     } else if (materialId == 20) {
-        // The fitted slab models sit just above this recessed mortar bed.
-        // Exposed retaining faces use small, staggered masonry courses.
+        // Integral fitted slabs share the same stone palette on cubes, treads
+        // and risers. Only their joints expose the recessed mortar below.
         color = mix(vec3(0.22, 0.24, 0.20), vec3(0.33, 0.34, 0.28), broad);
-        if (!top) {
+        if (decorative == 2) {
+            float grain = materialNoise(p * vec2(7.0, 11.0));
+            float stroke = materialNoise(p * vec2(1.8, 18.0) + grain * 0.35);
+            float brush = floor(materialNoise(paintPosition.xz * 2.0 + paintPosition.y) * 4.0) / 4.0;
+            color = surfaceColor * (0.87 + 0.18 * brush)
+                * (0.87 + floor(grain * 5.0) * 0.035 + stroke * 0.09);
+            color += surfaceColor * smoothstep(0.89, 0.98, materialHash(floor(p * 24.0))) * 0.065;
+        } else if (!top) {
             vec2 course = vec2(p.x * 1.6 + mod(floor(p.y * 3.0), 2.0) * 0.5, p.y * 3.0);
             vec2 edge = min(fract(course), 1.0 - fract(course));
             float joint = 1.0 - smoothstep(0.025, 0.075, min(edge.x, edge.y));

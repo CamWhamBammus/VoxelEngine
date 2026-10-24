@@ -26,6 +26,46 @@ namespace voxel {
 
 namespace {
 
+bool cellBefore(glm::ivec3 a, glm::ivec3 b)
+{
+    return a.x < b.x || (a.x == b.x && (a.y < b.y || (a.y == b.y && a.z < b.z)));
+}
+
+std::vector<glm::ivec3> pavingCovers(std::span<const HubAsset> assets)
+{
+    std::vector<glm::ivec3> covers;
+    for (const auto& asset : assets) {
+        if (asset.kind != HubAssetKind::PathPaving) continue;
+        const auto cell = glm::ivec3(glm::floor(asset.position - glm::vec3(0,.001f,0)));
+        const auto expected = glm::vec3(cell) + glm::vec3(.5f,1,.5f);
+        // Keep hand-placed paving available as a replacement finish. Only an
+        // aligned whole tile replaces the integral cap underneath it.
+        if (World::contains(cell) && glm::length(asset.position - expected) < .001f)
+            covers.push_back(cell);
+    }
+    std::sort(covers.begin(), covers.end(), cellBefore);
+    covers.erase(std::unique(covers.begin(), covers.end()), covers.end());
+    return covers;
+}
+
+void hideCoveredPaving(MeshData& mesh, std::span<const glm::ivec3> covers)
+{
+    if (covers.empty()) return;
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < mesh.indices.size(); i += 3) {
+        const auto& vertex = mesh.vertices[mesh.indices[i]];
+        bool covered = false;
+        if (vertex.material == static_cast<float>(Block::Path) && vertex.relief.y > .5f) {
+            const auto anchor = vertex.position - glm::vec3(vertex.relief) * vertex.relief.w;
+            const glm::ivec3 cell(glm::floor(anchor - glm::vec3(0,.001f,0)));
+            covered = std::abs(anchor.y - (cell.y + 1.f)) < .0001f
+                && std::binary_search(covers.begin(), covers.end(), cell, cellBefore);
+        }
+        if (!covered) for (int corner = 0; corner < 3; ++corner) mesh.indices[kept++] = mesh.indices[i + corner];
+    }
+    mesh.indices.resize(kept);
+}
+
 GpuMesh* pickupMesh(std::array<GpuMesh,ItemCount>& cache, const HubAsset& asset)
 {
     const auto stack = itemPickupStack(asset);
@@ -176,7 +216,10 @@ void main() {
         // A viewmodel can extend visually into a nearby wall. Sample its light
         // at the player's eyes, while its real normals still shape the shading.
         vec3 lightPosition = firstPerson != 0 ? cameraPosition : worldPosition;
-        vec3 start = firstPerson != 0 ? cameraPosition : worldPosition + surfaceNormal * 0.03;
+        // A bevel's own normal can point sideways into its host voxel. Start
+        // shadow rays outside the supporting face while lighting the real facet.
+        vec3 anchorNormal = decorative == 2 ? reliefSurface.xyz : surfaceNormal;
+        vec3 start = firstPerson != 0 ? cameraPosition : worldPosition + anchorNormal * 0.03;
         // Every source that reaches this surface contributes. A nearest-light
         // cap would cause visible boundaries wherever the source ranking swaps,
         // even if the ranking were based on world position instead of the camera.
@@ -337,6 +380,17 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         ++cached;
     }
     changed |= cached != placedAssets_.end();
+    const auto covers = hubAssets ? std::vector<glm::ivec3>{} : pavingCovers(placedAssets);
+    const auto oldCovers = hubAssets_ ? std::vector<glm::ivec3>{} : pavingCovers(placedAssets_);
+    std::array<bool, World::ChunkCount> pavingChanged{};
+    if (covers != oldCovers) {
+        const auto mark = [&](glm::ivec3 cell) {
+            const auto local = (cell - World::Min) / Chunk::Size;
+            pavingChanged[local.x + World::Width * (local.z + World::Width * local.y)] = true;
+        };
+        for (const auto cell : covers) mark(cell);
+        for (const auto cell : oldCovers) mark(cell);
+    }
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (rebuild[index]) {
             auto opaque = buildMesh(world, index);
@@ -344,8 +398,12 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             meshes_[index].upload(opaque);
             water_[index].upload(water);
             details_[index].upload(buildCaveDetails(world, index));
-            relief_[index].upload(buildBlockRelief(world, index));
             changed = true;
+        }
+        if (rebuild[index] || pavingChanged[index]) {
+            auto surface = buildBlockRelief(world, index);
+            hideCoveredPaving(surface, covers);
+            relief_[index].upload(surface);
         }
     }
     std::vector<HubAssetLight> assetLights;

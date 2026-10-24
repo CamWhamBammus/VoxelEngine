@@ -468,11 +468,11 @@ void checkPathPlacement(World& world)
         const auto lower = upper + sides[facing] - glm::ivec3(0,1,0);
         world.set(upper, Block::Path); world.set(lower, Block::Path);
         const auto plan = planHubAssets(world);
-        check(hasPath(plan, HubAssetKind::PathPaving, upper) && hasPath(plan, HubAssetKind::PathPaving, lower),
-              "both sides of a chunk-boundary stair retain their paving");
-        check(hasPath(plan, HubAssetKind::PathStep, upper, facing)
+        check(!hasPath(plan, HubAssetKind::PathPaving, upper) && !hasPath(plan, HubAssetKind::PathPaving, lower),
+              "integral paving is not covered by a second generated slab model");
+        check(!hasPath(plan, HubAssetKind::PathStep, upper, facing)
               && !hasPath(plan, HubAssetKind::PathEdging, upper, facing),
-              "stair dressing faces the lower tread instead of placing a raised curb across it");
+              "integral risers need no duplicate cladding or curb across the next tread");
         world.set(upper + glm::ivec3(0,1,0), Block::Stone);
         const auto covered = planHubAssets(world);
         check(!hasPath(covered, HubAssetKind::PathPaving, upper)
@@ -494,8 +494,8 @@ void checkPathPlacement(World& world)
         check(!hasPath(shaped,HubAssetKind::PathPaving,upper)
               && !hasPath(shaped,HubAssetKind::PathStep,upper)
               && !hasPath(shaped,HubAssetKind::PathEdging,upper)
-              && hasPath(shaped,HubAssetKind::PathPaving,lower),
-              "real stair treads stay open instead of receiving a full-height paving cap");
+              && !hasPath(shaped,HubAssetKind::PathPaving,lower),
+              "real stairs and adjoining cubes use their own surface geometry");
         world.set(upper,Block::Air);
         world.set(lower, Block::Air);
     }
@@ -809,7 +809,7 @@ int main()
         return isPathAsset(asset.kind);
     });
     check(plan.size() - paths >= 17 && plan.size() - paths < 2000, "the hub retains its bounded non-path dressing plan");
-    check(paths >= 1000 && paths < 20000, "paving follows substantial streets with a separate bounded model budget");
+    check(paths > 50 && paths < 10000, "street borders keep a bounded set of curb models");
     check(samePlan(plan, planHubAssets(world)), "the asset plan is deterministic");
     std::array<bool, kinds.size()> present{};
     std::size_t expectedIndices = 0;
@@ -822,11 +822,14 @@ int main()
         expectedIndices += buildHubAsset(asset).indices.size();
     }
     for (std::size_t kind=0;kind<=static_cast<std::size_t>(HubAssetKind::AnvilSign);++kind) {
-        if (kind==static_cast<std::size_t>(HubAssetKind::PathStep)) continue;
+        if (kind==static_cast<std::size_t>(HubAssetKind::PathStep)
+            || kind==static_cast<std::size_t>(HubAssetKind::PathPaving)) continue;
         check(present[kind],("the lush pass retains supported hub asset family " + std::to_string(kind)).c_str());
     }
     check(!present[static_cast<std::size_t>(HubAssetKind::PathStep)],
           "the hub uses real stair blocks instead of the old full-block step cladding");
+    check(!present[static_cast<std::size_t>(HubAssetKind::PathPaving)],
+          "intrinsic block paving replaces automatically overlaid paving assets");
     checkHubPlacement(world, plan);
     checkBlacksmith(world, plan);
     const auto dressing = buildHubDressing(world);
