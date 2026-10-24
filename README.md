@@ -49,9 +49,11 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | I | Open the 20-slot inventory |
 | R | Return to the village spawn, or the current expedition checkpoint |
 | Escape / Tab | Pause / resume |
-| H / Q | Show controls / quit |
+| H / Q | Toggle controls / quit |
 
 You walk up stairs automatically. Full blocks need a jump. The lantern lights your surroundings; the compass points toward the village tree or your current expedition exit.
+
+The HUD keeps your tools and health at the bottom. Mining, chest, and interaction prompts appear when needed. Press **H** for controls, including during section playtests.
 
 You have 100 health. Enemy hits give you a short shove and view jolt, with a red edge pulse showing where the hit came from. Long falls deal damage and trigger the pulse without a sideways shove; landing in water cushions the fall. If you die, you return at full health to the checkpoint you reached, or the current section's Start. Your inventory and collected loot stay as they were. Health carries over when you move to the next section, but checkpoints belong to their own section.
 
