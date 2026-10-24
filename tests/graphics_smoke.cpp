@@ -2,6 +2,9 @@
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
 #include "held_sword_smoke.h"
+#include "held_pickaxe_smoke.h"
+#include "ore_material_smoke.h"
+#include "mining_hud_smoke.h"
 #include "damage_feedback_smoke.h"
 #include "inventory_hud_smoke.h"
 #include "root_crossing_hud_smoke.h"
@@ -1474,6 +1477,8 @@ int runGraphicsSmokeTest(const Options& options)
     verifyWaterRendering(width, height);
     verifyPlayHud(width, height);
     verifyHeldSword(width, height);
+    verifyHeldPickaxe(width, height);
+    verifyMiningHud(width, height);
     verifyInventoryHud(width, height);
     verifyRootCrossingHud(width, height);
     verifyRootCrossingRendering(width, height);
@@ -1483,6 +1488,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyDroppedItems(width, height);
     verifyLevelHud(width, height);
     verifyLushMaterials(width, height);
+    verifyOreMaterials(width, height);
     verifyMonsters(width, height);
     verifyDamageFeedback();
 
