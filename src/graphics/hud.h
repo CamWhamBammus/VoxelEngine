@@ -32,6 +32,8 @@ public:
     // Draw before the tool belt and menus: hit-revealed mob bars and trial status.
     void drawCombat(const Game& game, int framebufferWidth, int framebufferHeight,
                     float contentScale = 1.0f);
+    void drawMining(const Game& game, int framebufferWidth, int framebufferHeight,
+                    float contentScale = 1.0f);
     // Draw last so damage and the automatic respawn message remain visible.
     void drawHealth(const Game& game, int framebufferWidth, int framebufferHeight,
                     float contentScale = 1.0f);

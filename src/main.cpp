@@ -111,7 +111,10 @@ int main(int argc, char** argv)
                             game.healthVisible() && !game.health().dead()
                                 && game.equipment.selectedTool() == voxel::Tool::Sword
                                 ? std::optional<float>(game.encounters().swordSwing()) : std::nullopt,
-                            game.encounters().hits());
+                            game.encounters().hits(),
+                            game.healthVisible() && !game.health().dead()
+                                && game.equipment.selectedTool() == voxel::Tool::Pickaxe
+                                ? std::optional<float>(game.mining().swing()) : std::nullopt);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
@@ -154,6 +157,7 @@ int main(int argc, char** argv)
                 && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
                 hud.draw(statusText, width, height, scaleY);
             hud.drawCombat(game,width,height,scaleY);
+            hud.drawMining(game,width,height,scaleY);
             if (game.monsterPreviewActive()) hud.drawMonsters(game, width, height, scaleY);
             else if (game.devMode()) hud.drawSection(game, width, height, scaleY);
             else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);

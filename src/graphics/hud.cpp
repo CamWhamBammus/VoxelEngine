@@ -964,7 +964,8 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             out.centered("F10 - NAME AND ACCEPT / F8 - KEEP BUILDING",center,178,1,Cream);
         }
         toolBelt(out,game.equipment,center,height-147);
-        out.centered(game.equipment.selectedTool()==Tool::Sword ? "SWORD / LEFT CLICK TO SWING" : "1-4 / SCROLL - SELECT TOOL",
+        out.centered(game.equipment.selectedTool()==Tool::Sword ? "SWORD / LEFT CLICK TO SWING"
+            : game.equipment.selectedTool()==Tool::Pickaxe ? "PICKAXE / HOLD LEFT CLICK TO MINE" : "1-4 / SCROLL - SELECT TOOL",
             center,height-169,1,Gold);
         out.frame(center-255,height-66,510,49,Edge);
         out.centered(game.player.inWater() ? "WASD SWIM / SPACE RISE / CTRL DIVE / SHIFT FASTER"
@@ -1671,7 +1672,7 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     std::string hint;
     if (selected == Tool::Pickaxe) {
         title += " - TIER " + std::to_string(equipment.pickaxeTier);
-        hint = game.rootCrossingActive() || game.levelController().active() ? "MINING COMING LATER" : "UPGRADE AT THE BLACKSMITH";
+        hint = game.levelActive() ? "HOLD LEFT CLICK - MINE ORE" : "UPGRADE AT THE BLACKSMITH";
     } else if (selected == Tool::Lantern) {
         hint = "WARM LIGHT WHILE EQUIPPED";
     } else if(selected==Tool::Sword) {
@@ -1755,6 +1756,43 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     }
     if (game.crossingMenuOpen()) crossingPicker(drawing,game,width,height);
     render(drawing, shader_, vao_, buffer_);
+}
+
+void Hud::drawMining(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    if (!game.healthVisible() || game.health().dead() || game.equipment.selectedTool()!=Tool::Pickaxe
+        || framebufferWidth<=0 || framebufferHeight<=0) return;
+    const auto& mining=game.mining();
+    const auto target=mining.target();
+    const auto& message=game.miningMessage();
+    if (!target && message.empty()) return;
+    if (!std::isfinite(contentScale) || contentScale<=0) contentScale=1;
+    const float scale=std::min({std::clamp(contentScale,.5f,4.0f),
+        framebufferWidth/780.0f,framebufferHeight/550.0f});
+    const float width=framebufferWidth/scale,height=framebufferHeight/scale;
+    Drawing drawing(width,height,scale);
+    const float center=width*.5f,top=height*.5f+26;
+    constexpr float w=250;
+    const auto accent=mining.blocked() ? glm::vec4(.91f,.47f,.35f,1) : Gold;
+    drawing.frame(center-w*.5f,top,w,54,Edge,Panel);
+    if (!message.empty()) {
+        drawing.centered("MINING NOT SAVED",center,top+10,1,Gold);
+        fittedCentered(drawing,message,center,top+29,w-24,.85f,Cream);
+    } else {
+        fittedCentered(drawing,blockName(target->block),center,top+9,w-20,1.25f,Cream);
+        if (mining.blocked()) {
+            const auto ore=oreInfo(target->block);
+            drawing.centered("REQUIRES TIER "+std::to_string(ore ? ore->requiredTier : 1)+" PICKAXE",
+                center,top+31,1,accent);
+        } else {
+            drawing.centered(mining.progress()>0 ? "MINING" : "HOLD LEFT CLICK",center,top+26,.85f,Muted);
+            const float fill=(w-24)*std::clamp(mining.progress(),0.0f,1.0f);
+            drawing.quad(center-w*.5f+12,top+42,w-24,4,Canvas);
+            drawing.quad(center-w*.5f+12,top+42,fill,4,accent);
+            drawing.quad(center-w*.5f+12,top+42,fill,1,Cream);
+        }
+    }
+    render(drawing,shader_,vao_,buffer_);
 }
 
 void Hud::drawCombat(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
