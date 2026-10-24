@@ -31,7 +31,8 @@ public:
                 std::span<const MonsterInstance> monsters = {},
                 std::span<const EncounterProjectile> projectiles = {},
                 std::optional<float> heldSwordSwing = {},
-                std::span<const EncounterHit> hits = {});
+                std::span<const EncounterHit> hits = {},
+                std::optional<float> heldPickaxeSwing = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -52,7 +53,9 @@ private:
     GpuMesh spellBolt_; // Shared by glowing wizard bolts and their short trails.
     std::array<GpuMesh,3> hitChips_; // Cached bone chips, amethyst shards, slime droplets.
     GpuMesh heldSword_;
+    GpuMesh heldPickaxe_;
     std::size_t heldSwordTriangles_ = 0;
+    std::size_t heldPickaxeTriangles_ = 0;
     std::size_t monsterTriangles_ = 0;
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.

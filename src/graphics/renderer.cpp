@@ -11,6 +11,7 @@
 #include "section_editor.h"
 #include "graphics/asset_builder.h"
 #include "graphics/held_sword.h"
+#include "graphics/held_pickaxe.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -305,7 +306,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::span<const MonsterInstance> monsters,
                            std::span<const EncounterProjectile> projectiles,
                            std::optional<float> heldSwordSwing,
-                           std::span<const EncounterHit> hits)
+                           std::span<const EncounterHit> hits,
+                           std::optional<float> heldPickaxeSwing)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -505,7 +507,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
-    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = heldSwordTriangles_ = 0;
+    visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
+    heldSwordTriangles_ = heldPickaxeTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -690,13 +693,17 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glEnable(GL_CULL_FACE);
     }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    if (heldSwordSwing) {
-        if (!heldSword_.indexCount()) heldSword_.upload(buildHeldSword());
+    if (heldSwordSwing || heldPickaxeSwing) {
+        auto& heldMesh = heldSwordSwing ? heldSword_ : heldPickaxe_;
+        if (!heldMesh.indexCount())
+            heldMesh.upload(heldSwordSwing ? buildHeldSword() : buildHeldPickaxe());
         const auto view = camera.viewMatrix();
         const float aspect = static_cast<float>(width) / height;
         const auto handProjection = glm::perspective(glm::radians(65.0f),aspect,.03f,10.0f);
+        const auto pose = heldSwordSwing ? heldSwordPose(*heldSwordSwing,aspect)
+                                        : heldPickaxePose(*heldPickaxeSwing,aspect);
         shader_.setMat4("viewProjection",handProjection*view);
-        shader_.setMat4("model",glm::inverse(view)*heldSwordPose(*heldSwordSwing,aspect));
+        shader_.setMat4("model",glm::inverse(view)*pose);
         shader_.setInt("decorative",3);
         shader_.setInt("firstPerson",1);
         shader_.setInt("refractiveWater",0);
@@ -705,7 +712,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
         shader_.setInt("lightOffset",lightOffsets_[chunk]);
         shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
-        // Keep ordinary depth ordering between the blade, guard and glove,
+        // Keep ordinary depth ordering between the tool, handle and glove,
         // while reserving a near band so scenery cannot cut off the hand.
         // The rest of the scene depth remains intact for selection overlays.
         GLdouble depthRange[2];
@@ -717,9 +724,10 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glDepthRange(0.0,0.01);
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_TRUE);
-        heldSword_.draw();
-        heldSwordTriangles_ = heldSword_.indexCount()/3;
-        drawnTriangles_ += heldSwordTriangles_;
+        heldMesh.draw();
+        auto& toolTriangles = heldSwordSwing ? heldSwordTriangles_ : heldPickaxeTriangles_;
+        toolTriangles = heldMesh.indexCount()/3;
+        drawnTriangles_ += toolTriangles;
         glDepthRange(depthRange[0],depthRange[1]);
         glDepthFunc(static_cast<GLenum>(depthFunction));
         glDepthMask(depthWrite);
@@ -742,7 +750,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
 
 std::size_t WorldRenderer::triangleCount() const
 {
-    std::size_t total = monsterTriangles_ + heldSwordTriangles_;
+    std::size_t total = monsterTriangles_ + heldSwordTriangles_ + heldPickaxeTriangles_;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
     for (const auto& mesh : water_) total += mesh.indexCount() / 3;
     if (underground_) {
