@@ -43,7 +43,9 @@ int main(int argc, char** argv)
         double previousTime = glfwGetTime();
         double sampleStart = previousTime;
         int sampleFrames = 0;
-        std::string statusText;
+        std::string statusText = game.statusText(0, 0, 0, 0, input.captured(), input.helpVisible());
+        bool previousHelpVisible = input.helpVisible();
+        bool previousCaptured = input.captured();
 
         // 3. Each frame: read input, update the world, then draw it.
         while (true) {
@@ -135,10 +137,13 @@ int main(int argc, char** argv)
             // Refresh text four times per second; draw the cached text every frame.
             ++sampleFrames;
             const double sampleSeconds = now - sampleStart;
-            if (statusText.empty() || sampleSeconds >= 0.25) {
+            if (sampleSeconds >= 0.25 || input.helpVisible() != previousHelpVisible
+                || input.captured() != previousCaptured) {
                 const double fps = sampleSeconds >= 0.25 ? sampleFrames / sampleSeconds : 0.0;
                 statusText = game.statusText(renderer.visibleChunks(), renderer.drawnTriangles(),
                     renderer.triangleCount(), fps, input.captured(), input.helpVisible());
+                previousHelpVisible = input.helpVisible();
+                previousCaptured = input.captured();
                 const char* title = game.monsterPreviewActive() ? "Creature Preview"
                     : game.levelCreatorActive() ? "Level Creator"
                     : game.levelController().open() ? "Expeditions"
@@ -152,10 +157,6 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
-            if ((!game.monsterPreviewActive() || !input.captured())
-                && !game.menuOpen() && !game.devMode() && !game.levelController().open()
-                && ((!game.rootCrossingActive() && !game.crossingMenuOpen()) || !input.captured() || input.helpVisible()))
-                hud.draw(statusText, width, height, scaleY);
             hud.drawCombat(game,width,height,scaleY);
             hud.drawMining(game,width,height,scaleY);
             if (game.monsterPreviewActive()) hud.drawMonsters(game, width, height, scaleY);
@@ -163,9 +164,9 @@ int main(int argc, char** argv)
             else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
             if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
             hud.drawInventory(game, width, height, scaleY);
-            if ((game.devMode() || game.levelActive()) && !game.menuOpen() && !input.captured())
-                hud.draw("PAUSED | TAB TO RESUME", width, height, scaleY);
             hud.drawHealth(game,width,height,scaleY);
+            if (!game.menuOpen() && (game.editorMode() || input.helpVisible() || !input.captured()))
+                hud.draw(statusText, width, height, scaleY);
             window.present();
         }
         return EXIT_SUCCESS;

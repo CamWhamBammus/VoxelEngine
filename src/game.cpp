@@ -671,35 +671,35 @@ bool Game::hasUnsavedChanges() const
         : editorMode_ && !world.sameContents(savedWorld_);
 }
 
+namespace {
+void appendPlayHelp(std::ostringstream& text)
+{
+    text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
+         << "\nWATER: SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
+         << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS | 4 SWORD"
+         << "\nSCROLL / [ ] CHANGE TOOL | HOLD LEFT CLICK MINE ORE"
+         << "\nLEFT CLICK SWING SWORD | I INVENTORY | E OPEN CHEST"
+         << "\nESC PAUSE | TAB RESUME";
+}
+} // namespace
+
 std::string Game::playStatusText(bool captured, bool showHelp) const
 {
+    if (!showHelp) return captured ? "" : "PAUSED | TAB TO RESUME | H CONTROLS";
     std::ostringstream text;
     if (rootCrossingActive()) {
         text << "ROOT CROSSING " << rootCrossingIndex_ + 1 << "/" << RootCrossingCount
              << " | " << rootCrossingCatalog()[rootCrossingIndex_].name;
-    } else text << "GLOWROOT HAVEN | VILLAGE HUB";
-    if (!captured) text << "\nPAUSED | TAB TO RESUME";
-    if (!crossingMenuOpen_) text << "\n" << status;
-    text << "\nH CONTROLS | F3 CREATURES | F4 LEVELS | F7 SECTION BUILDER | F11 LEVEL CREATOR";
-    if (showHelp) {
-        text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | MOUSE LOOK"
-             << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
-             << "\nSCROLL / [ ] CHANGE TOOL | TAB RESUME"
-             << "\n1 PICKAXE | 2 LANTERN | 3 COMPASS"
-             << "\nI INVENTORY | E OPEN CHEST | ENTER TAKE ALL LOOT"
-             << "\nF6 ROOT CROSSING TESTS | F4 EXPEDITIONS | F11 LEVEL CREATOR";
-        if (rootCrossingActive()) {
-            text << "\nN NEXT TEST | P PREVIOUS | B RETURN TO HUB"
-                 << "\nR CHECKPOINT | SHIFT+R RESTART ATTEMPT"
-                 << "\nCOMPASS POINTS TO THE FINISH | FALLS RESET TO CHECKPOINT"
-                 << "\nESC PAUSE | Q QUIT | TESTS DO NOT AWARD ORE";
-        } else {
-            text << "\nE BLACKSMITH / EXPEDITION GATE | ENTER CONFIRM | ESC CLOSE / PAUSE"
-                 << "\nR RETURN TO VILLAGE | Q QUIT"
-                 << "\nFOUR BRIDGES JOIN THE HEART TREE AND WATERFRONT"
-             << "\nTERRAIN RESETS ON LAUNCH | INVENTORY AND UPGRADES ARE SAVED"
-                 << "\nMINING AND FULL EXPEDITIONS COMING LATER";
-        }
+    } else text << "GLOWROOT HAVEN";
+    text << (captured ? " | H CLOSE HELP" : " | PAUSED | TAB RESUME | H CLOSE HELP");
+    appendPlayHelp(text);
+    if (rootCrossingActive()) {
+        text << "\nR CHECKPOINT | SHIFT+R RESTART | N NEXT | P PREVIOUS"
+             << "\nCOMPASS POINTS TO EXIT | B VILLAGE | Q QUIT";
+    } else {
+        text << "\nE BLACKSMITH / EXPEDITION GATE | R RETURN TO VILLAGE"
+             << "\nF3 CREATURES | F4 EXPEDITIONS | F6 ROOT CROSSINGS"
+             << "\nF7 SECTION BUILDER | F11 LEVEL CREATOR | Q QUIT";
     }
     return text.str();
 }
@@ -708,32 +708,48 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
                              std::size_t totalTriangles, double fps,
                              bool captured, bool showHelp) const
 {
+    // Gameplay keeps the view clear; controls are available on demand with H.
+    // The old voxel editor still needs its live coordinates and edit diagnostics.
+    if (!editorMode_ && !showHelp)
+        return captured ? "" : "PAUSED | TAB TO RESUME | H CONTROLS";
+    const auto withSaveWarning = [this](std::string text) {
+        if (!progressError_.empty())
+            text += "\nSAVE DATA UNAVAILABLE | PROGRESS CANNOT BE SAVED\n" + progressError_;
+        return text;
+    };
     if (monsterPreviewActive_) {
-        return captured ? "CREATURE PREVIEW" : "PAUSED | TAB TO RESUME";
+        return withSaveWarning(std::string("CREATURE PREVIEW | H CLOSE HELP")
+            + (captured ? "" : " | PAUSED | TAB RESUME")
+            + "\nWASD WALK | SPACE JUMP | MOUSE LOOK | R RESET"
+              "\nF3 / B VILLAGE | ESC PAUSE | TAB RESUME | Q QUIT");
     }
     if (levelController_.open()) {
         std::ostringstream text;
-        text << (levelCreatorActive() ? "LEVEL CREATOR" : "EXPEDITIONS") << " | " << levelController_.message();
-        if (!captured && !levelMenuOpen()) text << "\nPAUSED | TAB TO RESUME";
-        if (showHelp) text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | R CHECKPOINT | SHIFT+R RESTART LEVEL | B HUB"
-            << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER";
-        return text.str();
+        text << "EXPEDITIONS | H CLOSE HELP";
+        if (!captured) text << " | PAUSED | TAB RESUME";
+        appendPlayHelp(text);
+        text << "\nR CHECKPOINT | SHIFT+R RESTART LEVEL | B VILLAGE";
+        return withSaveWarning(text.str());
     }
     if (devMode_) {
         std::ostringstream text;
-        text << "SECTION BUILDER | " << sectionEditor_.message();
-        if (!captured && !devMenuOpen()) text << "\nPAUSED | TAB TO RESUME";
-        if (showHelp) {
-            if (sectionEditor_.screen() == SectionEditorScreen::Test) text << "\nWASD WALK | SPACE JUMP | SHIFT SPRINT | F8 RETURN TO BUILD"
-                << "\nWATER: HOLD SPACE RISE | CTRL DIVE | SHIFT SWIM FASTER"
-                << "\nR CHECKPOINT | SHIFT+R RESTART TEST | B HUB";
-            else text << "\nE PALETTE | F8 WALK TEST | F10 ACCEPT | F5 DRAFT | F9 LIBRARY"
-                << "\n1-9 HOTBAR | LEFT REMOVE | RIGHT PLACE | MIDDLE PICK | T ROTATE | Y VARIANT"
-                << "\nWASD FLY | SPACE UP | CTRL DOWN | SHIFT BOOST | CTRL/CMD Z UNDO | B HUB";
+        text << (sectionEditor_.screen() == SectionEditorScreen::Test ? "SECTION PLAYTEST" : "SECTION BUILDER")
+             << " | H CLOSE HELP";
+        if (!captured) text << " | PAUSED | TAB RESUME";
+        if (sectionEditor_.screen() == SectionEditorScreen::Test) {
+            appendPlayHelp(text);
+            text << "\nR CHECKPOINT | SHIFT+R RESTART TEST | F8 RETURN TO BUILD";
+        } else {
+            text << "\nE PALETTE | G BUILD TOOLS | F8 WALK TEST | F10 ACCEPT"
+                 << "\nF5 DRAFT | F9 LIBRARY | 1-9 HOTBAR"
+                 << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK | T ROTATE | Y VARIANT"
+                 << "\nWASD FLY | SPACE UP | CTRL DOWN | SHIFT BOOST"
+                 << "\nCTRL/CMD Z UNDO | CTRL/CMD C COPY | CTRL/CMD V PASTE | X CANCEL";
         }
-        return text.str();
+        text << "\nB VILLAGE | ESC PAUSE | TAB RESUME";
+        return withSaveWarning(text.str());
     }
-    if (!editorMode_) return playStatusText(captured, showHelp);
+    if (!editorMode_) return withSaveWarning(playStatusText(captured, showHelp));
     const auto position = camera.position();
     std::ostringstream text;
     text << std::fixed << std::setprecision(1)

@@ -51,8 +51,11 @@ int main()
         const auto spawn = game.player.feetPosition();
         game.update({}, 1000.0f);
         check(game.player.feetPosition() == spawn, "released mouse pauses the player");
-        check(game.statusText(0, 0, 0, 0, false, false).find("PAUSED") != std::string::npos,
-              "released mouse displays pause instructions");
+        const auto pausedHud = game.statusText(0, 0, 0, 0, false, false);
+        check(pausedHud.find("PAUSED") != std::string::npos && pausedHud.find('\n') == std::string::npos,
+              "released mouse displays one concise pause prompt");
+        check(game.statusText(0, 0, 0, 0, true, false).empty(),
+              "ordinary play keeps the status and controls overlay hidden");
 
         voxel::InputActions actions;
         actions.active = true;
@@ -109,7 +112,8 @@ int main()
         for (const bool captured : {false, true}) {
             const auto hud = game.statusText(0, 0, 0, 0, captured, true);
             for (const auto prompt : {"WASD WALK", "SPACE JUMP", "SHIFT SPRINT", "MOUSE LOOK", "R RETURN",
-                                      "I INVENTORY", "E OPEN CHEST"})
+                                      "I INVENTORY", "E OPEN CHEST", "HOLD LEFT CLICK MINE ORE",
+                                      "4 SWORD", "LEFT CLICK SWING SWORD", "H CLOSE HELP"})
                 check(hud.find(prompt) != std::string::npos, std::string("play help includes ") + prompt);
             for (const auto prompt : {"SELECTED", "LEFT REMOVE", "LEFT MINE", "RIGHT PLACE", "RIGHT BUILD",
                                       "MIDDLE PICK", "1-9 MATERIAL", "F5", "F9", "UNDO", "REDO", "TARGET", "COAL:", "COPPER:"})
@@ -220,6 +224,10 @@ int main()
               "restart restores the tier and never grants starter copper twice");
         { std::ofstream file(persistentOptions.progressPath); file << "damaged profile"; }
         voxel::Game damaged(persistentOptions);
+        const auto damagedHelp = damaged.statusText(0, 0, 0, 0, true, true);
+        check(damagedHelp.find("SAVE DATA UNAVAILABLE") != std::string::npos
+              && damagedHelp.find(damaged.status) != std::string::npos,
+              "help retains the actionable profile load error and its details");
         openSmith(damaged);
         const auto beforeDamage = damaged.equipment;
         damaged.update(upgradeAction);
@@ -316,8 +324,8 @@ int main()
             expedition.update(actions, 1000.0f);
             check(expedition.player.feetPosition() == feet, "exploration has no challenge countdown or time limit");
             check(!expedition.target, "returning to the village does not enable editor targeting");
-            check(expedition.statusText(0, 0, 0, 0, true, true).find("MINING AND FULL EXPEDITIONS COMING LATER") != std::string::npos,
-                  "hub controls accurately identify the current development scope");
+            check(expedition.statusText(0, 0, 0, 0, true, true).find("HOLD LEFT CLICK MINE ORE") != std::string::npos,
+                  "hub help explains the working mining control");
         }
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
