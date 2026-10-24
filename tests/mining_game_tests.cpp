@@ -234,6 +234,87 @@ void builderPreservation(const Options& options, const std::filesystem::path& se
             && read(section) == accepted, "leaving the builder during a test preserves profile and accepted section files");
     require(loadSection(drafts.front().path).world.sameContents(authored), "leaving a test cannot save mined holes in the draft");
 }
+
+void minedMarkerRespawns(const Options& options, const std::filesystem::path& root)
+{
+    World room; buildBlankSection(room);
+    const glm::ivec3 startOre{0,9,20}, checkpointOre{0,9,0};
+    room.set(startOre, Block::CoalOre); room.set(checkpointOre, Block::CopperOre);
+    SectionMetadata meta; meta.name = "Mineable marker supports"; meta.tested = true;
+    meta.spawn = {.5f,10,20.5f}; meta.checkpoint = {.5f,10,.5f};
+    const auto section = acceptSection(room, meta, {}, options.sectionLibrary);
+    const auto authored = read(section);
+    LevelDefinition level; level.name = "Marker fallback";
+    level.sections = {section.lexically_relative(options.sectionLibrary)};
+    auto liveOptions = options; liveOptions.progressPath = (root / "marker-respawn.vxp").string();
+    Game live(liveOptions);
+    require(live.levelController().start(live, level), "mineable marker room starts");
+
+    const auto deathAndReturn = [](Game& game) {
+        require(game.damagePlayer(100), "marker fixture can die");
+        for (int i = 0; i < 20 && game.health().dead(); ++i) tick(game);
+        require(!game.health().dead() && game.player.grounded(), "marker fallback restores a supported live player");
+    };
+    const auto checkStart = [&](Game& game) {
+        mine(game, startOre);
+        position(game, {4.5f,9,20.5f});
+        press(game, &InputActions::respawn);
+        require(game.player.feetPosition() == glm::vec3(.5f,9,20.5f)
+                && game.world.get(startOre) == Block::Air && pickups(game) == 1,
+                "manual R lands below a mined Start without restoring its ore or losing the unclaimed drop");
+        deathAndReturn(game);
+        require(game.player.feetPosition() == glm::vec3(.5f,9,20.5f)
+                && game.world.get(startOre) == Block::Air && pickups(game) == 1,
+                "death uses the same surviving floor below a mined Start");
+    };
+    const auto checkCheckpoint = [&](Game& game) {
+        position(game, *meta.checkpoint); tick(game);
+        mine(game, checkpointOre);
+        position(game, {4.5f,9,.5f});
+        press(game, &InputActions::respawn);
+        require(game.player.feetPosition() == glm::vec3(.5f,9,.5f)
+                && game.world.get(checkpointOre) == Block::Air && pickups(game) == 2,
+                "manual R keeps the checkpoint and lands below its mined support");
+        deathAndReturn(game);
+        require(game.player.feetPosition() == glm::vec3(.5f,9,.5f)
+                && game.world.get(checkpointOre) == Block::Air && pickups(game) == 2,
+                "checkpoint death keeps both mined blocks absent and both unclaimed rewards");
+    };
+    const auto removeNearbyFloors = [&](Game& game) {
+        for (const int centerZ : {0,20})
+            for (int z = centerZ - 3; z <= centerZ + 3; ++z)
+                for (int x = -3; x <= 3; ++x)
+                    for (int y = 0; y < 10; ++y) game.world.set({x,y,z}, Block::Air);
+        position(game, {8.5f,9,.5f});
+    };
+    checkStart(live); checkCheckpoint(live);
+    require(live.levelController().checkpointReached(), "lower checkpoint fallback retains the reached checkpoint");
+    Game reload(liveOptions);
+    require(reload.levelController().start(reload, level), "a room with mined marker supports reloads");
+    press(reload, &InputActions::respawn);
+    require(reload.player.feetPosition() == glm::vec3(.5f,9,20.5f) && pickups(reload) == 2,
+            "manual reset after profile reload finds the surviving Start floor");
+    removeNearbyFloors(live);
+    press(live, &InputActions::respawn);
+    require(!live.levelActive() && live.equipment.lootProgress.size() == 2 && !live.health().dead(),
+            "when neither marker has a surviving floor, manual reset safely returns to the village");
+
+    auto dev = liveOptions; dev.dev = true;
+    Game builder(dev);
+    click(builder, SectionUiWorldBase);
+    const auto& entries = builder.sectionEditor().entries();
+    const auto entry = std::find_if(entries.begin(), entries.end(), [&](const auto& value) { return value.path == section; });
+    require(entry != entries.end(), "marker fixture appears in the creative library");
+    click(builder, SectionUiLibraryEntryBase + static_cast<int>(entry - entries.begin()));
+    press(builder, &InputActions::devTest);
+    checkStart(builder); checkCheckpoint(builder);
+    require(builder.sectionEditor().checkpointReached(), "F8 retains the reached checkpoint after losing its ore support");
+    removeNearbyFloors(builder);
+    press(builder, &InputActions::respawn);
+    require(builder.sectionEditor().screen() == SectionEditorScreen::Build && builder.world.sameContents(room)
+            && !builder.health().dead(), "an F8 room without safe respawn ground returns to the preserved authored world");
+    require(read(section) == authored, "marker recovery never rewrites the accepted world");
+}
 } // namespace
 
 int main()
@@ -254,6 +335,7 @@ int main()
         controls(options, level);
         fullBagAndSaveFailure(options, level, root);
         builderPreservation(options, section);
+        minedMarkerRespawns(options, root);
         std::cout << "Mining game tests passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; result = 1; }
     std::filesystem::remove_all(root);

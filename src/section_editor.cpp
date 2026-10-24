@@ -1148,7 +1148,7 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
 void SectionEditor::faceMarker(Game& game, glm::vec3 position)
 {
     game.player.setAssetCollision(game.sectionSceneCollision());
-    if (!game.player.setFeetPosition(game.world, position) || !game.player.grounded())
+    if (!game.placeAtSectionMarker(position))
         throw std::runtime_error("Marker has no supported space for the player");
     game.camera.setPosition(game.player.eyePosition());
     auto direction = meta_.finish - position;
@@ -1213,7 +1213,11 @@ void SectionEditor::respawnAfterDeath(Game& game)
 }
 void SectionEditor::updateTest(Game& game, const InputActions& actions, float deltaSeconds)
 {
-    if (actions.respawn) { resetTest(game, actions.restartCrossing); return; }
+    if (actions.respawn) {
+        try { resetTest(game, actions.restartCrossing); }
+        catch (const std::exception&) { respawnAfterDeath(game); }
+        return;
+    }
     if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
         game.equipment.selectedSlot = *actions.selectedTool;
     else if (actions.toolStep) game.equipment.selectedSlot = ((game.equipment.selectedSlot

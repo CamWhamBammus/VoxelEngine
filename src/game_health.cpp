@@ -55,6 +55,30 @@ void Game::restoreHealth()
     player.consumeFallDistance();
 }
 
+bool Game::placeAtSectionMarker(glm::vec3 feet)
+{
+    // Validate using a copy: a failed candidate must not strand the live player
+    // in midair while the caller falls back to another marker or the village.
+    auto candidate = player;
+    constexpr glm::vec2 offsets[]{
+        {0,0}, {1,0}, {-1,0}, {0,1}, {0,-1},
+        {1,1}, {-1,1}, {1,-1}, {-1,-1},
+        {2,0}, {-2,0}, {0,2}, {0,-2}
+    };
+    for (const auto offset : offsets) {
+        const auto start = feet + glm::vec3(offset.x,0,offset.y);
+        if (!candidate.setFeetPosition(world, start)) continue;
+        if (!candidate.grounded()) candidate.move(world, {0,-float(World::MaxExclusive.y),0});
+        // Falling below the section's kill plane is not a safe respawn.
+        if (!candidate.grounded() || candidate.feetPosition().y <= SectionInteriorMin.y - 2.0f) continue;
+        player = candidate;
+        // The landing search is a teleport, not a fall to damage on next tick.
+        player.setFeetPosition(world, player.feetPosition());
+        return true;
+    }
+    return false;
+}
+
 void Game::resetPlayerHit()
 {
     playerHitDirection_ = glm::vec3(0);

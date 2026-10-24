@@ -83,6 +83,9 @@ public:
     glm::vec3 playerHitDirection() const { return playerHitDirection_; }
     Camera viewCamera() const;
     void restoreHealth();
+    // Mining may remove a marker's support. Respawn on surviving ground nearby
+    // without regenerating the section or changing any collection records.
+    bool placeAtSectionMarker(glm::vec3 feet);
     // Called after movement, before checking checkpoints or section exits.
     bool checkPlayerDamage(float deathHeight);
     bool updateCombat(const InputActions& actions, float seconds);

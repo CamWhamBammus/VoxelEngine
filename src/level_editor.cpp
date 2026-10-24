@@ -148,7 +148,7 @@ void LevelController::publish(Game&, bool replace)
 
 void LevelController::position(Game& game, glm::vec3 feet)
 {
-    if (!game.player.setFeetPosition(game.world, feet) || !game.player.grounded())
+    if (!game.placeAtSectionMarker(feet))
         throw std::runtime_error("The section marker no longer has a safe supported landing");
     const auto direction = meta_.finish - feet;
     const float yaw = std::hypot(direction.x, direction.z) > .001f
@@ -222,7 +222,7 @@ void LevelController::reset(Game& game, bool full)
             position(game, checkpointReached_ && meta_.checkpoint ? *meta_.checkpoint : meta_.spawn);
             game.restoreHealth();
         }
-        catch (const std::exception& error) { message_ = error.what(); }
+        catch (const std::exception&) { respawnAfterDeath(game); }
     }
 }
 
