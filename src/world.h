@@ -25,10 +25,12 @@ enum class Block : std::uint8_t {
     SlateStairs = 49, SlateStairsWest, SlateStairsSouth, SlateStairsEast,
     MossStoneStairs = 53, MossStoneStairsWest, MossStoneStairsSouth, MossStoneStairsEast,
     PathStairs = 57, PathStairsWest, PathStairsSouth, PathStairsEast,
-    AgedPlankStairs = 61, AgedPlankStairsWest, AgedPlankStairsSouth, AgedPlankStairsEast
+    AgedPlankStairs = 61, AgedPlankStairsWest, AgedPlankStairsSouth, AgedPlankStairsEast,
+    TinOre = 65, SilverOre, GoldOre, QuartzOre, JadeOre, AmethystOre, RubyOre,
+    SapphireOre, EmeraldOre, CobaltOre, TitaniumOre, MithrilOre, Obsidian
 };
 
-inline constexpr std::size_t BlockCount = 65;
+inline constexpr std::size_t BlockCount = 78;
 inline constexpr std::array PlaceableBlocks{
     Block::Grass, Block::Dirt, Block::Stone, Block::Sand,
     Block::Limestone, Block::Slate, Block::CoalOre, Block::CopperOre, Block::IronOre,
@@ -37,6 +39,9 @@ inline constexpr std::array PlaceableBlocks{
     Block::MossStone, Block::MossBrick, Block::RootedDirt, Block::Clay, Block::Silt,
     Block::RootWood, Block::AgedPlanks, Block::Calcite, Block::Moss, Block::BlossomLeaves,
     Block::AmberCrystal, Block::GlowMoss,
+    Block::TinOre, Block::SilverOre, Block::GoldOre, Block::QuartzOre, Block::JadeOre,
+    Block::AmethystOre, Block::RubyOre, Block::SapphireOre, Block::EmeraldOre,
+    Block::CobaltOre, Block::TitaniumOre, Block::MithrilOre, Block::Obsidian,
     Block::PlankStairs, Block::StoneStairs, Block::BrickStairs, Block::LimestoneStairs,
     Block::SlateStairs, Block::MossStoneStairs, Block::PathStairs, Block::AgedPlankStairs
 };
@@ -132,6 +137,19 @@ constexpr std::string_view blockName(Block block) noexcept
     case Block::BlossomLeaves: return "Blossom leaves";
     case Block::AmberCrystal: return "Amber crystal";
     case Block::GlowMoss: return "Glow moss";
+    case Block::TinOre: return "Tin ore";
+    case Block::SilverOre: return "Silver ore";
+    case Block::GoldOre: return "Gold ore";
+    case Block::QuartzOre: return "Quartz ore";
+    case Block::JadeOre: return "Jade ore";
+    case Block::AmethystOre: return "Amethyst ore";
+    case Block::RubyOre: return "Ruby ore";
+    case Block::SapphireOre: return "Sapphire ore";
+    case Block::EmeraldOre: return "Emerald ore";
+    case Block::CobaltOre: return "Cobalt ore";
+    case Block::TitaniumOre: return "Titanium ore";
+    case Block::MithrilOre: return "Mithril ore";
+    case Block::Obsidian: return "Obsidian";
     default: break;
     }
     return "Unknown";
@@ -202,6 +220,19 @@ inline glm::vec3 blockColor(Block block) noexcept
     case Block::BlossomLeaves: return {0.70f, 0.31f, 0.50f};
     case Block::AmberCrystal: return {0.94f, 0.52f, 0.11f};
     case Block::GlowMoss: return {0.13f, 0.62f, 0.39f};
+    case Block::TinOre: return {.58f, .65f, .63f};
+    case Block::SilverOre: return {.68f, .73f, .80f};
+    case Block::GoldOre: return {.78f, .58f, .22f};
+    case Block::QuartzOre: return {.79f, .77f, .81f};
+    case Block::JadeOre: return {.28f, .57f, .38f};
+    case Block::AmethystOre: return {.52f, .31f, .69f};
+    case Block::RubyOre: return {.70f, .20f, .28f};
+    case Block::SapphireOre: return {.24f, .38f, .72f};
+    case Block::EmeraldOre: return {.16f, .64f, .39f};
+    case Block::CobaltOre: return {.25f, .43f, .62f};
+    case Block::TitaniumOre: return {.47f, .60f, .70f};
+    case Block::MithrilOre: return {.26f, .72f, .65f};
+    case Block::Obsidian: return {.19f, .13f, .28f};
     case Block::Air: return {0.0f, 0.0f, 0.0f};
     default: break;
     }

@@ -32,6 +32,7 @@ add_library(VoxelCore
     src/game_inventory.cpp
     src/equipment.cpp
     src/items.cpp
+    src/ores.cpp
     src/inventory.cpp
     src/loot.cpp
     src/spawner_loot.cpp
