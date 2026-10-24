@@ -332,27 +332,26 @@ void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0)
 
 void toolBelt(Drawing& out,const Equipment& equipment,float center,float top,glm::vec2 needle={0,-1})
 {
-    constexpr float slotWidth=58,gap=7,total=ToolCount*slotWidth+(ToolCount-1)*gap;
+    constexpr float slotWidth=48,gap=6,total=ToolCount*slotWidth+(ToolCount-1)*gap;
     const float left=center-total*.5f;
-    out.frame(left-7,top-7,total+14,72,Edge,Panel);
     for(int slot=0;slot<ToolCount;++slot) {
         const float x=left+slot*(slotWidth+gap);
         const bool active=slot==equipment.selectedSlot;
-        out.frame(x,top,slotWidth,58,active ? Gold : Edge,active ? Selected : Panel);
-        out.quad(x+5,top+5,10,11,Panel);
-        out.text(std::to_string(slot+1),x+8,top+7,1,active ? Gold : Muted);
-        const glm::vec2 icon(x+29,top+31);
+        out.frame(x,top,slotWidth,48,active ? Gold : glm::vec4(.30f,.25f,.19f,.65f),
+            active ? glm::vec4(.20f,.14f,.08f,.86f) : glm::vec4(.055f,.045f,.035f,.68f),3);
+        out.text(std::to_string(slot+1),x+5,top+5,.8f,active ? Gold : Muted);
+        const glm::vec2 icon(x+24,top+26);
         switch(static_cast<Tool>(slot)) {
-        case Tool::Pickaxe: pickaxeIcon(out,icon,.95f,equipment.pickaxeTier); break;
-        case Tool::Lantern: lanternIcon(out,icon,.95f); break;
-        case Tool::Compass: compassIcon(out,icon,.95f,needle); break;
-        case Tool::Sword: swordIcon(out,icon+glm::vec2(-3,5),.47f,.46f); break;
+        case Tool::Pickaxe: pickaxeIcon(out,icon,.75f,equipment.pickaxeTier); break;
+        case Tool::Lantern: lanternIcon(out,icon,.75f); break;
+        case Tool::Compass: compassIcon(out,icon,.75f,needle); break;
+        case Tool::Sword: swordIcon(out,icon+glm::vec2(-1,4),.39f,.40f); break;
         }
         if(slot==0) {
-            out.quad(x+35,top+43,19,11,Panel);
-            out.text("T"+std::to_string(equipment.pickaxeTier),x+39,top+45,1,Gold);
+            for (int tier=0;tier<3;++tier)
+                out.quad(x+31+tier*4,top+39,2,3,tier<equipment.pickaxeTier ? Gold : Edge);
         }
-        if(active) out.quad(x+6,top+54,slotWidth-12,2,Gold);
+        if(active) out.quad(x+5,top+45,slotWidth-10,2,Gold);
     }
 }
 
@@ -387,6 +386,21 @@ void fittedCentered(Drawing& out,std::string_view text,float center,float y,floa
         const auto clipped=std::string(text.substr(0,columns>3 ? columns-3 : columns))+(columns>3 ? "..." : "");
         out.centered(clipped,center,y,pixel,color);
     } else out.centered(text,center,y,pixel,color);
+}
+
+// Gameplay labels use a shadow instead of the framed panels used in menus.
+void quietText(Drawing& out, std::string_view text, float x, float y, float width,
+               glm::vec4 color=Cream)
+{
+    fittedText(out,text,x+1,y+1,width,1,{0,0,0,.9f});
+    fittedText(out,text,x,y,width,1,color);
+}
+
+void quietCentered(Drawing& out, std::string_view text, float center, float y, float width,
+                   glm::vec4 color=Cream)
+{
+    fittedCentered(out,text,center+1,y+1,width,1,{0,0,0,.9f});
+    fittedCentered(out,text,center,y,width,1,color);
 }
 
 void wrappedDescription(Drawing& out, std::string_view text, float x, float y,
@@ -447,36 +461,12 @@ void crossingProgress(Drawing& out, const Game& game, float width, float height)
     const int index=game.rootCrossingIndex();
     if (index<0 || index>=RootCrossingCount) return;
     const auto& info=rootCrossingCatalog()[index];
-    constexpr float panelWidth=420;
-    const float center=width*0.5f, x=center-panelWidth*0.5f;
-    out.frame(x,16,panelWidth,83,Edge);
-    out.quad(x+2,18,3,79,Leaf);
-    out.text("ROOT CROSSING "+std::to_string(index+1)+" / "+std::to_string(RootCrossingCount),
-             x+17,28,1,Leaf);
-    const float difficultyWidth=(info.difficulty.size()*6-1)*out.fontPixel(1);
-    out.text(info.difficulty,x+panelWidth-15-difficultyWidth,28,1,Muted);
-    fittedText(out,info.name,x+17,45,386,1.75f,Cream);
-    out.text("TIME "+crossingTime(game.crossingElapsed()),x+17,70,1,Cream);
-    out.text("FALLS "+std::to_string(game.crossingFalls()),x+155,70,1,Muted);
-    fittedText(out,game.crossingCompleted() ? "EXIT REACHED"
-                 : game.crossingCheckpointReached() ? "CHECKPOINT SAVED" : "CHECKPOINT AHEAD",
-             x+271,70,132,1,game.crossingCompleted() || game.crossingCheckpointReached() ? Leaf : Muted);
-    const auto best=game.crossingBestTime();
-    out.text(best>0 ? "SESSION BEST "+crossingTime(best) : "CYAN CHECKPOINT / GOLD EXIT",
-             x+17,86,0.75f,Muted);
-    if (game.crossingCompleted()) {
-        out.frame(center-170,113,340,62,Leaf);
-        out.centered("CROSSING COMPLETE",center,126,1.75f,Leaf);
-        fittedCentered(out,"N - NEXT   SHIFT+R - RETRY   B - VILLAGE",center,153,316,1,Cream);
-    } else if (game.status.starts_with("RETURNED") || game.status.starts_with("CHECKPOINT")
-               || game.status.starts_with("NEW ATTEMPT")) {
-        const auto feedback=std::string_view(game.status).substr(0,game.status.find(" | "));
-        out.frame(center-170,109,340,24,Edge);
-        fittedCentered(out,feedback,center,117,316,1,Leaf);
-    }
-    out.frame(x,height-165,panelWidth,37,Edge);
-    fittedCentered(out,"N/P CHANGE  R CHECKPOINT  SHIFT+R RESTART",center,height-155,panelWidth-28,1,Cream);
-    fittedCentered(out,"F6 ALL COURSES  B VILLAGE  H CONTROLS",center,height-142,panelWidth-28,1,Muted);
+    quietText(out,info.name,18,20,width-36);
+    const auto progress=game.crossingCompleted() ? "COMPLETE / N NEXT / SHIFT+R RETRY"
+        : game.crossingCheckpointReached() ? "CHECKPOINT SAVED" : "ROOT CROSSING";
+    quietText(out,progress,18,36,width-36,game.crossingCompleted() || game.crossingCheckpointReached() ? Leaf : Muted);
+    if (game.crossingCompleted())
+        quietCentered(out,"FINISHED IN "+crossingTime(game.crossingElapsed()),width*.5f,height*.35f,360,Leaf);
 }
 
 struct SectionHit {
@@ -946,32 +936,21 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
     const float center=width*0.5f;
     constexpr float w=620;
     const float x=center-w*0.5f;
-    out.frame(x,14,w,66,Edge);
-    out.quad(x+2,16,3,62,testing ? Gold : Leaf);
-    out.text(testing ? "SECTION PLAYTEST" : "SECTION WORKSHOP / CREATIVE",x+16,25,1,testing ? Gold : Leaf);
-    fittedText(out,editor.meta().name,x+16,43,380,1.5f,Cream);
-    fittedText(out,sectionWorldName(editor.selectedWorld()),x+w-205,25,188,1,Muted);
-    out.text(testing ? "F8 - BACK TO BUILD" : editor.dirty() ? "DRAFT / UNSAVED CHANGES" : "DRAFT SAVED",x+w-205,45,1,testing ? Gold : Muted);
-    fittedText(out,editor.message(),x+16,67,w-32,0.85f,Leaf);
     if (testing) {
-        out.frame(center-243,90,486,31,Edge);
-        out.text("TIME "+crossingTime(editor.testElapsed()),center-228,101,1,Cream);
-        out.text("FALLS "+std::to_string(editor.testFalls()),center-85,101,1,Muted);
-        out.text(editor.testComplete() ? "END REACHED" : editor.checkpointReached() ? "CHECKPOINT SAVED" : "REACH THE GOLD END",center+49,101,1,Leaf);
-        if (editor.testComplete()) {
-            out.frame(center-239,136,478,67,Leaf);
-            out.centered("SECTION TEST COMPLETE",center,149,1.8f,Leaf);
-            out.centered("F10 - NAME AND ACCEPT / F8 - KEEP BUILDING",center,178,1,Cream);
-        }
-        toolBelt(out,game.equipment,center,height-147);
-        out.centered(game.equipment.selectedTool()==Tool::Sword ? "SWORD / LEFT CLICK TO SWING"
-            : game.equipment.selectedTool()==Tool::Pickaxe ? "PICKAXE / HOLD LEFT CLICK TO MINE" : "1-4 / SCROLL - SELECT TOOL",
-            center,height-169,1,Gold);
-        out.frame(center-255,height-66,510,49,Edge);
-        out.centered(game.player.inWater() ? "WASD SWIM / SPACE RISE / CTRL DIVE / SHIFT FASTER"
-                     : "WASD MOVE / SPACE JUMP / SHIFT SPRINT",center,height-54,1,Cream);
-        out.centered("R - RESET / F8 - BUILD / F10 - ACCEPT / B - VILLAGE",center,height-35,0.9f,Muted);
+        quietText(out,"PLAYTEST / "+editor.meta().name,18,20,width-300);
+        quietText(out,editor.testComplete() ? "COMPLETE / F10 ACCEPT / F8 BUILD"
+            : editor.checkpointReached() ? "CHECKPOINT SAVED / F8 BUILD" : "F8 BACK TO BUILD",18,36,width-36,
+            editor.testComplete() || editor.checkpointReached() ? Leaf : Muted);
+        toolBelt(out,game.equipment,center,height-64);
+        quietText(out,"H HELP",width-82,height-27,64,Muted);
     } else {
+        out.frame(x,14,w,66,Edge);
+        out.quad(x+2,16,3,62,Leaf);
+        out.text("SECTION WORKSHOP / CREATIVE",x+16,25,1,Leaf);
+        fittedText(out,editor.meta().name,x+16,43,380,1.5f,Cream);
+        fittedText(out,sectionWorldName(editor.selectedWorld()),x+w-205,25,188,1,Muted);
+        out.text(editor.dirty() ? "DRAFT / UNSAVED CHANGES" : "DRAFT SAVED",x+w-205,45,1,Muted);
+        fittedText(out,editor.message(),x+16,67,w-32,0.85f,Leaf);
         const auto& item=editor.hotbar()[editor.selectedSlot()];
         const auto mode=editor.buildMode();
         const bool pasting=mode==SectionBuildMode::Paste;
@@ -1209,22 +1188,12 @@ void levelReplaceMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
 
 void levelRunHud(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
 {
-    constexpr float w=580;
-    const float center=width*.5f,x=center-w*.5f;
+    const float center=width*.5f;
     const auto& definition=level.definition();
-    out.frame(x,15,w,93,Edge);
-    out.quad(x+2,17,3,89,Leaf);
-    fittedText(out,sectionWorldName(definition.world)+" / LEVEL "+std::to_string(definition.number),x+17,27,w-34,1,Leaf);
-    fittedText(out,definition.name,x+17,45,w-34,1.7f,Cream);
-    fittedText(out,"SECTION "+std::to_string(level.sectionIndex()+1)+" / "+std::to_string(definition.sections.size())+" - "+level.meta().name,x+17,69,w-34,1,Gold);
-    out.text("TIME "+crossingTime(level.elapsed()),x+17,90,1,Cream);
-    out.text("FALLS "+std::to_string(level.falls()),x+170,90,1,Muted);
-    fittedText(out,level.screen()==LevelScreen::Complete ? "LEVEL COMPLETE"
-        : level.screen()==LevelScreen::Transition ? "END REACHED"
-        : level.checkpointReached() ? "CHECKPOINT SAVED" : "FOLLOW THE GOLD END MARKER",x+285,90,w-300,1,Muted);
     if (level.screen()==LevelScreen::Play) {
-        out.frame(x,height-171,w,35,Edge);
-        fittedText(out,"R CHECKPOINT / SHIFT+R RESTART LEVEL / B VILLAGE / F4 LEVELS",x+14,height-159,w-28,1,Cream);
+        quietText(out,std::to_string(level.sectionIndex()+1)+" / "+std::to_string(definition.sections.size())
+            +"   "+level.meta().name,18,20,width-300);
+        if (level.checkpointReached()) quietText(out,"CHECKPOINT SAVED",18,36,width-36,Leaf);
     } else if (level.screen()==LevelScreen::Transition) {
         out.quad(0,0,width,height,{.025f,.016f,.009f,.78f});
         out.frame(center-244,height*.5f-56,488,112,Leaf);
@@ -1666,52 +1635,25 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (glm::length(needle) > 0.1f) needle = glm::normalize(needle);
     else needle = {0,-1};
     const float center = width * 0.5f;
-    const float barTop = height - 80;
+    const float barTop = height - 64;
     toolBelt(drawing,equipment,center,barTop,needle);
-    std::string title(toolName(selected));
-    std::string hint;
-    if (selected == Tool::Pickaxe) {
-        title += " - TIER " + std::to_string(equipment.pickaxeTier);
-        hint = game.levelActive() ? "HOLD LEFT CLICK - MINE ORE" : "UPGRADE AT THE BLACKSMITH";
-    } else if (selected == Tool::Lantern) {
-        hint = "WARM LIGHT WHILE EQUIPPED";
-    } else if(selected==Tool::Sword) {
-        hint="LEFT CLICK - SWING";
-    } else {
-        const int distance = static_cast<int>(std::round(glm::length(target)));
-        const int bearing = static_cast<int>(std::round(glm::degrees(std::atan2(needle.x,-needle.y))));
-        hint = std::string(game.levelController().active() ? "END " : game.rootCrossingActive() ? "EXIT " : "HEART TREE ")
-            + std::to_string(distance) + "M";
-        if (distance > 1)
-            hint += "  " + std::to_string(std::abs(bearing)) + " DEG " + (bearing < 0 ? "LEFT" : "RIGHT");
-    }
-    const float labelWidth = std::min(width-24,
-        std::max((title.size()*6-1)*drawing.fontPixel(1.5f),
-                 (hint.size()*6-1)*drawing.fontPixel(1))+18);
-    drawing.frame(center-labelWidth*0.5f,barTop-38,labelWidth,33,Edge,Panel);
-    fittedCentered(drawing,title,center,barTop-33,labelWidth-18,1.5f,Cream);
-    fittedCentered(drawing,hint,center,barTop-16,labelWidth-18,1,Muted);
-
-    if (game.player.inWater() && !game.menuOpen() && !game.devMode()) {
-        constexpr float swimWidth=420;
-        const float swimPixel=std::max(1.0f,1.0f/scale);
-        drawing.frame(center-swimWidth*.5f,height-210,swimWidth,35,Edge);
-        drawing.centered(game.player.underwater() ? "UNDERWATER" : "SWIMMING",center,height-202,swimPixel,Leaf);
-        fittedCentered(drawing,"SPACE RISE / CTRL DIVE / SHIFT SWIM FASTER",center,height-189,swimWidth-24,swimPixel,Cream);
+    quietText(drawing,"H HELP",width-82,height-27,64,Muted);
+    if (selected==Tool::Compass && !game.menuOpen()) {
+        const auto distance=static_cast<int>(std::round(glm::length(target)));
+        quietCentered(drawing,std::string(game.levelActive() ? "EXIT " : game.rootCrossingActive() ? "EXIT " : "HEART TREE ")
+            +std::to_string(distance)+"M",center,barTop-17,240,Muted);
     }
 
     if (game.rootCrossingActive() && !game.crossingMenuOpen())
         crossingProgress(drawing,game,width,height);
 
+    if (!game.menuOpen() && game.status.starts_with("Progress unavailable"))
+        quietText(drawing,"SAVE DATA UNAVAILABLE / H DETAILS",18,height-66,width-36,Gold);
     if (game.nearBlacksmith() && !game.menuOpen()) {
-        constexpr float promptWidth = 160;
-        drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Edge);
-        fittedCentered(drawing,"E - BLACKSMITH",center,height*0.5f+43,promptWidth-20,1.25f,Gold);
+        quietCentered(drawing,"E  BLACKSMITH",center,height*.5f+30,180,Gold);
     }
     if (game.nearExpeditionGate() && !game.menuOpen()) {
-        constexpr float promptWidth=234;
-        drawing.frame(center-promptWidth*0.5f,height*0.5f+35,promptWidth,25,Leaf);
-        fittedCentered(drawing,"E - EXPEDITIONS",center,height*0.5f+43,promptWidth-20,1.25f,Leaf);
+        quietCentered(drawing,"E  EXPEDITIONS",center,height*.5f+30,220,Leaf);
     }
     if (game.smithOpen()) {
         drawing.quad(0,0,width,height,{.025f,.016f,.009f,.55f});
@@ -1772,24 +1714,21 @@ void Hud::drawMining(const Game& game,int framebufferWidth,int framebufferHeight
     const float width=framebufferWidth/scale,height=framebufferHeight/scale;
     Drawing drawing(width,height,scale);
     const float center=width*.5f,top=height*.5f+26;
-    constexpr float w=250;
-    const auto accent=mining.blocked() ? glm::vec4(.91f,.47f,.35f,1) : Gold;
-    drawing.frame(center-w*.5f,top,w,54,Edge,Panel);
+    constexpr float w=200;
     if (!message.empty()) {
-        drawing.centered("MINING NOT SAVED",center,top+10,1,Gold);
-        fittedCentered(drawing,message,center,top+29,w-24,.85f,Cream);
-    } else {
-        fittedCentered(drawing,blockName(target->block),center,top+9,w-20,1.25f,Cream);
+        quietCentered(drawing,"MINING NOT SAVED",center,top,w,Gold);
+        quietCentered(drawing,message,center,top+16,420,Cream);
+    } else if (game.lootPrompt().empty() || mining.progress()>0) {
+        quietCentered(drawing,blockName(target->block),center,top,w,Cream);
         if (mining.blocked()) {
             const auto ore=oreInfo(target->block);
-            drawing.centered("REQUIRES TIER "+std::to_string(ore ? ore->requiredTier : 1)+" PICKAXE",
-                center,top+31,1,accent);
-        } else {
-            drawing.centered(mining.progress()>0 ? "MINING" : "HOLD LEFT CLICK",center,top+26,.85f,Muted);
-            const float fill=(w-24)*std::clamp(mining.progress(),0.0f,1.0f);
-            drawing.quad(center-w*.5f+12,top+42,w-24,4,Canvas);
-            drawing.quad(center-w*.5f+12,top+42,fill,4,accent);
-            drawing.quad(center-w*.5f+12,top+42,fill,1,Cream);
+            quietCentered(drawing,"TIER "+std::to_string(ore ? ore->requiredTier : 1)+" PICKAXE REQUIRED",
+                center,top+16,w,{.95f,.58f,.39f,1});
+        } else if (mining.progress()>0) {
+            constexpr float meter=112;
+            const float fill=meter*std::clamp(mining.progress(),0.0f,1.0f);
+            drawing.quad(center-meter*.5f-1,top+15,meter+2,5,{0,0,0,.65f});
+            drawing.quad(center-meter*.5f,top+16,fill,3,Gold);
         }
     }
     render(drawing,shader_,vao_,buffer_);
@@ -1827,30 +1766,23 @@ void Hud::drawCombat(const Game& game,int framebufferWidth,int framebufferHeight
         })) continue;
         if(collision && collision->raycast(eye,delta,distance-.08f)) continue;
         const float x=(ndc.x*.5f+.5f)*width;
-        // At melee range a tall enemy's head can meet the section title panel.
-        // Keep the damaged bar just below that panel instead of hiding it.
-        const float minimumY=game.devMode() ? 142 : game.levelActive() ? 130 : 20;
+        // Leave room for the compact section label at the top of the view.
+        const float minimumY=game.devMode() || game.levelActive() ? 55 : 20;
         const float y=std::max(minimumY,(.5f-ndc.y*.5f)*height);
         const float w=std::clamp(260.0f/distance,44.0f,88.0f);
-        drawing.frame(x-w*.5f-3,y-3,w+6,13,Edge,Panel,3);
+        drawing.quad(x-w*.5f-1,y-1,w+2,6,{0,0,0,.7f});
         const float fill=w*std::clamp(float(bar.current)/bar.maximum,0.0f,1.0f);
-        drawing.quad(x-w*.5f,y,w,7,{.22f,.10f,.075f,1});
-        drawing.quad(x-w*.5f,y,fill,7,{.72f,.20f,.16f,1});
-        drawing.quad(x-w*.5f,y,fill,2,{.98f,.49f,.33f,1});
-        const auto value=std::to_string(bar.current)+"/"+std::to_string(bar.maximum);
-        drawing.centered(value,x,y-15,1,Cream);
+        drawing.quad(x-w*.5f,y,w,4,{.22f,.10f,.075f,1});
+        drawing.quad(x-w*.5f,y,fill,4,{.72f,.20f,.16f,1});
+        drawing.quad(x-w*.5f,y,fill,1,{.98f,.49f,.33f,1});
     }
     if(!encounter.pendingCompletions().empty()) {
-        const float y=game.devMode() || game.levelActive() ? 130 : 16;
-        drawing.frame(width*.5f-220,y,440,48,{.76f,.30f,.18f,1},Panel);
-        drawing.centered("CLEAR NOT SAVED / RETRYING",width*.5f,y+10,1,Gold);
-        fittedCentered(drawing,game.inventoryMessage(),width*.5f,y+28,414,.9f,Cream);
+        quietCentered(drawing,"CLEAR NOT SAVED / RETRYING",width*.5f,58,440,Gold);
+        quietCentered(drawing,game.inventoryMessage(),width*.5f,74,440,Cream);
     } else if(encounter.active()) {
         const auto remaining=encounter.remaining();
         const std::string text="TRIAL / "+std::to_string(remaining)+(remaining==1 ? " SPAWNER REMAINS" : " SPAWNERS REMAIN");
-        const float y=game.devMode() || game.levelActive() ? 130 : 16;
-        drawing.frame(18,y,240,28,Edge,Panel);
-        fittedCentered(drawing,text,138,y+10,214,1,Gold);
+        quietText(drawing,text,width-250,20,232,Gold);
     }
     render(drawing,shader_,vao_,buffer_);
 }
@@ -1900,32 +1832,25 @@ void Hud::drawHealth(const Game& game, int framebufferWidth, int framebufferHeig
         }
     }
 
-    constexpr float x=18,w=180,h=44;
-    // The workshop's playtest uses a wide instruction strip along the bottom.
-    const float y=height-(game.devMode() ? 128 : 62);
+    constexpr float x=18,w=144,h=28;
+    const float y=height-44;
     const glm::vec4 blood{.73f,.20f,.17f,1};
     const glm::vec4 bright{.97f,.44f,.31f,1};
-    drawing.frame(x+2,y+3,w,h,{0,0,0,.3f},{0,0,0,.3f});
-    drawing.frame(x,y,w,h,glm::mix(Edge,bright,flash),
-        glm::mix(Panel,glm::vec4(.24f,.09f,.055f,Panel.a),flash*.7f));
+    drawing.quad(x-5,y-4,w+10,h+8,glm::mix(glm::vec4(.04f,.03f,.025f,.60f),
+        glm::vec4(.24f,.09f,.055f,.80f),flash*.7f));
     constexpr std::array<std::uint8_t,6> heart{0x66,0xff,0xff,0x7e,0x3c,0x18};
     for (int row=0;row<6;++row) for (int column=0;column<8;++column)
         if (heart[row]&(1u<<(7-column)))
-            drawing.quad(x+12+column*1.3f,y+11+row*1.3f,1.3f,1.3f,row<2 ? bright : blood);
-    drawing.text("HEALTH",x+30,y+12,1,Cream);
-    const auto value=std::to_string(health.current())+"/"+std::to_string(Health::Maximum);
-    drawing.text(value,x+w-13-(value.size()*6-1)*drawing.fontPixel(1),y+12,1,
-        health.current()<=25 ? bright : Muted);
-    constexpr float meterWidth=w-24;
-    drawing.quad(x+12,y+26,meterWidth,8,{.23f,.10f,.075f,1});
+            drawing.quad(x+column*1.3f,y+16+row*1.3f,1.3f,1.3f,row<2 ? bright : blood);
+    quietText(drawing,std::to_string(health.current()),x+22,y+3,w-22,
+        health.current()<=25 ? bright : Cream);
+    constexpr float meterWidth=w-22;
+    drawing.quad(x+22,y+17,meterWidth,6,{.23f,.10f,.075f,1});
     const float fill=meterWidth*std::clamp(health.fraction(),0.0f,1.0f);
     if (fill>0) {
-        drawing.quad(x+12,y+26,fill,8,glm::mix(blood,bright,flash*.45f));
-        drawing.quad(x+12,y+26,fill,2,glm::mix(bright,Cream,flash*.55f));
-        drawing.quad(x+12,y+32,fill,2,{.48f,.11f,.09f,1});
+        drawing.quad(x+22,y+17,fill,6,glm::mix(blood,bright,flash*.45f));
+        drawing.quad(x+22,y+17,fill,1,glm::mix(bright,Cream,flash*.55f));
     }
-    for (int tick=1;tick<4;++tick)
-        drawing.quad(x+12+meterWidth*tick*.25f,y+28,1,6,{.13f,.07f,.04f,.55f});
 
     if (health.dead()) {
         drawing.quad(0,0,width,height,{.035f,.018f,.018f,.67f});
@@ -2005,15 +1930,11 @@ void Hud::drawInventory(const Game& game,int framebufferWidth,int framebufferHei
     std::vector<SectionHit> hits;
     if (game.inventoryOpen()) inventoryUi(drawing,hits,game,canvas.width,canvas.height);
     else if (!game.menuOpen()) {
-        const float x=canvas.width-192,y=canvas.height-40;
-        packFrame(drawing,x,y,174,25,Edge,Panel,4);
-        drawing.text("I  PACK "+std::to_string(game.equipment.inventory.occupiedSlots())+"/20",x+13,y+9,1,Muted);
-        if (!game.lootPrompt().empty()) {
-            const float textWidth=(game.lootPrompt().size()*6-1)*drawing.fontPixel(1);
-            const float promptWidth=std::min(canvas.width-36,std::max(330.0f,textWidth+32));
-            const float px=(canvas.width-promptWidth)*.5f,py=canvas.height*.5f+35;
-            packFrame(drawing,px,py,promptWidth,30,Gold,Canvas,5);
-            fittedText(drawing,game.lootPrompt(),px+14,py+11,promptWidth-28,1,Gold);
+        if (game.equipment.inventory.occupiedSlots()==Inventory::SlotCount)
+            quietText(drawing,"PACK 20/20",canvas.width-90,canvas.height-46,76,Gold);
+        if (!game.lootPrompt().empty() && game.mining().progress()==0) {
+            quietCentered(drawing,game.lootPrompt(),canvas.width*.5f,canvas.height*.5f+30,
+                canvas.width-36,Gold);
         }
     }
     render(drawing,shader_,vao_,buffer_);

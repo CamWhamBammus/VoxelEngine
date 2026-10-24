@@ -391,48 +391,51 @@ void verifyCrosshair(int width, int height)
     Overlay overlay;
     Camera camera;
     std::vector<unsigned char> pixels(readSize * readSize * 3);
-    glViewport(0, 0, width, height);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-    for (const float scale : {1.0f, 2.0f, 0.0f, std::numeric_limits<float>::quiet_NaN()}) {
-        glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-        overlay.draw({}, camera, width, height, scale);
-        glReadPixels(width / 2 - readSize / 2, height / 2 - readSize / 2,
-                     readSize, readSize, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
-        int white = 0, black = 0;
-        int minimumX = readSize, minimumY = readSize, maximumX = -1, maximumY = -1;
-        for (int y = 0; y < readSize; ++y) {
-            for (int x = 0; x < readSize; ++x) {
-                const auto offset = static_cast<std::size_t>((y * readSize + x) * 3);
-                const bool isWhite = pixels[offset] == 255 && pixels[offset + 1] == 255
-                    && pixels[offset + 2] == 255;
-                const bool isBlack = pixels[offset] == 0 && pixels[offset + 1] == 0
-                    && pixels[offset + 2] == 0;
-                white += isWhite;
-                black += isBlack;
-                if (isWhite || isBlack) {
-                    minimumX = std::min(minimumX, x);
-                    minimumY = std::min(minimumY, y);
-                    maximumX = std::max(maximumX, x);
-                    maximumY = std::max(maximumY, y);
+    for (const auto size : {glm::ivec2(width,height),glm::ivec2(640,360)}) {
+        glViewport(0,0,size.x,size.y);
+        for (const float scale : {1.0f, 2.0f, 0.0f, std::numeric_limits<float>::quiet_NaN()}) {
+            glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            overlay.draw({}, camera, size.x, size.y, scale);
+            glReadPixels(size.x / 2 - readSize / 2, size.y / 2 - readSize / 2,
+                         readSize, readSize, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
+            int white = 0, black = 0;
+            int minimumX = readSize, minimumY = readSize, maximumX = -1, maximumY = -1;
+            for (int y = 0; y < readSize; ++y) {
+                for (int x = 0; x < readSize; ++x) {
+                    const auto offset = static_cast<std::size_t>((y * readSize + x) * 3);
+                    const bool isWhite = pixels[offset] == 255 && pixels[offset + 1] == 255
+                        && pixels[offset + 2] == 255;
+                    const bool isBlack = pixels[offset] == 0 && pixels[offset + 1] == 0
+                        && pixels[offset + 2] == 0;
+                    white += isWhite;
+                    black += isBlack;
+                    if (isWhite || isBlack) {
+                        minimumX = std::min(minimumX, x);
+                        minimumY = std::min(minimumY, y);
+                        maximumX = std::max(maximumX, x);
+                        maximumY = std::max(maximumY, y);
+                    }
                 }
             }
-        }
-        const int expectedScale = scale == 2.0f ? 2 : 1;
-        if (white != 60 * expectedScale * expectedScale || black != 68 * expectedScale * expectedScale
-            || minimumX != readSize / 2 - 9 * expectedScale || minimumY != minimumX
-            || maximumX != readSize / 2 + 9 * expectedScale - 1 || maximumY != maximumX) {
-            throw std::runtime_error("Crosshair lost its centered DPI-scaled white bars or dark border");
-        }
-        std::array<GLint, 2> polygonMode{};
-        glGetIntegerv(GL_POLYGON_MODE, polygonMode.data());
-        if (glIsEnabled(GL_CULL_FACE) != GL_TRUE || polygonMode[0] != GL_LINE
-            || polygonMode[1] != GL_LINE) {
-            throw std::runtime_error("Crosshair changed the caller's culling or polygon mode");
+            const int expectedScale = std::min(scale == 2.0f ? 2 : 1,std::max(1,std::min(size.x/640,size.y/360)));
+            if (white != 60 * expectedScale * expectedScale || black != 68 * expectedScale * expectedScale
+                || minimumX != readSize / 2 - 9 * expectedScale || minimumY != minimumX
+                || maximumX != readSize / 2 + 9 * expectedScale - 1 || maximumY != maximumX) {
+                throw std::runtime_error("Crosshair lost its centered DPI-scaled white bars or dark border");
+            }
+            std::array<GLint, 2> polygonMode{};
+            glGetIntegerv(GL_POLYGON_MODE, polygonMode.data());
+            if (glIsEnabled(GL_CULL_FACE) != GL_TRUE || polygonMode[0] != GL_LINE
+                || polygonMode[1] != GL_LINE) {
+                throw std::runtime_error("Crosshair changed the caller's culling or polygon mode");
+            }
         }
     }
+    glViewport(0,0,width,height);
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glCullFace(GL_BACK);
     glDisable(GL_CULL_FACE);

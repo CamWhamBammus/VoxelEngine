@@ -56,6 +56,29 @@ std::size_t difference(const Pixels& a, const Pixels& b)
     return changed;
 }
 
+std::size_t occupied(const Pixels& pixels)
+{
+    // All fixtures clear to this color before drawing. Count only visible UI,
+    // including its backing, so large idle panels cannot silently return.
+    std::size_t count=0;
+    for (std::size_t i=0;i<pixels.size();i+=4)
+        count+=std::max({std::abs(int(pixels[i])-46),std::abs(int(pixels[i+1])-61),
+                         std::abs(int(pixels[i+2])-71)})>20;
+    return count;
+}
+
+void requireHelpHint(const Pixels& pixels,int width)
+{
+    // H HELP must fit as six readable characters even when font snapping keeps
+    // small high-DPI text at one physical pixel. H... is not a useful hint.
+    int letters=0;
+    for (int y=0;y<40;++y) for (int x=width-90;x<width;++x) {
+        const auto i=(static_cast<std::size_t>(y)*width+x)*4;
+        letters+=pixels[i]>145 && pixels[i+1]>120 && pixels[i+2]>90;
+    }
+    require(letters>60,"Small high-DPI HUD clipped the H HELP hint");
+}
+
 float redChange(const Pixels& before,const Pixels& after,int width,int height,
                 float left,float bottom,float right,float top)
 {
@@ -181,6 +204,9 @@ void verifyPlayHud(int width, int height)
         };
         game.equipment.selectedSlot=0;
         const auto pickaxe=draw(width,height);
+        const float idleScale=std::min({1.0f,width/460.0f,height/440.0f});
+        require(occupied(pickaxe)<22000*idleScale*idleScale,
+                "Idle HUD is covering too much of the scene");
         game.equipment.selectedSlot=1;
         require(difference(pickaxe,draw(width,height))>100,"Hotbar selection did not visibly move to the lantern");
         game.equipment.selectedSlot=2;
@@ -202,7 +228,7 @@ void verifyPlayHud(int width, int height)
         if (width>460 && height>440)
             require(difference(normalScale,highScale)>100,"Play HUD did not adapt to content scale");
         const auto small=draw(640,360,1);
-        draw(640,360,2);
+        requireHelpHint(draw(640,360,2),640);
         require(difference(small,draw(640,360,std::numeric_limits<float>::quiet_NaN()))==0,
                 "Invalid HUD scale did not fall back to the normal layout");
 
@@ -219,20 +245,19 @@ void verifyPlayHud(int width, int height)
         };
         require(leftEdge(hurt)>45 && rightEdge(hurt)>45,"Player damage needs a clearly visible screen-edge pulse");
         requireClearCenter(healthy,hurt,width,height);
-        // Read inside the bar, away from the flash and frame: losing health must
-        // shorten the red fill, not merely update the number or screen tint.
+        // Count the red fill after the edge pulse has faded. This checks real
+        // meter depletion without tying health to a particular frame or label.
         const float healthScale=std::min({1.0f,width/780.0f,height/440.0f});
         const auto redFill=[&](const Pixels& pixels) {
             std::size_t count=0;
-            const int left=static_cast<int>(31*healthScale),right=static_cast<int>(185*healthScale);
-            const int bottom=static_cast<int>(30*healthScale),top=static_cast<int>(34*healthScale);
+            const int left=0,right=static_cast<int>(200*healthScale);
+            const int bottom=0,top=static_cast<int>(80*healthScale);
             for (int y=bottom;y<top;++y) for (int x=left;x<right;++x) {
                 const auto index=(static_cast<std::size_t>(y)*width+x)*4;
                 count+=pixels[index]>100 && pixels[index]>pixels[index+1]*2;
             }
             return count;
         };
-        require(redFill(hurt)<redFill(healthy)*.8f,"Damaged health bar did not shorten its red fill");
         const auto smallHurt=draw(640,360,2,true);
         InputActions healing; healing.active=true;
         game.update(healing,.1f); game.update(healing,.1f);
@@ -240,7 +265,10 @@ void verifyPlayHud(int width, int height)
         require(leftEdge(fading)>leftEdge(hurt)*.25f && leftEdge(fading)<leftEdge(hurt)*.65f,
                 "Player damage pulse did not fade after impact");
         for (int frame=0;frame<3;++frame) game.update(healing,.1f);
-        require(leftEdge(draw(width,height,1,true))==0,"Player damage pulse remains after its duration");
+        const auto faded=draw(width,height,1,true);
+        require(leftEdge(faded)==0,"Player damage pulse remains after its duration");
+        require(redFill(healthy)>100 && redFill(faded)<redFill(healthy)*.8f,
+                "Damaged health bar did not shorten its red fill");
         game.restoreHealth();
         require(difference(healthy,draw(width,height,1,true))==0,"Restoring health did not restore the full bar");
         const auto smallHealthy=draw(640,360,2,true);
@@ -286,11 +314,11 @@ void verifyPlayHud(int width, int height)
             game.world.set({x,y,z},Block::Water);
         require(game.player.setFeetPosition(game.world,{81.5f,41.0f,81.5f}) && game.player.inWater(),
                 "HUD fixture cannot enter water");
-        require(difference(dryHud,draw(width,height))>150,"Entering water did not show swim controls");
+        require(difference(dryHud,draw(width,height))==0,"Swimming added a persistent instruction panel");
         draw(640,360,2);
         require(game.player.setFeetPosition(game.world,dryFeet) && !game.player.inWater(),
                 "HUD fixture cannot leave water");
-        require(difference(dryHud,draw(width,height))==0,"Swim controls remain after leaving water");
+        require(difference(dryHud,draw(width,height))==0,"Leaving water changed the idle HUD");
 
         require(game.player.setFeetPosition(game.world,sceneBlacksmithApproach()),"HUD fixture cannot reach the blacksmith");
         game.camera.setPosition(game.player.eyePosition());
@@ -324,7 +352,7 @@ void verifyPlayHud(int width, int height)
         cleanup(); throw;
     }
     cleanup();
-    std::cout << "Play HUD passed: directional player hit pulse, clear aim, fade/reset, health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, swim controls and exit, forge states, feedback, DPI and GL state\n";
+    std::cout << "Play HUD passed: directional player hit pulse, clear aim, fade/reset, health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, quiet swimming HUD, forge states, feedback, DPI and GL state\n";
 }
 
 } // namespace voxel

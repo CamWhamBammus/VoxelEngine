@@ -53,6 +53,16 @@ std::size_t difference(const Pixels& a,const Pixels& b)
                            std::abs(int(a[i+2])-int(b[i+2]))})>20;
     return changed;
 }
+std::size_t occupied(const Pixels& pixels)
+{
+    // All fixtures clear to this color before drawing. Count only visible UI,
+    // including its backing, so large idle panels cannot silently return.
+    std::size_t count=0;
+    for (std::size_t i=0;i<pixels.size();i+=4)
+        count+=std::max({std::abs(int(pixels[i])-46),std::abs(int(pixels[i+1])-61),
+                         std::abs(int(pixels[i+2])-71)})>20;
+    return count;
+}
 }
 
 void verifyLevelHud(int width,int height)
@@ -235,6 +245,9 @@ void verifyLevelHud(int width,int height)
         const auto firstScene=scene();
         markers();
         const auto play=draw(width,height);
+        const float playScale=std::min({1.0f,width/776.0f,height/550.0f});
+        require(occupied(play)<15000*playScale*playScale,
+                "Playing level HUD is covering too much of the section");
         require(difference(playerLibrary,play)>2000,"Level HUD did not replace player picker");
         InputActions active; active.active=true;
         require(game.player.setFeetPosition(game.world,game.levelController().meta().finish),"Level HUD fixture cannot reach end");

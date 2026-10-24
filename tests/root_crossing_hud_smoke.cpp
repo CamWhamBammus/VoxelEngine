@@ -136,12 +136,12 @@ void verifyRootCrossingHud(int width, int height)
         game.update(active,0.1f);
         require(game.crossingCompleted() && game.crossingBestTime()>0,"HUD fixture did not complete the course");
         const auto complete=draw(width,height);
-        require(difference(checkpoint,complete)>1500,"Completed crossing did not show a finish panel");
+        require(difference(checkpoint,complete)>100,"Completed crossing did not show its completion notice");
         draw(640,360,2);
         InputActions restart; restart.active=true; restart.restartCrossing=true;
         game.update(restart);
         require(!game.crossingCompleted() && !game.crossingCheckpointReached(),"HUD fixture did not restart");
-        require(difference(complete,draw(width,height))>1500,"Restarted crossing retained its finish panel");
+        require(difference(complete,draw(width,height))>100,"Restarted crossing retained its completion notice");
         const auto before=state();
         hud.drawPlay(game,0,0);
         require(state()==before,"Minimized crossing HUD changed OpenGL state");

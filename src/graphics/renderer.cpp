@@ -900,6 +900,8 @@ void Overlay::draw(const std::optional<RayHit>& hit, const Camera& camera, int w
     if (width <= 0 || height <= 0) return;
     if (!std::isfinite(contentScale) || contentScale <= 0.0f) contentScale = 1.0f;
     contentScale = std::clamp(contentScale, 0.5f, 4.0f);
+    // A small window on a Retina display should not inherit a huge crosshair.
+    contentScale = std::min(contentScale,float(std::max(1,std::min(width/640,height/360))));
     const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
     const GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
     GLboolean depthMask = GL_TRUE;

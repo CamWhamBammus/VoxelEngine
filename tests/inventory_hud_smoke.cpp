@@ -179,9 +179,9 @@ void verifyInventoryHud(int width,int height)
         constexpr float scale=360.0f/530.0f;
         const float font=1/scale,canvasWidth=640/scale;
         const float textWidth=(game.lootPrompt().size()*6-1)*font;
-        const float left=(canvasWidth-textWidth-32)*.5f+14;
+        const float left=(canvasWidth-textWidth)*.5f;
         const int startX=static_cast<int>(std::round((left+(game.lootPrompt().size()-4)*6*font)*scale));
-        const int startY=static_cast<int>(std::round((530*.5f+35+11)*scale));
+        const int startY=static_cast<int>(std::round((530*.5f+30)*scale));
         int goldPixels=0;
         for (int y=startY;y<startY+7;++y) for (int x=startX;x<startX+23;++x) {
             const auto offset=(static_cast<std::size_t>(359-y)*640+x)*4;

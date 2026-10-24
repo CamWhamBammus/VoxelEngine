@@ -63,6 +63,29 @@ std::size_t difference(const Pixels& a,const Pixels& b)
     return changed;
 }
 
+std::size_t occupied(const Pixels& pixels)
+{
+    // All fixtures clear to this color before drawing. Count only visible UI,
+    // including its backing, so large idle panels cannot silently return.
+    std::size_t count=0;
+    for (std::size_t i=0;i<pixels.size();i+=4)
+        count+=std::max({std::abs(int(pixels[i])-46),std::abs(int(pixels[i+1])-61),
+                         std::abs(int(pixels[i+2])-71)})>20;
+    return count;
+}
+
+void requireHelpHint(const Pixels& pixels,int width)
+{
+    // H HELP must fit as six readable characters even when font snapping keeps
+    // small high-DPI text at one physical pixel. H... is not a useful hint.
+    int letters=0;
+    for (int y=0;y<40;++y) for (int x=width-90;x<width;++x) {
+        const auto i=(static_cast<std::size_t>(y)*width+x)*4;
+        letters+=pixels[i]>145 && pixels[i+1]>120 && pixels[i+2]>90;
+    }
+    require(letters>60,"Small high-DPI HUD clipped the H HELP hint");
+}
+
 void verifyChestAuthoring(int width,int height,const std::filesystem::path& library,Hud& hud)
 {
     World room; buildBlankSection(room);
@@ -555,7 +578,11 @@ void verifySectionHud(int width,int height)
         act(SectionUiBack); act(SectionUiTest);
         require(game.sectionEditor().screen()==SectionEditorScreen::Test,"Section playtest did not start");
         const auto test=draw(width,height);
+        const float testScale=std::min({1.0f,width/736.0f,height/516.0f});
+        require(occupied(test)<22000*testScale*testScale,
+                "F8 HUD is covering too much of the section");
         require(difference(build,test)>1000,"Playtest did not replace creative HUD");
+        requireHelpHint(draw(640,360,2),640);
         const auto dryFeet=game.player.feetPosition();
         std::vector<std::pair<glm::ivec3,Block>> poolCells;
         for (int z=19;z<=21;++z) for (int y=20;y<=23;++y) for (int x=19;x<=21;++x) {
@@ -565,16 +592,16 @@ void verifySectionHud(int width,int height)
         }
         require(game.player.setFeetPosition(game.world,{20.5f,20.5f,20.5f}) && game.player.inWater(),
                 "Section HUD fixture cannot enter water");
-        require(difference(test,draw(width,height))>100,"Wet playtest did not show swim controls");
+        require(difference(test,draw(width,height))==0,"Wet playtest added a persistent instruction panel");
         draw(640,360,2);
         for (const auto& [cell,block]:poolCells) game.world.set(cell,block);
         require(game.player.setFeetPosition(game.world,dryFeet) && !game.player.inWater(),
                 "Section HUD fixture cannot leave water");
-        require(difference(test,draw(width,height))==0,"Playtest swim controls remain on land");
+        require(difference(test,draw(width,height))==0,"Leaving water changed the quiet playtest HUD");
         require(game.player.setFeetPosition(game.world,game.sectionEditor().meta().finish),"Section HUD fixture cannot reach exit");
         InputActions active; active.active=true; game.update(active,.1f);
         require(game.sectionEditor().testComplete(),"Section HUD fixture did not finish playtest");
-        require(difference(test,draw(width,height))>1000,"Completed playtest did not show completion banner");
+        require(difference(test,draw(width,height))>100,"Completed playtest did not show its completion notice");
         act(SectionUiAccept);
         require(game.sectionEditor().screen()==SectionEditorScreen::Accept,"Acceptance dialog did not open");
         const auto accept=draw(width,height);
