@@ -190,6 +190,8 @@ private:
     bool hasSection_ = false, dirty_ = false, testComplete_ = false, checkpointReached_ = false;
     float testElapsed_ = 0.0f, autosaveElapsed_ = 0.0f;
     int testFalls_ = 0;
+    // Mining belongs to the temporary walk test, never the authored section.
+    std::optional<World> testWorld_;
     glm::vec3 buildPosition_{0};
     glm::vec3 buildDirection_{0, 0, -1};
     struct AssetBounds { glm::vec3 minimum, maximum; };

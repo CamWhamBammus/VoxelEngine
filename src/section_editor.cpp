@@ -90,6 +90,7 @@ void SectionEditor::enter(Game& game)
 }
 bool SectionEditor::leave(Game& game)
 {
+    if (screen_ == SectionEditorScreen::Test) stopTest(game);
     if (hasSection_ && dirty_ && !saveDraft(game)) return false;
     closeSpawnerSettings();
     closeChestContents();
@@ -173,8 +174,9 @@ bool SectionEditor::saveDraft(Game& game)
         auto draftMetadata = meta_;
         if (draftMetadata.name.find_first_not_of(' ') == std::string::npos)
             draftMetadata.name = "Untitled section";
-        if (draftPath_.empty()) draftPath_ = saveSectionDraft(game.world, draftMetadata, assets_, libraryRoot_);
-        else saveSection(game.world, draftMetadata, assets_, draftPath_, true);
+        const auto& authoredWorld = testWorld_ ? *testWorld_ : game.world;
+        if (draftPath_.empty()) draftPath_ = saveSectionDraft(authoredWorld, draftMetadata, assets_, libraryRoot_);
+        else saveSection(authoredWorld, draftMetadata, assets_, draftPath_, true);
         dirty_ = false; autosaveElapsed_ = 0;
         message_ = "DRAFT SAVED | " + meta_.name;
         return true;
@@ -1166,6 +1168,7 @@ void SectionEditor::startTest(Game& game)
     buildPosition_ = game.camera.position(); buildDirection_ = game.camera.forward();
     checkpointReached_ = testComplete_ = false; testElapsed_ = 0; testFalls_ = 0;
     faceMarker(game, meta_.spawn);
+    testWorld_ = game.world;
     screen_ = SectionEditorScreen::Test; game.target.reset(); preview_.reset();
     game.beginSectionLoot(assets_, true);
     game.restoreHealth();
@@ -1174,6 +1177,10 @@ void SectionEditor::startTest(Game& game)
 void SectionEditor::stopTest(Game& game)
 {
     game.endSectionLoot();
+    if (testWorld_) {
+        game.world = std::move(*testWorld_);
+        testWorld_.reset();
+    }
     game.restoreHealth();
     screen_ = SectionEditorScreen::Build;
     game.camera.setPosition(buildPosition_); pointCamera(game.camera, buildDirection_);
