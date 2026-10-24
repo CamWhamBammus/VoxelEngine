@@ -247,6 +247,7 @@ bool Game::saveAuthoringDraft()
 
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
+    if (!actions.active || menuOpen()) mining_.cancelTarget();
     if (health_.dead()) { updateDeath(actions,deltaSeconds); return; }
     if (actions.active && healthVisible()) health_.update(deltaSeconds);
     if (monsterPreviewActive_) { updateMonsters(actions, deltaSeconds); return; }

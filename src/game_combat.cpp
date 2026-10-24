@@ -10,6 +10,7 @@ bool Game::updateCombat(const InputActions& actions, float seconds)
 {
     if (!actions.active || !healthVisible() || health_.dead()
         || !std::isfinite(seconds) || seconds <= 0) return health_.dead();
+    updateMining(actions, seconds);
     const bool swing = equipment.selectedTool() == Tool::Sword && actions.attack;
     const int damage = encounters_.update(world,player,camera.forward(),swing,seconds);
     damagePlayer(damage, encounters_.playerHitDirection());

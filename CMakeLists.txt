@@ -21,6 +21,7 @@ add_library(VoxelCore
     src/game_health.cpp
     src/game_view.cpp
     src/game_combat.cpp
+    src/game_mining.cpp
     src/health.cpp
     src/monsters.cpp
     src/encounters.cpp

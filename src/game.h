@@ -7,6 +7,7 @@
 #include "health.h"
 #include "level_editor.h"
 #include "loot.h"
+#include "mining.h"
 #include "monster_preview.h"
 #include "player.h"
 #include "root_crossings.h"
@@ -86,6 +87,8 @@ public:
     bool checkPlayerDamage(float deathHeight);
     bool updateCombat(const InputActions& actions, float seconds);
     const EncounterSession& encounters() const { return encounters_; }
+    const MiningSession& mining() const { return mining_; }
+    const std::string& miningMessage() const { return miningMessage_; }
     bool sectionEncountersCleared() const { return encounters_.remaining() == 0; }
     bool monsterPreviewActive() const { return monsterPreviewActive_; }
     const MonsterPreview& monsterPreview() const { return monsterPreview_; }
@@ -153,6 +156,7 @@ public:
 private:
     friend class LevelController;
     void resetPlayerHit();
+    void updateMining(const InputActions& actions, float seconds);
     void updateDeath(const InputActions& actions, float deltaSeconds);
     void enterMonsterPreview();
     void resetMonsterCamera();
@@ -191,6 +195,9 @@ private:
     glm::vec3 playerHitDirection_{0};
     float playerKnockbackRemaining_ = 0;
     EncounterSession encounters_;
+    MiningSession mining_;
+    std::string miningMessage_;
+    float miningMessageSeconds_ = 0;
     float encounterSaveRetry_ = 0;
     MonsterPreview monsterPreview_;
     bool monsterPreviewActive_ = false;

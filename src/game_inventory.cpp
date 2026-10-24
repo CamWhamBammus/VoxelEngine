@@ -20,6 +20,9 @@ void Game::closeInventory()
 
 void Game::endSectionLoot()
 {
+    mining_.reset();
+    miningMessage_.clear();
+    miningMessageSeconds_ = 0;
     resetPlayerHit();
     closeInventory();
     discardSectionKeys();
@@ -58,7 +61,10 @@ void Game::beginSectionLoot(std::span<const HubAsset> assets, bool playtest, std
     endSectionLoot();
     if (playtest) playtestEquipment_ = equipment;
     // Authoring always tests a fresh room without touching real collection history.
-    loot_.begin(assets, section, playtest ? std::map<std::string, LootProgress>{} : equipment.lootProgress, &world);
+    const std::map<std::string, LootProgress> freshProgress;
+    const auto& progress = playtest ? freshProgress : equipment.lootProgress;
+    loot_.begin(assets, section, progress, &world);
+    loot_.restoreMinedOres(world, section, progress);
     encounters_.begin(assets,loot_.collision(),loot_.clearedSpawners());
     pickupAttempts_.resize(loot_.size());
     sectionLootActive_ = true;
@@ -213,6 +219,7 @@ bool Game::updateInventory(const InputActions& actions, float deltaSeconds)
     if (actions.inventory) {
         if (inventoryOpen_) closeInventory();
         else {
+            mining_.cancelTarget();
             inventoryOpen_ = true;
             inventoryMessage_ = testing ? "PLAYTEST BAG / LOOT IS TEMPORARY" : "SELECT TWO SLOTS TO MOVE OR MERGE A STACK";
         }

@@ -34,6 +34,9 @@ bool Game::damagePlayer(int amount, glm::vec3 direction)
     playerKnockbackRemaining_ = health_.dead() || playerHitDirection_ == glm::vec3(0)
         ? 0 : PlayerKnockbackDuration;
     if (health_.dead()) {
+        mining_.reset();
+        miningMessage_.clear();
+        miningMessageSeconds_ = 0;
         closeInventory();
         target.reset();
         status = "YOU DIED | RETURNING TO " + std::string(respawnDestination());
@@ -43,6 +46,9 @@ bool Game::damagePlayer(int amount, glm::vec3 direction)
 
 void Game::restoreHealth()
 {
+    mining_.reset();
+    miningMessage_.clear();
+    miningMessageSeconds_ = 0;
     health_.restore();
     resetPlayerHit();
     encounters_.resetUnfinished();
