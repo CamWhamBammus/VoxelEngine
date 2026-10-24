@@ -2,7 +2,7 @@
 
 A voxel game set entirely underground, written in C++20 with OpenGL. The idea is to head out from a cave village, find ore and loot, then come home to upgrade your gear. Deeper expeditions will lead to different cave worlds.
 
-It's still early. You can explore the village, build and play your own levels, fight encounters, collect loot, and upgrade a pickaxe at the blacksmith. Mining, procedural expeditions, sword upgrades, and the central tree's skill tree aren't built yet.
+It's still early. You can explore the village, build and play your own levels, mine ore, fight encounters, collect loot, and upgrade a pickaxe at the blacksmith. Procedural expeditions, sword upgrades, and the central tree's skill tree aren't built yet.
 
 ![The underground village, with its central tree, bridges, and water](docs/screenshots/village.png)
 
@@ -43,6 +43,7 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | Space / Shift | Jump / sprint |
 | Space / Ctrl in water | Swim up / dive |
 | 1–4 or mouse wheel | Select pickaxe, lantern, compass, or sword |
+| Hold left click with pickaxe | Mine the ore block you're aiming at |
 | Left click with sword | Swing at the enemy you're aiming at |
 | E | Use a nearby chest, blacksmith, or expedition gate |
 | I | Open the 20-slot inventory |
@@ -63,6 +64,26 @@ Completed spawners stay cleared, even after closing the game. Uncollected reward
 Chests and floating drops provide resources. Ironbound chests need a cave key, and keys only work within the section where you found them. Collected loot stays collected when you replay a section. Unused keys return to their source when you leave and come back.
 
 Press **F4** to choose a published level, or **F6** to try the ten built-in Root Crossing parkour rooms. A fresh checkout won't have any published levels: those are made locally with the builders below. On a Mac, you may need to hold **Fn** for the function keys.
+
+## Mining
+
+Select the pickaxe with **1** and hold left click on a nearby ore block. The pickaxe swings in your hand while the meter fills. Releasing the button or aiming away starts the work over. Broken ore drops one matching resource; walk over it to pull it into your bag. A full bag leaves it on the ground.
+
+![Mining copper with the 3D pickaxe; dropped iron floats beside it](docs/screenshots/mining.png)
+
+All 18 resources have source blocks in the creative menu. Place them in a section, then press **F8** to try mining. Pickaxe tiers unlock tougher deposits and mine familiar ones faster:
+
+| Pickaxe tier | New resources |
+| --- | --- |
+| 1 | Coal, copper, tin, iron, quartz, amber |
+| 2 | Silver, gold, jade, amethyst, obsidian |
+| 3 | Ruby, sapphire, emerald, cobalt, titanium, mithril, glow crystal |
+
+Upgrade at the village blacksmith. The first upgrade costs 8 copper; the second costs 8 iron.
+
+![The 18 ore sources in the creative palette](docs/screenshots/ores.png)
+
+Mined blocks stay gone when you revisit a published section, and uncollected drops wait there for you. F8 tests use temporary terrain and loot: returning to the builder restores the blocks, and a fresh test starts over. Mining works in authored sections; village scenery and ordinary building blocks stay intact.
 
 ## Creature preview
 
@@ -109,12 +130,12 @@ Files are stored relative to the folder you launch the game from. Run it from th
 
 | Location | Contents |
 | --- | --- |
-| `progress.vxp` | Inventory, pickaxe upgrades, collected loot, and unlocked chests |
+| `progress.vxp` | Inventory, pickaxe upgrades, mined ore, collected loot, and unlocked chests |
 | `sections/` | Section drafts and accepted rooms |
 | `levels/` | Level drafts and published section orders |
 | `world.vxl` | The older terrain editor's world |
 
-These files are ignored by Git. Back up `sections/` and `levels/` together: a level references its section files. The village terrain resets on launch, while your saved inventory and upgrades remain. Section playtests use temporary loot and restore your real inventory afterward.
+These files are ignored by Git. Back up `sections/` and `levels/` together: a level references its section files. The village terrain resets on launch, while your saved inventory and upgrades remain. Section playtests use temporary loot and terrain, restoring your real inventory and authored blocks afterward.
 
 ## Working on the code
 
@@ -127,6 +148,7 @@ The main loop in [src/main.cpp](src/main.cpp) reads input, updates the game, and
 | Movement and collision | [player.cpp](src/player.cpp), [asset_collision.cpp](src/asset_collision.cpp) |
 | Health and respawning | [health.cpp](src/health.cpp), [game_health.cpp](src/game_health.cpp) |
 | Spawners and combat | [encounters.cpp](src/encounters.cpp), [game_combat.cpp](src/game_combat.cpp), [spawner_loot.cpp](src/spawner_loot.cpp) |
+| Pickaxe and mining | [mining.cpp](src/mining.cpp), [ores.cpp](src/ores.cpp), [game_mining.cpp](src/game_mining.cpp), [mining_loot.cpp](src/mining_loot.cpp) |
 | Village layout and buildings | [scene.cpp](src/scene.cpp), [hub_buildings.cpp](src/hub_buildings.cpp) |
 | Blocks and chunk meshes | [world.h](src/world.h), [mesh.cpp](src/mesh.cpp) |
 | Building tools and section files | [section_editor.cpp](src/section_editor.cpp), [section_tools.cpp](src/section_tools.cpp), [sections.cpp](src/sections.cpp) |
