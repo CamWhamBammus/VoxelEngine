@@ -25,6 +25,7 @@ struct InputActions {
     std::optional<int> selectedTool; // Play hotbar, numbered 1–4 on the keyboard.
     int toolStep = 0;
     bool attack = false; // One swing per physical left click during play.
+    bool mineHeld = false; // Mining continues while the left button is held.
     bool interact = false;
     bool upgrade = false;
     bool closeMenu = false;

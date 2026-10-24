@@ -35,6 +35,7 @@ add_library(VoxelCore
     src/equipment.cpp
     src/items.cpp
     src/ores.cpp
+    src/mining.cpp
     src/inventory.cpp
     src/loot.cpp
     src/mining_loot.cpp

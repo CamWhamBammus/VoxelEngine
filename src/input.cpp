@@ -240,6 +240,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         }
     } else {
         actions_.attack = !modal && pressed(buttons.remove, previous.remove);
+        actions_.mineHeld = !modal && buttons.remove;
         actions_.interact = pressed(buttons.interact, previous.interact);
         actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
         actions_.crossingMenu = pressed(buttons.crossingMenu, previous.crossingMenu);
@@ -365,7 +366,10 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
                 actions_.placePressed = pressed(buttons.place, previous.place);
                 actions_.remove = repeating(buttons.remove, previous.remove, removeRepeat_);
                 actions_.place = repeating(buttons.place, previous.place, placeRepeat_);
-            } else actions_.attack = pressed(buttons.remove, previous.remove);
+            } else {
+                actions_.attack = pressed(buttons.remove, previous.remove);
+                actions_.mineHeld = buttons.remove;
+            }
         }
         if (flying) actions_.materialStep = hotbarScroll_.update(scroll_);
         else {
