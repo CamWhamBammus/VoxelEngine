@@ -124,6 +124,10 @@ The [building guide](docs/building.md) covers these tools, chest contents, item 
 
 Building pieces in a test room. Fences and railings fit one-block cells; the doorway fits a three-by-three wall opening.
 
+Stairs share their full blocks' surface details, including raised paving, brickwork, board edges, and chipped rock. Ore veins and crystal facets catch the same lights as the surrounding cave.
+
+![Fitted paving continuing over the village stairs](docs/screenshots/stairs.png)
+
 The older terrain sandbox is still available with `./build/VoxelEngine --editor`. It uses manual **F5** saving and **F9** loading, and is separate from the section builder.
 
 ## Saves

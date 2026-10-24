@@ -24,6 +24,8 @@ Fences, gates, railings, and corners use one-block footprints. Place them in nei
 
 Stairs are in the Blocks tab, on page two. Each fits one block and has two half-height steps. They use the same materials as the full blocks. Players walk up stairs but need to jump onto full blocks.
 
+All eight stair materials have surface depth on their treads, risers, and sides: fitted paving, beveled brickwork, board edges, or chipped rock. Path blocks include their paving automatically. The separate paving model can still replace the finish on a full tile. Ore veins, crystal facets, mossy stone, calcite, and roof tiles also have shallow geometry that catches the light.
+
 Other models attach to the surface you're aiming at. Hang roots and planters from ceilings, attach shelf fungi to walls, and place lotus or water grass on water. Most scenery models have collision, so logs, mushrooms, and rock ledges can be used for parkour.
 
 ## Faster building
