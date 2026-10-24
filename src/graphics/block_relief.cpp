@@ -79,7 +79,29 @@ float mineralHash(glm::vec2 p)
 
 bool ore(Block block)
 {
-    return block == Block::CoalOre || block == Block::CopperOre || block == Block::IronOre;
+    return (block >= Block::CoalOre && block <= Block::IronOre)
+        || (block >= Block::TinOre && block <= Block::Obsidian);
+}
+
+// Match mineralAspect in materials.h so exposed geometry remains inside paint.
+glm::vec2 mineralAspect(Block block)
+{
+    switch (block) {
+    case Block::TinOre: return {.90f, .75f};
+    case Block::SilverOre: return {1.10f, .85f};
+    case Block::GoldOre: return {.85f, 1.20f};
+    case Block::QuartzOre: return {1.12f, 1.50f};
+    case Block::JadeOre: return {1.12f, 1.80f};
+    case Block::AmethystOre: return {.88f, 1.60f};
+    case Block::RubyOre: return {.80f, 1.80f};
+    case Block::SapphireOre: return {.92f, 1.60f};
+    case Block::EmeraldOre: return {1.20f, 1.40f};
+    case Block::CobaltOre: return {1.22f, .72f};
+    case Block::TitaniumOre: return {1.32f, .70f};
+    case Block::MithrilOre: return {1.30f, .75f};
+    case Block::Obsidian: return {1.35f, .90f};
+    default: return {1, 1};
+    }
 }
 
 Polygon rectangle(glm::vec2 low, glm::vec2 high)
@@ -185,7 +207,7 @@ std::vector<Patch> stoneFracture(glm::vec2 low, glm::vec2 high, float seed, bool
     return {};
 }
 
-std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, float seed)
+std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, float seed, Block material)
 {
     const glm::ivec2 first(glm::floor(low * 2.0f)), last(glm::floor(high * 2.0f));
     std::vector<Polygon> polygons;
@@ -198,10 +220,20 @@ std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, float seed)
             const auto center = tile + 0.2f + 0.6f * glm::vec2(h, h2);
             const float sign = mineralHash(glm::floor(tile / 3.0f) + seed + 47.0f) > 0.5f ? 1.0f : -1.0f;
             const glm::vec2 u(0.8f, sign * 0.6f), v(-sign * 0.6f, 0.8f);
-            const float length = 0.32f + 0.13f * h2, width = 0.10f + 0.05f * h3;
+            const auto aspect = mineralAspect(material);
+            const float length = (0.32f + 0.13f * h2) * aspect.x;
+            const float width = (0.10f + 0.05f * h3) * aspect.y;
+            Polygon corners;
+            if (material >= Block::QuartzOre && material <= Block::EmeraldOre) {
+                corners = {{-length, -width * .15f}, {-length * .45f, -width},
+                    {length * .45f, -width * .85f}, {length, width * .20f},
+                    {length * .45f, width}, {-length * .40f, width * .85f}};
+            } else {
+                corners = {{-length, -width * .15f}, {-length * .25f, -width},
+                    {length, width * .20f}, {length * .20f, width}};
+            }
             Polygon polygon;
-            for (const auto q : {glm::vec2(-length, -width * 0.15f), glm::vec2(-length * 0.25f, -width),
-                                 glm::vec2(length, width * 0.20f), glm::vec2(length * 0.20f, width)}) {
+            for (const auto q : corners) {
                 polygon.push_back((center + u * q.x + v * q.y) / 2.0f);
             }
             const auto minimum = glm::max(low, tile / 2.0f), maximum = glm::min(high, (tile + 1.0f) / 2.0f);
@@ -348,7 +380,7 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
                     const glm::vec2 high = glm::vec2(glm::dot(maximum, u), glm::dot(maximum, v)) - .008f;
                     const float seed = glm::dot(glm::vec3(cell) * glm::abs(normal), glm::vec3(17, 37, 57))
                         + static_cast<float>(material) * 19.0f;
-                    const auto patches = mineral ? oreVeins(low, high, seed)
+                    const auto patches = mineral ? oreVeins(low, high, seed, material)
                         : stoneFracture(low, high, seed, material == Block::Slate);
                     for (std::size_t piece = 0; piece < patches.size(); ++piece) {
                         const float variation = float(mix(hash ^ static_cast<std::uint32_t>(piece)) & 0xffffu) / 65535.0f;
