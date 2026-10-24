@@ -222,92 +222,94 @@ std::vector<Patch> stoneFracture(glm::vec2 low, glm::vec2 high, float seed, bool
     return {};
 }
 
-std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, float seed, Block material)
+// One volumetric field is shared by every exposed face. The oblique lattice
+// crosses voxel edges instead of restarting its mineral pattern at each side.
+float mineralHash3(glm::vec3 tile, Block material)
 {
-    const glm::ivec2 first(glm::floor(low * 2.0f)), last(glm::floor(high * 2.0f));
-    std::vector<Polygon> polygons;
-    for (int y = first.y; y <= last.y; ++y) {
-        for (int x = first.x; x <= last.x; ++x) {
-            const glm::vec2 tile(x, y);
-            const float h = mineralHash(tile + seed), h2 = mineralHash(tile + seed + 11.0f);
-            const float h3 = mineralHash(tile + seed + 23.0f);
-            if (h <= 0.32f) continue;
-            const auto center = tile + 0.2f + 0.6f * glm::vec2(h, h2);
-            const float sign = mineralHash(glm::floor(tile / 3.0f) + seed + 47.0f) > 0.5f ? 1.0f : -1.0f;
-            const glm::vec2 u(0.8f, sign * 0.6f), v(-sign * 0.6f, 0.8f);
-            const auto aspect = mineralAspect(material);
-            const float length = (0.32f + 0.13f * h2) * aspect.x;
-            const float width = (0.10f + 0.05f * h3) * aspect.y;
-            Polygon corners;
-            if (material >= Block::QuartzOre && material <= Block::EmeraldOre) {
-                corners = {{-length, -width * .15f}, {-length * .45f, -width},
-                    {length * .45f, -width * .85f}, {length, width * .20f},
-                    {length * .45f, width}, {-length * .40f, width * .85f}};
-            } else {
-                corners = {{-length, -width * .15f}, {-length * .25f, -width},
-                    {length, width * .20f}, {length * .20f, width}};
-            }
-            Polygon polygon;
-            for (const auto q : corners) {
-                polygon.push_back((center + u * q.x + v * q.y) / 2.0f);
-            }
-            const auto minimum = glm::max(low, tile / 2.0f), maximum = glm::min(high, (tile + 1.0f) / 2.0f);
-            polygon = clip(polygon, {-1, 0}, -minimum.x);
-            polygon = clip(polygon, {1, 0}, maximum.x);
-            polygon = clip(polygon, {0, -1}, -minimum.y);
-            polygon = clip(polygon, {0, 1}, maximum.y);
-            polygons.push_back(std::move(polygon));
-        }
-    }
-    keepLargest(polygons, 3);
-    std::vector<Patch> patches;
-    for (auto& polygon : polygons) {
-        glm::vec2 center(0);
-        for (const auto point : polygon) center += point;
-        center /= static_cast<float>(polygon.size());
-        const auto tile = glm::floor(center * 2.0f);
-        const float sign = mineralHash(glm::floor(tile / 3.0f) + seed + 47.0f) > 0.5f ? 1.0f : -1.0f;
-        patches.push_back({std::move(polygon), {0.8f, sign * 0.6f}});
-    }
-    return patches;
+    const glm::ivec3 cell(tile);
+    const auto value = static_cast<std::uint32_t>(cell.x) * 0x9e3779b9u
+        ^ static_cast<std::uint32_t>(cell.y) * 0x85ebca6bu
+        ^ static_cast<std::uint32_t>(cell.z) * 0xc2b2ae35u
+        ^ static_cast<std::uint32_t>(material) * 0x27d4eb2du;
+    return static_cast<float>(mix(value) & 0x00ffffffu) / 16777216.0f;
 }
 
-std::vector<Polygon> crystalFacets(glm::vec2 low, glm::vec2 high, float seed, bool top)
+glm::vec3 mineralCoordinates(glm::vec3 point, Block material)
 {
-    // The same elongated Voronoi cells color crystal and amber in materials.h.
-    // A few broad facets lift from the body of the mineral, not a scattering
-    // of separate protruding stones.
-    const auto metric = [top](glm::vec2 point) {
-        return top ? point * 1.8f : glm::vec2(point.x * 2.8f + point.y * .22f, point.y * .70f);
-    };
-    const auto inverse = [top](glm::vec2 point) {
-        return top ? point / 1.8f : glm::vec2((point.x - point.y / .70f * .22f) / 2.8f, point.y / .70f);
-    };
-    const auto first = glm::ivec2(glm::floor(metric(low)));
-    const auto last = glm::ivec2(glm::floor(metric(high)));
-    std::vector<glm::vec2> sites;
-    for (int y = first.y - 1; y <= last.y + 1; ++y) {
-        for (int x = first.x - 1; x <= last.x + 1; ++x) {
-            const glm::vec2 tile(x, y);
-            const float h = mineralHash(tile + seed);
-            sites.push_back(tile + .2f + .6f * glm::vec2(h, glm::fract(h * 13.71f)));
-        }
+    const auto aspect = mineralAspect(material);
+    if (material == Block::Crystal || material == Block::AmberCrystal) {
+        return glm::vec3(glm::dot(point, glm::vec3(.8f, 0, .6f)) * 1.55f,
+            glm::dot(point, glm::vec3(.12f, .98f, -.16f)) * .72f,
+            glm::dot(point, glm::vec3(-.588f, .2f, .784f)) * 1.55f);
     }
+    return glm::vec3(glm::dot(point, glm::vec3(.8f, .36f, .48f)) * (1.6f / aspect.x),
+        glm::dot(point, glm::vec3(-.6f, .48f, .64f)) * (2.4f / aspect.y),
+        glm::dot(point, glm::vec3(0, -.8f, .6f)) * 1.8f);
+}
+
+glm::vec3 mineralHalfSize(glm::vec3 tile, Block material)
+{
+    const float h2 = mineralHash3(tile + glm::vec3(11), material);
+    const float h3 = mineralHash3(tile + glm::vec3(23), material);
+    const float h4 = mineralHash3(tile + glm::vec3(37), material);
+    const bool gem = material >= Block::QuartzOre && material <= Block::EmeraldOre;
+    return {.35f + .06f * h2, (gem ? .34f : .26f) + .06f * h3, .35f + .06f * h4};
+}
+
+std::vector<Polygon> mineralSections(glm::vec2 low, glm::vec2 high, glm::vec3 faceCenter,
+                                    glm::vec3 u, glm::vec3 v, Block material, bool crystal)
+{
+    const glm::vec2 centerUV(glm::dot(faceCenter, u), glm::dot(faceCenter, v));
+    const auto origin = mineralCoordinates(faceCenter - u * centerUV.x - v * centerUV.y, material);
+    const auto du = mineralCoordinates(u, material), dv = mineralCoordinates(v, material);
+    const auto metric = [&](glm::vec2 point) { return origin + du * point.x + dv * point.y; };
+    glm::vec3 minimum(1e9f), maximum(-1e9f);
+    for (const auto point : rectangle(low, high)) {
+        minimum = glm::min(minimum, metric(point));
+        maximum = glm::max(maximum, metric(point));
+    }
+    const glm::ivec3 first(glm::floor(minimum)), last(glm::floor(maximum));
     std::vector<Polygon> polygons;
-    for (const auto site : sites) {
-        auto polygon = rectangle(low, high);
-        for (auto& point : polygon) point = metric(point) - site;
-        for (const auto other : sites) {
-            const auto offset = other - site;
-            if (offset == glm::vec2(0)) continue;
-            polygon = clip(polygon, offset, glm::dot(offset, offset) * .5f);
-            if (polygon.empty()) break;
+    for (int z = first.z; z <= last.z; ++z) {
+        for (int y = first.y; y <= last.y; ++y) {
+            for (int x = first.x; x <= last.x; ++x) {
+                const glm::vec3 tile(x, y, z);
+                if (!crystal && mineralHash3(tile, material) <= .18f) continue;
+                const auto halfSize = crystal ? glm::vec3(.5f) : mineralHalfSize(tile, material);
+                const auto localOrigin = origin - tile - .5f;
+                auto polygon = rectangle(low, high);
+                const auto plane = [&](glm::vec3 direction, float extent) {
+                    polygon = clip(polygon, {glm::dot(direction, du), glm::dot(direction, dv)},
+                                   extent - glm::dot(direction, localOrigin));
+                };
+                for (int axis = 0; axis < 3; ++axis) {
+                    glm::vec3 direction(0); direction[axis] = 1;
+                    plane(direction, halfSize[axis]);
+                    plane(-direction, halfSize[axis]);
+                }
+                if (!crystal) {
+                    const bool gem = material >= Block::QuartzOre && material <= Block::EmeraldOre;
+                    for (int sz : {-1, 1}) for (int sy : {-1, 1}) for (int sx : {-1, 1}) {
+                        plane(glm::vec3(sx, sy, sz) / halfSize, gem ? 2.0f : 1.8f);
+                    }
+                }
+                polygons.push_back(std::move(polygon));
+            }
         }
-        for (auto& point : polygon) point = inverse(point + site);
-        polygons.push_back(std::move(polygon));
     }
     keepLargest(polygons, 3);
     return polygons;
+}
+
+std::vector<Patch> oreVeins(glm::vec2 low, glm::vec2 high, glm::vec3 faceCenter,
+                           glm::vec3 u, glm::vec3 v, Block material)
+{
+    auto polygons = mineralSections(low, high, faceCenter, u, v, material, false);
+    std::vector<Patch> patches;
+    const auto direction = glm::normalize(glm::vec2(glm::dot(u, glm::vec3(.8f, .36f, .48f)),
+                                                   glm::dot(v, glm::vec3(.8f, .36f, .48f))));
+    for (auto& polygon : polygons) patches.push_back({std::move(polygon), direction});
+    return patches;
 }
 
 void triangle(MeshData& mesh, glm::vec3 a, glm::vec3 b, glm::vec3 c, Block material,
@@ -370,7 +372,9 @@ void wedge(MeshData& mesh, const Patch& patch, glm::vec3 faceCenter, glm::vec3 n
             const float exposure = glm::smoothstep(0.025f, 0.425f, fraction)
                 * glm::smoothstep(0.0f, 0.4f, side)
                 * (1.0f - 0.65f * glm::smoothstep(0.6f, 1.0f, fraction));
-            return -0.0025f + (height + 0.0025f) * exposure;
+            const auto edge = glm::min(point - boundsLow, boundsHigh - point);
+            const float taper = glm::smoothstep(0.0f, .055f, std::min(edge.x, edge.y));
+            return -0.0025f + (height + 0.0025f) * exposure * taper;
         }
         const auto distance = glm::min(point - boundsLow, boundsHigh - point);
         const float taper = glm::clamp(std::min(distance.x, distance.y) / 0.065f, 0.0f, 1.0f);
@@ -392,8 +396,10 @@ void wedge(MeshData& mesh, const Patch& patch, glm::vec3 faceCenter, glm::vec3 n
         triangle(mesh, bottom[i], cap[next], cap[i], material, normal, faceCenter, reverse);
     }
     if (mineral) {
-        for (std::size_t i = 1; i + 1 < polygon.size(); ++i) {
-            triangle(mesh, cap[0], cap[i], cap[i + 1], material, normal, faceCenter, reverse);
+        const auto offset = center - faceUV;
+        const auto middle = faceCenter + u * offset.x + v * offset.y + normal * height;
+        for (std::size_t i = 0; i < polygon.size(); ++i) {
+            triangle(mesh, middle, cap[i], cap[(i + 1) % polygon.size()], material, normal, faceCenter, reverse);
         }
     } else {
         const auto offset = center - faceUV;
@@ -468,7 +474,7 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
                     const float seed = glm::dot(glm::vec3(cell) * glm::abs(normal), glm::vec3(17, 37, 57))
                         + static_cast<float>(material) * 19.0f;
                     if (crystal) {
-                        const auto facets = crystalFacets(low, high, seed, normal.y != 0);
+                        const auto facets = mineralSections(low, high, faceCenter, u, v, material, true);
                         for (std::size_t piece = 0; piece < facets.size(); ++piece) {
                             const float variation = float(mix(hash ^ static_cast<std::uint32_t>(piece)) & 0xffffu) / 65535.0f;
                             crystalFacet(mesh, facets[piece], faceCenter, normal, u, v,
@@ -476,7 +482,7 @@ MeshData buildBlockRelief(const World& world, std::size_t chunkIndex)
                         }
                         continue;
                     }
-                    const auto patches = mineral ? oreVeins(low, high, seed, material)
+                    const auto patches = mineral ? oreVeins(low, high, faceCenter, u, v, material)
                         : stoneFracture(low, high, seed, material == Block::Slate, isStair(block));
                     for (std::size_t piece = 0; piece < patches.size(); ++piece) {
                         const float variation = float(mix(hash ^ static_cast<std::uint32_t>(piece)) & 0xffffu) / 65535.0f;

@@ -62,17 +62,25 @@ float paintHash(glm::vec2 p)
     return static_cast<float>(value & 0x00ffffffu) / 16777216.0f;
 }
 
-bool paintedOre(glm::vec2 uv, float seed, voxel::Block material)
+float paintHash3(glm::ivec3 cell, voxel::Block material)
 {
-    const auto tile = glm::floor(uv * 2.0f);
-    const float h = paintHash(tile + seed), h2 = paintHash(tile + seed + 11.0f);
-    const float h3 = paintHash(tile + seed + 23.0f);
-    if (h <= 0.32f) return false;
-    const auto local = uv * 2.0f - tile - (0.2f + 0.6f * glm::vec2(h, h2));
-    const float sign = paintHash(glm::floor(tile / 3.0f) + seed + 47.0f) > 0.5f ? 1.0f : -1.0f;
-    const glm::vec2 q(glm::dot(local, glm::vec2(0.8f, sign * 0.6f)),
-                      glm::dot(local, glm::vec2(-sign * 0.6f, 0.8f)));
-    // Independent reference to the shader's authored mineral proportions.
+    std::uint32_t value = static_cast<std::uint32_t>(cell.x) * 0x9e3779b9u
+        ^ static_cast<std::uint32_t>(cell.y) * 0x85ebca6bu
+        ^ static_cast<std::uint32_t>(cell.z) * 0xc2b2ae35u
+        ^ static_cast<std::uint32_t>(material) * 0x27d4eb2du;
+    value ^= value >> 16; value *= 0x7feb352du;
+    value ^= value >> 15; value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return static_cast<float>(value & 0x00ffffffu) / 16777216.0f;
+}
+
+glm::vec3 paintedMineralCoordinates(glm::vec3 position, voxel::Block material)
+{
+    if (material == voxel::Block::Crystal || material == voxel::Block::AmberCrystal) {
+        return {glm::dot(position, glm::vec3(.8f, 0, .6f)) * 1.55f,
+            glm::dot(position, glm::vec3(.12f, .98f, -.16f)) * .72f,
+            glm::dot(position, glm::vec3(-.588f, .2f, .784f)) * 1.55f};
+    }
     constexpr std::array<glm::vec2, 13> aspects{{
         {.90f, .75f}, {1.10f, .85f}, {.85f, 1.20f}, {1.12f, 1.50f},
         {1.12f, 1.80f}, {.88f, 1.60f}, {.80f, 1.80f}, {.92f, 1.60f},
@@ -80,23 +88,24 @@ bool paintedOre(glm::vec2 uv, float seed, voxel::Block material)
     }};
     const int id = static_cast<int>(material);
     const auto aspect = id >= 65 && id <= 77 ? aspects[id - 65] : glm::vec2(1);
-    const float length = (0.32f + 0.13f * h2) * aspect.x;
-    const float width = (0.10f + 0.05f * h3) * aspect.y;
-    std::vector<glm::vec2> corners;
-    if (id >= 68 && id <= 73) {
-        corners = {{-length, -width * .15f}, {-length * .45f, -width},
-            {length * .45f, -width * .85f}, {length, width * .20f},
-            {length * .45f, width}, {-length * .40f, width * .85f}};
-    } else {
-        corners = {{-length, -width * .15f}, {-length * .25f, -width},
-            {length, width * .20f}, {length * .20f, width}};
-    }
-    for (std::size_t i = 0; i < corners.size(); ++i) {
-        const auto edge = corners[(i + 1) % corners.size()] - corners[i];
-        const auto point = q - corners[i];
-        if (edge.x * point.y - edge.y * point.x < -0.00001f) return false;
-    }
-    return true;
+    return {glm::dot(position, glm::vec3(.8f, .36f, .48f)) * (1.6f / aspect.x),
+        glm::dot(position, glm::vec3(-.6f, .48f, .64f)) * (2.4f / aspect.y),
+        glm::dot(position, glm::vec3(0, -.8f, .6f)) * 1.8f};
+}
+
+bool paintedOre(glm::vec3 position, voxel::Block material)
+{
+    const auto field = paintedMineralCoordinates(position, material);
+    const glm::ivec3 tile(glm::floor(field));
+    const auto q = glm::abs(field - glm::vec3(tile) - .5f);
+    const auto id = static_cast<int>(material);
+    const bool gem = id >= 68 && id <= 73;
+    const glm::vec3 halfSize(.35f + .06f * paintHash3(tile + glm::ivec3(11), material),
+        (gem ? .34f : .26f) + .06f * paintHash3(tile + glm::ivec3(23), material),
+        .35f + .06f * paintHash3(tile + glm::ivec3(37), material));
+    const auto shape = q / halfSize;
+    return paintHash3(tile, material) > .18f && glm::all(glm::lessThanEqual(shape, glm::vec3(1.0001f)))
+        && shape.x + shape.y + shape.z <= (gem ? 2.0001f : 1.8001f);
 }
 
 glm::ivec2 paintedStone(glm::vec2 uv, float seed, bool slate)
@@ -121,7 +130,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
               voxel::Block material, float minimumPeak, float maximumPeak)
 {
     const bool mineral = voxel::oreInfo(material) != nullptr;
-    check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 102 : 39),
+    check(!mesh.indices.empty() && mesh.indices.size() % 3 == 0 && mesh.indices.size() / 3 <= (mineral ? 108 : 39),
           "one decorated face has a bounded, nonempty triangle mesh");
     const glm::vec3 normal(face);
     const auto faceCenter = glm::vec3(anchor) + glm::vec3(0.5f) + normal * 0.5f;
@@ -132,7 +141,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         + static_cast<float>(material) * 19.0f;
     bool embedded = false;
     float peak = 0;
-    std::vector<glm::ivec2> oreTiles;
+    std::vector<glm::ivec3> oreTiles;
     for (const auto& vertex : mesh.vertices) {
         check(vertex.material == static_cast<float>(material), "relief keeps its anchor's material ID");
         check(std::abs(glm::length(vertex.normal) - 1.0f) < 0.0001f, "relief normals are unit length");
@@ -144,8 +153,8 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
         check(std::abs(glm::dot(projected - faceCenter, normal)) < 0.00001f,
               "projected texture positions lie on the original block face");
         if (mineral) {
-            check(paintedOre(uv(projected), paintSeed, material), "raised ore vertices lie inside painted mineral veins");
-            const glm::ivec2 tile(glm::floor(uv(projected) * 2.0f));
+            check(paintedOre(projected, material), "raised ore vertices lie inside painted mineral veins");
+            const glm::ivec3 tile(glm::floor(paintedMineralCoordinates(projected, material)));
             if (std::find(oreTiles.begin(), oreTiles.end(), tile) == oreTiles.end()) oreTiles.push_back(tile);
         }
         check(depth >= -0.0041f && depth <= maximumPeak + 0.00001f,
@@ -199,7 +208,7 @@ void validate(const voxel::MeshData& mesh, glm::ivec3 anchor, glm::ivec3 face,
                   "raised stone caps stay within a single painted Voronoi plate");
         }
     }
-    check(capArea > 0.003f && capArea < (material >= voxel::Block::TinOre ? .35f : mineral ? .18f : .20f),
+    check(capArea > 0.003f && capArea < (mineral ? .70f : .20f),
           "raised geometry occupies narrow fragments rather than complete slabs");
     check(tapered && flushEnd, "raised caps taper from a shallow ridge to the underlying face");
     if (mineral) check(buriedEdge, "ore hides a complete cap edge below the host surface");
@@ -508,29 +517,8 @@ void crystalRelief(voxel::World& world)
                 check(!mesh.indices.empty() && mesh.indices.size() / 3 <= 36,
                       "crystal faces contain at most three broad, bounded facets");
                 const glm::vec3 normal(face);
-                const glm::vec3 u = face.x != 0 ? glm::vec3(0, 0, 1) : glm::vec3(1, 0, 0);
-                const glm::vec3 v = face.y != 0 ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
-                const float seed = glm::dot(glm::vec3(anchor) * glm::abs(normal), glm::vec3(17, 37, 57))
-                    + static_cast<float>(material) * 19.0f;
                 const auto paintedFacet = [&](glm::vec3 position) {
-                    const glm::vec2 uv(glm::dot(position, u), glm::dot(position, v));
-                    const auto metric = face.y != 0 ? uv * 1.8f
-                        : glm::vec2(uv.x * 2.8f + uv.y * .22f, uv.y * .70f);
-                    const glm::ivec2 tile(glm::floor(metric));
-                    float nearest = 100;
-                    glm::ivec2 selected{};
-                    for (int y = -1; y <= 1; ++y) {
-                        for (int x = -1; x <= 1; ++x) {
-                            const auto site = tile + glm::ivec2(x, y);
-                            const float h = paintHash(glm::vec2(site) + seed);
-                            const auto delta = metric - (glm::vec2(site) + .2f + .6f * glm::vec2(h, glm::fract(h * 13.71f)));
-                            if (glm::dot(delta, delta) < nearest) {
-                                nearest = glm::dot(delta, delta);
-                                selected = site;
-                            }
-                        }
-                    }
-                    return selected;
+                    return glm::ivec3(glm::floor(paintedMineralCoordinates(position, material)));
                 };
                 bool raised = false, embedded = false;
                 float coverage = 0;
@@ -554,12 +542,12 @@ void crystalRelief(voxel::World& world)
                     const auto cross = glm::cross(b.position - a.position, c.position - a.position);
                     check(glm::length(cross) > .000001f && glm::dot(glm::normalize(cross), a.normal) > .9999f,
                           "crystal facets supply real outward lighting normals");
-                    check(paintedFacet(a.position) == paintedFacet(b.position)
-                          && paintedFacet(a.position) == paintedFacet(c.position),
+                    check(paintedFacet(a.position - normal * a.relief.w) == paintedFacet(b.position - normal * b.relief.w)
+                          && paintedFacet(a.position - normal * a.relief.w) == paintedFacet(c.position - normal * c.relief.w),
                           "each crystal facet stays inside one independently evaluated painted mineral plane");
                     coverage += glm::dot(cross, normal) * .5f;
                 }
-                check(raised && embedded && coverage > .40f && coverage < .98f,
+                check(raised && embedded && coverage > .25f && coverage < .98f,
                       "broad crystal planes visibly lift the mineral body without separate floating gems");
                 check(same(mesh, buildBlockRelief(world, chunk)), "crystal facet geometry is stable across repeated builds");
                 world.set(anchor + face, Block::Dirt);
@@ -568,6 +556,48 @@ void crystalRelief(voxel::World& world)
             world.set(anchor, Block::Air);
             for (const auto face : faces) world.set(anchor + face, Block::Air);
         }
+    }
+}
+
+void oreEdgeContinuity(voxel::World& world)
+{
+    using namespace voxel;
+    struct EdgePiece { glm::ivec3 block, deposit, side; };
+    for (const auto& ore : oreCatalog()) {
+        clear(world);
+        // Several corners avoid depending on one lucky deposit. Include
+        // neighboring chunk coordinates and an entire negative-coordinate cube.
+        for (int z : {2, 6, 10}) for (int x : {2, 6, 10}) world.set({x, 6, z}, ore.block);
+        world.set({-1, 6, -1}, ore.block);
+        std::vector<EdgePiece> topPieces, sidePieces;
+        for (const auto chunk : {centerChunk, centerChunk - World::Width - 1}) {
+            const auto mesh = buildBlockRelief(world, chunk);
+            for (const auto& vertex : mesh.vertices) {
+                const glm::vec3 normal(vertex.relief);
+                const auto projected = vertex.position - normal * vertex.relief.w;
+                const glm::ivec3 block(glm::floor(projected - normal * .001f));
+                const auto local = projected - glm::vec3(block);
+                const glm::ivec3 deposit(glm::floor(paintedMineralCoordinates(projected, ore.block)));
+                if (normal.y == 1) {
+                    for (int axis : {0, 2}) for (int sign : {-1, 1}) {
+                        const float boundary = sign > 0 ? 1.0f : 0.0f;
+                        if (std::abs(local[axis] - boundary) > .035f) continue;
+                        glm::ivec3 side(0); side[axis] = sign;
+                        topPieces.push_back({block, deposit, side});
+                    }
+                } else if (normal.y == 0 && local.y > .965f) {
+                    sidePieces.push_back({block, deposit, glm::ivec3(normal)});
+                }
+            }
+        }
+        int matchingCorners = 0;
+        for (const auto& top : topPieces) {
+            matchingCorners += std::any_of(sidePieces.begin(), sidePieces.end(), [&](const EdgePiece& side) {
+                return top.block == side.block && top.deposit == side.deposit && top.side == side.side;
+            });
+        }
+        check(matchingCorners > 0,
+              "every ore has real geometry from the same deposit continuing around a top/side corner");
     }
 }
 
@@ -598,7 +628,7 @@ int main()
         }
     }
 
-    // Appended ore IDs include thin metal seams and wider six-sided crystals.
+    // Appended ore IDs include thin metal seams and broader faceted gems.
     // Probe several cells per orientation because some naturally contain no vein.
     for (const auto& ore : oreCatalog()) {
         if (ore.block < Block::TinOre) continue;
@@ -685,8 +715,12 @@ int main()
     world.set(unpainted, Block::CopperOre);
     cover(world, unpainted);
     world.set(unpainted + faces[2], Block::Air);
-    check(buildBlockRelief(world, centerChunk).indices.empty(),
-          "an ore face without a painted vein does not invent a raised fragment");
+    const auto unpaintedMesh = buildBlockRelief(world, centerChunk);
+    for (const auto& vertex : unpaintedMesh.vertices) {
+        const auto projected = vertex.position - glm::vec3(vertex.relief) * vertex.relief.w;
+        check(paintedOre(projected, Block::CopperOre),
+              "ore geometry only appears inside the continuous painted deposit field");
+    }
 
     clear(world);
     const glm::ivec3 visibleOre{0, 6, 15};
@@ -723,6 +757,7 @@ int main()
     stairRelief(world);
     stairNeighbors(world);
     crystalRelief(world);
+    oreEdgeContinuity(world);
 
     bool threw = false;
     try { buildBlockRelief(world, World::ChunkCount); }

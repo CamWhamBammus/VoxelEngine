@@ -26,6 +26,8 @@ Stairs are in the Blocks tab, on page two. Each fits one block and has two half-
 
 All eight stair materials have surface depth on their treads, risers, and sides: fitted paving, beveled brickwork, board edges, or chipped rock. Path blocks include their paving automatically. The separate paving model can still replace the finish on a full tile. Ore veins, crystal facets, mossy stone, calcite, and roof tiles also have shallow geometry that catches the light.
 
+Grass wraps over block edges with an uneven fringe above the soil. Natural pigments and mineral deposits continue around corners, so an ore vein on top lines up with the same vein on the side. Raised mineral edges taper into the block at those corners.
+
 Other models attach to the surface you're aiming at. Hang roots and planters from ceilings, attach shelf fungi to walls, and place lotus or water grass on water. Most scenery models have collision, so logs, mushrooms, and rock ledges can be used for parkour.
 
 ## Faster building

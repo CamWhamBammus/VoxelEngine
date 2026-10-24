@@ -25,8 +25,24 @@ float materialNoise(vec2 p) {
     return mix(mix(materialHash(cell), materialHash(cell + vec2(1, 0)), f.x),
                mix(materialHash(cell + vec2(0, 1)), materialHash(cell + 1.0), f.x), f.y);
 }
+// Sample natural pigments through the block, so changing face orientation
+// cannot restart a patch of moss, soil grain, or mineral host rock.
+float materialHash3(vec3 p) {
+    vec3 q = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    q += dot(q, q.yxz + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+float materialNoise3(vec3 p) {
+    vec3 cell = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = mix(mix(materialHash3(cell), materialHash3(cell + vec3(1,0,0)), f.x),
+                  mix(materialHash3(cell + vec3(0,1,0)), materialHash3(cell + vec3(1,1,0)), f.x), f.y);
+    float b = mix(mix(materialHash3(cell + vec3(0,0,1)), materialHash3(cell + vec3(1,0,1)), f.x),
+                  mix(materialHash3(cell + vec3(0,1,1)), materialHash3(cell + vec3(1,1,1)), f.x), f.y);
+    return mix(a, b, f.z);
+}
 // Mineral proportions also drive the embedded geometry in block_relief.cpp.
-// The old coal/copper/iron seams keep their original outlines and paint.
+// Every deposit is sampled in a single volume shared by its top and sides.
 bool embeddedOre(int id) { return (id >= 7 && id <= 9) || (id >= 65 && id <= 77); }
 bool gemstoneOre(int id) { return id >= 68 && id <= 73; }
 vec2 mineralAspect(int id) {
@@ -44,6 +60,35 @@ vec2 mineralAspect(int id) {
     if (id == 76) return vec2(1.30, 0.75);
     if (id == 77) return vec2(1.35, 0.90);  // Glassy volcanic blades.
     return vec2(1.0);
+}
+// Matching CPU half-planes in block_relief.cpp: deposits live in a single
+// world-space volume, so their silhouettes continue around cube corners.
+float mineralHash3(vec3 p, int id) {
+    uvec3 cell = uvec3(ivec3(p));
+    uint h = cell.x * 0x9e3779b9u ^ cell.y * 0x85ebca6bu
+        ^ cell.z * 0xc2b2ae35u ^ uint(id) * 0x27d4eb2du;
+    h ^= h >> 16; h *= 0x7feb352du;
+    h ^= h >> 15; h *= 0x846ca68bu;
+    h ^= h >> 16;
+    return float(h & 0x00ffffffu) / 16777216.0;
+}
+vec3 mineralCoordinates(vec3 p, int id) {
+    if (id == 10 || id == 31) {
+        return vec3(dot(p, vec3(0.8, 0.0, 0.6)) * 1.55,
+            dot(p, vec3(0.12, 0.98, -0.16)) * 0.72,
+            dot(p, vec3(-0.588, 0.2, 0.784)) * 1.55);
+    }
+    vec2 aspect = mineralAspect(id);
+    return vec3(dot(p, vec3(0.8, 0.36, 0.48)) * (1.6 / aspect.x),
+        dot(p, vec3(-0.6, 0.48, 0.64)) * (2.4 / aspect.y),
+        dot(p, vec3(0.0, -0.8, 0.6)) * 1.8);
+}
+vec3 mineralHalfSize(vec3 tile, int id) {
+    float h2 = mineralHash3(tile + 11.0, id);
+    float h3 = mineralHash3(tile + 23.0, id);
+    float h4 = mineralHash3(tile + 37.0, id);
+    return vec3(0.35 + 0.06 * h2, (gemstoneOre(id) ? 0.34 : 0.26) + 0.06 * h3,
+                0.35 + 0.06 * h4);
 }
 vec3 mineralColor(int id) {
     if (id == 7) return vec3(0.075, 0.090, 0.105);
@@ -118,9 +163,22 @@ MaterialSurface evaluateMaterial() {
     vec2 p = (floor(uv * 32.0) + 0.5) / 32.0, local = fract(p);
     vec3 cell = floor(paintPosition - n * 0.001);
     float seed = dot(cell * abs(n), vec3(17, 37, 57)) + float(materialId) * 19.0;
+    // Rounding all three axes gives both faces the same texel at an edge.
+    // Face-local pixel centers would pick two unrelated samples there.
+    vec3 volumePaint = floor(paintPosition * 32.0 + 0.5) / 32.0;
+    float volumeSeed = float(materialId) * 19.0;
     float broad = materialNoise(p * 1.7 + seed);
     float chips = materialNoise(p * 5.5 + seed + 8.0);
     float fine = materialHash(floor(p * 32.0) + seed) - 0.5;
+    bool natural = (materialId >= 1 && materialId <= 10) || materialId == 15
+        || materialId == 21 || (materialId >= 23 && materialId <= 25)
+        || materialId == 28 || materialId == 29 || materialId == 31 || materialId == 32
+        || embeddedOre(materialId);
+    if (natural) {
+        broad = materialNoise3(volumePaint * 1.7 + volumeSeed);
+        chips = materialNoise3(volumePaint * 5.5 + volumeSeed + 8.0);
+        fine = materialHash3(floor(volumePaint * 32.0) + volumeSeed) - 0.5;
+    }
     vec3 color = surfaceColor * (0.86 + 0.18 * broad + 0.06 * chips + 0.035 * fine);
     vec2 slope = vec2(0.0);
     float roughness = 0.90, emission = 0.0;
@@ -150,12 +208,14 @@ MaterialSurface evaluateMaterial() {
         // Broad painted planes carry the rock. Break the seams into occasional
         // fissures instead of outlining every region like laid cobblestones.
         float edge = sqrt(second) - sqrt(nearest);
+        vec2 boundary = min(fract(uv), 1.0 - fract(uv));
+        float edgeFade = smoothstep(0.0, 0.12, min(boundary.x, boundary.y));
         float fracture = smoothstep(0.49, 0.76, chips * 0.65 + broad * 0.35);
         float crack = (1.0 - smoothstep(0.008, 0.040, edge)) * fracture;
         float bevel = 1.0 - smoothstep(0.02, 0.19, edge);
         vec2 outward = normalize(plane - secondPlane);
         float edgeLight = dot(outward, normalize(vec2(-0.55, 0.83)));
-        float stroke = materialNoise(vec2(p.x * 0.8 - p.y * 0.35, p.y * 5.0 + p.x * 1.6) + seed);
+        float stroke = materialNoise3(volumePaint * vec3(0.8, 5.0, 1.6) + volumeSeed);
         vec3 cool = shale ? vec3(0.27, 0.34, 0.42) : vec3(0.43, 0.49, 0.54);
         vec3 warm = shale ? vec3(0.36, 0.35, 0.40) : vec3(0.58, 0.55, 0.48);
         vec3 pigment = mix(cool, warm, smoothstep(0.22, 0.80, broad));
@@ -165,107 +225,79 @@ MaterialSurface evaluateMaterial() {
         if (materialId >= 65 && materialId <= 77) color = mineralHost(materialId, broad);
         // Overlapping broad and narrow brush marks suggest rock layers. They
         // never reset at a fracture, avoiding a wall full of separate tiles.
-        float strata = materialNoise(vec2(p.x * 1.8 + broad * 0.3, p.y * (shale ? 11.0 : 6.0)) + seed + 5.0);
+        float strata = materialNoise3(volumePaint * vec3(1.8, shale ? 11.0 : 6.0, 1.8)
+                                      + broad * 0.3 + volumeSeed + 5.0);
         float brush = smoothstep(0.28, 0.48, strata) * 0.5 + smoothstep(0.56, 0.74, strata) * 0.5;
         color *= 0.81 + 0.12 * stroke + 0.11 * brush;
-        color *= 1.0 + bevel * fracture * (0.045 * edgeLight - 0.015);
-        color *= 1.0 - crack * 0.21;
+        color *= 1.0 + bevel * fracture * (0.045 * edgeLight - 0.015) * edgeFade;
+        color *= 1.0 - crack * 0.21 * edgeFade;
         // A short upper-edge accent reads as a chipped surface in flat light.
         float rim = smoothstep(0.025, 0.05, edge) * (1.0 - smoothstep(0.05, 0.09, edge));
-        color += vec3(0.040, 0.045, 0.045) * rim * max(edgeLight, 0.0) * fracture;
+        color += vec3(0.040, 0.045, 0.045) * rim * max(edgeLight, 0.0) * fracture * edgeFade;
         slope = outward * bevel * fracture * (shale ? 0.08 : 0.10);
         if (materialId == 21) {
             // Irregular velvet patches settle in fissures and creep over ledges.
             float cover = smoothstep(0.43, 0.64, broad * 0.60 + chips * 0.32
-                                      + crack * 0.13 + (top ? 0.12 : 0.0));
+                                      + crack * edgeFade * 0.13 + 0.06);
             vec3 moss = mix(vec3(0.095, 0.22, 0.105), vec3(0.34, 0.48, 0.16), chips);
             color = mix(color * 0.88, moss * (0.91 + fine * 0.09), cover);
             slope *= 1.0 - cover * 0.75;
         }
         if (materialId == 28) {
             // Pale calcite has broad cream bands and cool mineral seams.
-            float band = materialNoise(vec2(p.x * 0.8 + chips * 0.4, p.y * 7.5) + seed);
+            float band = materialNoise3(volumePaint * vec3(0.8, 7.5, 0.8) + chips * 0.4 + volumeSeed);
             color = mix(vec3(0.59, 0.66, 0.62), vec3(0.87, 0.84, 0.66), broad);
-            color *= 0.86 + 0.17 * floor(band * 5.0) / 4.0 - crack * 0.13;
-            color += vec3(0.065, 0.06, 0.045) * rim * max(edgeLight, 0.0);
+            color *= 0.86 + 0.17 * floor(band * 5.0) / 4.0 - crack * 0.13 * edgeFade;
+            color += vec3(0.065, 0.06, 0.045) * rim * max(edgeLight, 0.0) * edgeFade;
             roughness = 0.65;
         }
         if (materialId == 77) {
             // Conchoidal bands and polished purple edges distinguish volcanic
             // glass from the rough host rock around every other ore.
-            float band = floor(materialNoise(p * vec2(3.0, 8.0) + seed) * 5.0) / 4.0;
+            float band = floor(materialNoise3(volumePaint * vec3(3.0, 8.0, 3.0) + volumeSeed) * 5.0) / 4.0;
             color *= 0.72 + band * 0.40;
-            color += vec3(0.10, 0.045, 0.16) * rim * max(edgeLight, 0.0);
+            color += vec3(0.10, 0.045, 0.16) * rim * max(edgeLight, 0.0) * edgeFade;
             roughness = 0.34;
         }
         if (embeddedOre(materialId)) {
-            // These elongated, asymmetric fragments also define the attached
-            // ore geometry in block_relief.cpp. Nearby pieces share a direction.
-            vec2 mineralUV = decorative == 2 ? uv : p;
-            vec2 mineralCell = floor(mineralUV * 2.0);
-            float h = mineralHash(mineralCell + seed);
-            float h2 = mineralHash(mineralCell + seed + 11.0);
-            float h3 = mineralHash(mineralCell + seed + 23.0);
-            float direction = mineralHash(floor(mineralCell / 3.0) + seed + 47.0) > 0.5 ? 1.0 : -1.0;
-            vec2 along = vec2(0.8, direction * 0.6), across = vec2(-direction * 0.6, 0.8);
-            vec2 offset = mineralUV * 2.0 - mineralCell - vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);
-            vec2 q = vec2(dot(offset, along), dot(offset, across));
-            vec2 aspect = mineralAspect(materialId);
-            float halfLength = (0.32 + 0.13 * h2) * aspect.x;
-            float halfWidth = (0.10 + 0.05 * h3) * aspect.y;
-            vec2 corners[6];
-            int cornerCount = gemstoneOre(materialId) ? 6 : 4;
-            if (cornerCount == 6) {
-                corners[0] = vec2(-halfLength, -halfWidth * 0.15);
-                corners[1] = vec2(-halfLength * 0.45, -halfWidth);
-                corners[2] = vec2(halfLength * 0.45, -halfWidth * 0.85);
-                corners[3] = vec2(halfLength, halfWidth * 0.2);
-                corners[4] = vec2(halfLength * 0.45, halfWidth);
-                corners[5] = vec2(-halfLength * 0.4, halfWidth * 0.85);
-            } else {
-                corners[0] = vec2(-halfLength, -halfWidth * 0.15);
-                corners[1] = vec2(-halfLength * 0.25, -halfWidth);
-                corners[2] = vec2(halfLength, halfWidth * 0.2);
-                corners[3] = vec2(halfLength * 0.20, halfWidth);
-            }
-            float edgeDistance = -10.0;
-            for (int i = 0; i < cornerCount; ++i) {
-                vec2 side = corners[(i + 1) % cornerCount] - corners[i];
-                edgeDistance = max(edgeDistance, dot(q - corners[i], normalize(vec2(side.y, -side.x))));
-            }
-            if (h > 0.32 && edgeDistance < 0.035) {
+            vec3 field = mineralCoordinates(paintPosition, materialId);
+            vec3 mineralCell = floor(field), q = field - mineralCell - 0.5;
+            float h = mineralHash3(mineralCell, materialId);
+            float h2 = mineralHash3(mineralCell + 11.0, materialId);
+            vec3 halfSize = mineralHalfSize(mineralCell, materialId);
+            vec3 shape = abs(q) / halfSize;
+            float edgeDistance = max(max(max(shape.x, shape.y), shape.z) - 1.0,
+                (shape.x + shape.y + shape.z - (gemstoneOre(materialId) ? 2.0 : 1.8)) * 0.57735);
+            if (h > 0.18 && edgeDistance < 0.09) {
                 vec3 ore = mineralColor(materialId);
                 if (materialId == 8 && h2 > 0.90) ore = mix(ore, vec3(0.20, 0.40, 0.31), 0.48);
                 if (edgeDistance <= 0.0) {
-                    float upper = clamp(q.y / halfWidth * 0.5 + 0.5, 0.0, 1.0);
-                    vec3 mineral = ore * (0.78 + 0.29 * upper + 0.06 * stroke);
+                    float upper = clamp(q.y / halfSize.y * 0.5 + 0.5, 0.0, 1.0);
+                    float grain = materialNoise(vec2(field.x + field.z * 0.37, field.y) * vec2(5.0, 14.0));
+                    vec3 mineral = ore * (0.78 + 0.29 * upper + 0.06 * grain);
                     if (gemstoneOre(materialId)) {
-                        // Broad light/dark facets reveal embedded crystals, with
-                        // a pale ridge instead of noisy dots or emissive paint.
-                        float facet = step(0.0, q.y + q.x * 0.24) * 0.23
-                            + step(0.0, q.x - q.y * 0.35) * 0.16;
+                        float facet = step(0.0, q.y + q.x * 0.24 + q.z * 0.17) * 0.23
+                            + step(0.0, q.x - q.y * 0.35 + q.z * 0.21) * 0.16;
                         mineral = ore * (0.60 + facet + 0.14 * upper);
-                        float ridge = 1.0 - smoothstep(0.01, 0.055, abs(q.y + q.x * 0.24));
+                        float ridge = 1.0 - smoothstep(0.01, 0.055, abs(q.y + q.x * 0.24 + q.z * 0.17));
                         mineral += mix(ore, vec3(0.87, 0.94, 1.0), 0.65) * ridge * 0.17;
                         if (materialId == 69) mineral = mix(mineral, ore * 0.75, 0.25);
                     } else if (materialId >= 65) {
-                        float grain = floor(materialNoise(q * vec2(6.0, 24.0) + seed) * 4.0) / 3.0;
-                        mineral *= 0.84 + grain * 0.23;
+                        mineral *= 0.84 + floor(grain * 4.0) / 3.0 * 0.23;
                     }
-                    // Painted highlights remain broad, with a small broken glint.
-                    float glint = smoothstep(-0.045, -0.012, edgeDistance) * upper;
+                    float glint = smoothstep(-0.12, -0.035, edgeDistance) * upper;
                     mineral += (materialId == 7 ? vec3(0.025, 0.035, 0.045) : vec3(0.09, 0.075, 0.045)) * glint;
-                    float exposed = smoothstep(-0.95, -0.15, q.x / halfLength)
-                        * smoothstep(-1.0, -0.2, q.y / halfWidth);
+                    float exposed = smoothstep(-0.98, -0.40, q.x / halfSize.x)
+                        * smoothstep(-0.98, -0.40, q.y / halfSize.y);
                     color = mix(color, mineral, exposed);
                     float mineralRoughness = materialId == 7 ? 0.77 : 0.67;
                     if (materialId >= 65) mineralRoughness = gemstoneOre(materialId) ? 0.31 : 0.46;
                     if (materialId == 69) mineralRoughness = 0.43;
                     if (materialId == 77) mineralRoughness = 0.22;
                     roughness = mix(roughness, mineralRoughness, exposed);
-                    slope += across * 0.055 * exposed;
+                    slope += vec2(dot(vec3(-0.6, 0.48, 0.64), u), dot(vec3(-0.6, 0.48, 0.64), v)) * 0.055 * exposed;
                 } else {
-                    color *= 0.72 + 0.28 * smoothstep(0.0, 0.035, edgeDistance);
+                    color *= 0.72 + 0.28 * smoothstep(0.0, 0.09, edgeDistance);
                 }
             }
         }
@@ -424,37 +456,25 @@ MaterialSurface evaluateMaterial() {
             color = mix(color, moss, growth);
         }
     } else if (materialId == 10 || materialId == 31) {
-        // Long angular mineral planes continue across voxels rather than stamping
-        // the same X onto every cube. The integer hash and anisotropic Voronoi
-        // cells also bound the real crystal facets in block_relief.cpp.
-        vec2 crystalUV = decorative == 2 ? uv : p;
-        vec2 mineral = crystalUV * (top ? vec2(1.8) : vec2(2.8, 0.70));
-        mineral.x += top ? 0.0 : crystalUV.y * 0.22;
-        vec2 tile = floor(mineral), within = fract(mineral), plane = vec2(0.0);
-        float nearest = 10.0, second = 10.0, facet = 0.0;
-        for (int y = -1; y <= 1; ++y) {
-            for (int x = -1; x <= 1; ++x) {
-                vec2 offset = vec2(x, y);
-                float h = mineralHash(tile + offset + seed);
-                vec2 delta = within - offset - 0.2 - 0.6 * vec2(h, fract(h * 13.71));
-                float distance = dot(delta, delta);
-                if (distance < nearest) {
-                    second = nearest; nearest = distance; plane = delta; facet = h;
-                } else second = min(second, distance);
-            }
-        }
-        float edge = second - nearest;
+        // A cut through a continuous oblique crystal lattice. The same cells
+        // also bound the physical facets, including at top/side cube corners.
+        vec3 mineral = mineralCoordinates(paintPosition, materialId);
+        vec3 tile = floor(mineral), within = fract(mineral);
+        float facet = mineralHash3(tile, materialId);
+        vec3 boundary = min(within, 1.0 - within);
+        float edge = min(boundary.x, min(boundary.y, boundary.z));
+        float grain = materialNoise(vec2(mineral.x + mineral.z * 0.31, mineral.y) * 1.7);
         color = mix(vec3(0.025, 0.20, 0.52), vec3(0.025, 0.66, 0.79), smoothstep(0.10, 0.75, facet));
         color = mix(color, vec3(0.055, 0.76, 0.67), smoothstep(0.72, 0.96, facet) * 0.65);
-        color *= (0.83 + 0.17 * broad) * (0.76 + 0.24 * smoothstep(0.015, 0.10, edge));
+        color *= (0.83 + 0.17 * grain) * (0.76 + 0.24 * smoothstep(0.015, 0.10, edge));
         float gleam = smoothstep(0.02, 0.045, edge) * (1.0 - smoothstep(0.045, 0.11, edge));
-        color += vec3(0.09, 0.22, 0.25) * gleam * smoothstep(-0.10, 0.25, plane.x);
-        slope = vec2((facet - 0.5) * 0.60, (fract(facet * 13.71) - 0.5) * 0.24);
+        color += vec3(0.09, 0.22, 0.25) * gleam * smoothstep(0.40, 0.75, within.x);
+        vec3 tilt = vec3(facet - 0.5, fract(facet * 13.71) - 0.5, fract(facet * 7.37) - 0.5) * vec3(0.6, 0.24, 0.6);
+        slope = vec2(dot(tilt, u), dot(tilt, v));
         if (materialId == 31) {
             color = mix(vec3(0.46, 0.12, 0.025), vec3(0.95, 0.57, 0.12), facet);
-            color *= 0.83 + 0.17 * broad;
-            color *= 0.76 + 0.24 * smoothstep(0.015, 0.10, edge);
-            color += vec3(0.18, 0.15, 0.065) * gleam * smoothstep(-0.10, 0.25, plane.x);
+            color *= (0.83 + 0.17 * grain) * (0.76 + 0.24 * smoothstep(0.015, 0.10, edge));
+            color += vec3(0.18, 0.15, 0.065) * gleam * smoothstep(0.40, 0.75, within.x);
         }
         roughness = 0.20; emission = 0.26 + 0.14 * facet;
     } else if (materialId == 20) {
@@ -492,17 +512,17 @@ MaterialSurface evaluateMaterial() {
         slope = sign(local - 0.5) * (1.0 - smoothstep(vec2(0.07), vec2(0.14), edge)) * 0.20;
     } else if (materialId == 24 || materialId == 25) {
         // Broad sediment bands for riverbanks: warm clay and damp grey-green silt.
-        float band = materialNoise(vec2(p.x * 0.75 + chips * 0.3, p.y * 6.5) + seed);
+        float band = materialNoise3(volumePaint * vec3(0.75, 6.5, 0.75) + chips * 0.3 + volumeSeed);
         float steps = floor(band * 6.0) / 5.0;
         vec3 low = materialId == 24 ? vec3(0.44, 0.22, 0.15) : vec3(0.23, 0.29, 0.26);
         vec3 high = materialId == 24 ? vec3(0.75, 0.47, 0.31) : vec3(0.46, 0.48, 0.37);
         color = mix(low, high, broad * 0.55 + steps * 0.45);
-        float pebbles = smoothstep(0.78, 0.90, materialNoise(p * 11.0 + seed));
+        float pebbles = smoothstep(0.78, 0.90, materialNoise3(volumePaint * 11.0 + volumeSeed));
         color += (materialId == 24 ? vec3(0.10, 0.07, 0.035) : vec3(0.08, 0.085, 0.065)) * pebbles;
         slope = vec2(chips - 0.5, band - 0.5) * 0.07;
         roughness = materialId == 24 ? 0.92 : 0.68;
     } else if (materialId == 29 || materialId == 32) {
-        float cushions = materialNoise(p * 3.7 + seed);
+        float cushions = materialNoise3(volumePaint * 3.7 + volumeSeed);
         float tips = floor(chips * 5.0) / 4.0;
         vec3 low = materialId == 32 ? vec3(0.025, 0.26, 0.17) : vec3(0.11, 0.23, 0.075);
         vec3 high = materialId == 32 ? vec3(0.16, 0.68, 0.41) : vec3(0.40, 0.56, 0.16);
@@ -517,34 +537,48 @@ MaterialSurface evaluateMaterial() {
             emission = 0.10 + spores * 0.25;
         }
     } else if (materialId == 1 || materialId == 2 || materialId == 23) {
-        // Painted soil clumps, root strokes and a few embedded pebbles carry
-        // the exposed stair banks; moss spills down unevenly from the surface.
-        float clumps = materialNoise(p * vec2(4.0, 5.5) + seed);
-        float strata = materialNoise(vec2(p.x * 1.7, p.y * 9.0 + broad) + seed);
+        // Grass and earth share one volume of paint. A tuft crossing a block
+        // edge keeps its color on the top, both sides, and the next block.
+        // Face-local seeds would turn those edges into seams in the turf.
+        float soilBroad = materialNoise3(volumePaint * 1.7 + vec3(41.0));
+        float clumps = materialNoise3(volumePaint * vec3(4.0, 5.5, 4.0) + vec3(17.0));
+        float strata = materialNoise3(volumePaint * vec3(1.7, 9.0, 1.7)
+                                      + vec3(5.0, soilBroad, 11.0));
         vec3 earth = mix(vec3(0.24, 0.17, 0.11), vec3(0.49, 0.35, 0.22),
-                         smoothstep(0.18, 0.82, clumps * 0.65 + broad * 0.35));
+                         smoothstep(0.18, 0.82, clumps * 0.65 + soilBroad * 0.35));
         earth *= 0.80 + 0.28 * floor(strata * 5.0) / 4.0;
-        float roots = materialNoise(vec2(p.x * 16.0 + sin(p.y * 2.5), p.y * 1.4) + seed);
+        vec3 rootPaint = volumePaint * vec3(16.0, 1.4, 16.0);
+        rootPaint.xz += vec2(sin(volumePaint.y * 2.5), cos(volumePaint.y * 2.5)) * 0.65;
+        float roots = materialNoise3(rootPaint + vec3(23.0));
         earth *= 1.0 - smoothstep(0.73, 0.88, roots) * 0.22;
-        vec2 pebble = p * vec2(5.0, 4.0);
-        vec2 q = fract(pebble) - 0.5;
-        float stone = (1.0 - smoothstep(0.20, 0.28, abs(q.x) + abs(q.y) * 1.4))
-                    * step(0.82, materialHash(floor(pebble) + seed));
+        float stone = smoothstep(0.77, 0.88,
+                                 materialNoise3(volumePaint * vec3(11.0, 9.0, 11.0) + vec3(67.0)));
         earth = mix(earth, vec3(0.47, 0.44, 0.35) * (0.8 + clumps * 0.3), stone * 0.75);
         color = earth;
         if (materialId == 1) {
-            float moss = smoothstep(0.25, 0.75, broad * 0.7 + chips * 0.3);
+            float turf = materialNoise3(volumePaint * vec3(1.7, 1.2, 1.7) + vec3(19.0));
+            float tips = materialNoise3(volumePaint * vec3(5.5, 3.5, 5.5) + vec3(37.0));
+            float moss = smoothstep(0.25, 0.75, turf * 0.7 + tips * 0.3);
             vec3 green = mix(vec3(0.12, 0.29, 0.14), vec3(0.35, 0.52, 0.17), moss);
-            green *= 0.87 + 0.16 * floor(chips * 5.0) / 4.0;
-            float depth = 0.43 + 0.35 * materialNoise(vec2(p.x * 2.2, seed));
-            float fringe = smoothstep(depth - 0.10, depth + 0.04, local.y + chips * 0.12);
-            color = top ? green : mix(earth, green, fringe);
+            green *= 0.87 + 0.16 * floor(tips * 5.0) / 4.0;
+            // The ragged edge is anchored to the actual cap height and x/z,
+            // so it flows around corners instead of restarting on each face.
+            float capHeight = ceil(paintPosition.y);
+            vec3 capPaint = vec3(volumePaint.x, capHeight, volumePaint.z);
+            float lobes = materialNoise3(capPaint * vec3(2.2, 0.8, 2.2) + vec3(53.0));
+            float fringeTips = materialNoise3(capPaint * vec3(10.5, 1.0, 10.5) + vec3(79.0));
+            float depth = 0.20 + 0.20 * smoothstep(0.2, 0.8, lobes)
+                          + 0.07 * smoothstep(0.35, 0.75, fringeTips);
+            float belowCap = capHeight - paintPosition.y;
+            float fringe = 1.0 - smoothstep(depth - 0.045, depth + 0.035, belowCap);
+            float cover = n.y > 0.5 ? 1.0 : (n.y < -0.5 ? 0.0 : fringe);
+            color = mix(earth, green, cover);
         }
         if (materialId == 23) {
-            vec2 rootUV = p;
-            rootUV.x += sin(p.y * 3.8 + seed) * 0.075;
-            float root = abs(fract(rootUV.x * 2.7 + materialNoise(p * 0.85 + seed) * 0.65) - 0.5);
-            float skin = 1.0 - smoothstep(0.035, 0.10, root);
+            vec3 rootPaint = volumePaint;
+            rootPaint.xz += sin(rootPaint.y * 3.8 + vec2(0.0, 1.7)) * 0.075;
+            float root = abs(materialNoise3(rootPaint * vec3(3.6, 0.7, 3.6) + 91.0) - 0.5);
+            float skin = 1.0 - smoothstep(0.025, 0.075, root);
             vec3 wood = mix(vec3(0.34, 0.22, 0.12), vec3(0.62, 0.43, 0.23), 1.0 - root * 7.0);
             color = mix(earth * 0.91, wood, skin);
         }

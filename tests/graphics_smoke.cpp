@@ -5,6 +5,7 @@
 #include "held_pickaxe_smoke.h"
 #include "ore_material_smoke.h"
 #include "surface_relief_smoke.h"
+#include "material_continuity_smoke.h"
 #include "mining_hud_smoke.h"
 #include "damage_feedback_smoke.h"
 #include "inventory_hud_smoke.h"
@@ -1494,6 +1495,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyLushMaterials(width, height);
     verifyOreMaterials(width, height);
     verifySurfaceRelief(width, height);
+    verifyMaterialContinuity();
     verifyMonsters(width, height);
     verifyDamageFeedback();
 
