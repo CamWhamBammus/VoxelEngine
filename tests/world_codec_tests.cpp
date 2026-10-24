@@ -1,4 +1,5 @@
 #include "save.h"
+#include "ores.h"
 
 #include <array>
 #include <cstdint>
@@ -118,6 +119,11 @@ int main()
             check(restored.get({low.x + static_cast<int>(value), 3, low.z}) == block
                   && restored.get({high.x - static_cast<int>(value), high.y, high.z}) == block,
                   "each material ID including bedrock round trips at opposite world edges");
+            if (const auto* ore = voxel::oreInfo(block)) {
+                const auto* recovered = voxel::oreInfo(restored.get({low.x + static_cast<int>(value), 3, low.z}));
+                check(recovered && recovered->item == ore->item && recovered->requiredTier == ore->requiredTier,
+                      "saved ore blocks retain their resource drops and mining tier");
+            }
         }
         check(restored.takeDirtyChunks().size() == voxel::World::ChunkCount,
               "loaded worlds must request all mesh uploads");
