@@ -6,6 +6,7 @@
 #include "graphics_smoke.h"
 
 #include <GLFW/glfw3.h>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -46,6 +47,7 @@ int main(int argc, char** argv)
         std::string statusText = game.statusText(0, 0, 0, 0, input.captured(), input.helpVisible());
         bool previousHelpVisible = input.helpVisible();
         bool previousCaptured = input.captured();
+        float lanternTime = 0;
 
         // 3. Each frame: read input, update the world, then draw it.
         while (true) {
@@ -95,6 +97,10 @@ int main(int argc, char** argv)
                         actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight);
             }
             game.update(actions, deltaSeconds);
+            const bool holdLantern = game.healthVisible() && !game.health().dead()
+                && game.equipment.selectedTool() == voxel::Tool::Lantern;
+            if (holdLantern && actions.active)
+                lanternTime = std::fmod(lanternTime + deltaSeconds, 8.0f);
 
             int width, height;
             window.framebufferSize(width, height);
@@ -116,7 +122,8 @@ int main(int argc, char** argv)
                             game.encounters().hits(),
                             game.healthVisible() && !game.health().dead()
                                 && game.equipment.selectedTool() == voxel::Tool::Pickaxe
-                                ? std::optional<float>(game.mining().swing()) : std::nullopt);
+                                ? std::optional<float>(game.mining().swing()) : std::nullopt,
+                            holdLantern ? std::optional<float>(lanternTime) : std::nullopt);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {

@@ -51,7 +51,7 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | Escape / Tab | Pause / resume |
 | H / Q | Toggle controls / quit |
 
-You walk up stairs automatically. Full blocks need a jump. The lantern lights your surroundings; the compass points toward the village tree or your current expedition exit.
+You walk up stairs automatically. Full blocks need a jump. Select the lantern with **2** to carry it in your hand; its glowing cage sways gently and lights your surroundings. The compass points toward the village tree or your current expedition exit.
 
 The HUD keeps your tools and health at the bottom. Mining, chest, and interaction prompts appear when needed. Press **H** for controls, including during section playtests.
 

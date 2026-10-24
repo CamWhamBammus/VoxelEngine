@@ -31,6 +31,7 @@ add_library(VoxelCore
     src/graphics/monster_slime.cpp
     src/graphics/held_sword.cpp
     src/graphics/held_pickaxe.cpp
+    src/graphics/held_lantern.cpp
     src/graphics/pickaxe_pose.cpp
     src/game_inventory.cpp
     src/equipment.cpp
@@ -96,6 +97,7 @@ if(VOXEL_BUILD_APP)
         tests/hud_play_smoke.cpp
         tests/held_sword_smoke.cpp
         tests/held_pickaxe_smoke.cpp
+        tests/held_lantern_smoke.cpp
         tests/ore_material_smoke.cpp
         tests/surface_relief_smoke.cpp
         tests/material_continuity_smoke.cpp
@@ -121,7 +123,7 @@ if(BUILD_TESTING)
         root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools
         levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
-        lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe
+        lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe held_lantern
         mining mining_loot mining_game built_surface_relief
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)

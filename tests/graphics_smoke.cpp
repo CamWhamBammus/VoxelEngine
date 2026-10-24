@@ -3,6 +3,7 @@
 #include "hud_play_smoke.h"
 #include "held_sword_smoke.h"
 #include "held_pickaxe_smoke.h"
+#include "held_lantern_smoke.h"
 #include "ore_material_smoke.h"
 #include "surface_relief_smoke.h"
 #include "material_continuity_smoke.h"
@@ -1483,6 +1484,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyPlayHud(width, height);
     verifyHeldSword(width, height);
     verifyHeldPickaxe(width, height);
+    verifyHeldLantern(width, height);
     verifyMiningHud(width, height);
     verifyInventoryHud(width, height);
     verifyRootCrossingHud(width, height);

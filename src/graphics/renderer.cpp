@@ -12,6 +12,7 @@
 #include "graphics/asset_builder.h"
 #include "graphics/held_sword.h"
 #include "graphics/held_pickaxe.h"
+#include "graphics/held_lantern.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -138,6 +139,7 @@ uniform float monsterHit;
 uniform int impactChip;
 uniform float timeSeconds;
 uniform int carriedLantern;
+uniform vec3 carriedLanternPosition;
 uniform int monsterCount;
 uniform vec3 monsterFeet[3];
 uniform int lightCount;
@@ -207,8 +209,11 @@ void main() {
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
         vec3 ambient = mix(vec3(0.05, 0.035, 0.065), vec3(0.045, 0.09, 0.085),
                            surfaceNormal.y * 0.5 + 0.5);
-        float lantern = carriedLantern != 0 ? 0.65 * (0.35 + 0.65 * max(dot(normal, viewDirection), 0.0))
-            / (1.0 + 0.045 * cameraDistance * cameraDistance) : 0.0;
+        vec3 toLantern = carriedLanternPosition - worldPosition;
+        float lanternDistance = length(toLantern);
+        vec3 lanternDirection = toLantern / max(lanternDistance, 0.001);
+        float lantern = carriedLantern != 0 ? 0.65 * (0.35 + 0.65 * max(dot(normal, lanternDirection), 0.0))
+            / (1.0 + 0.045 * lanternDistance * lanternDistance) : 0.0;
         vec3 light = (ambient + vec3(0.82, 0.91, 1.0) * headlamp
                       + vec3(1.0, 0.60, 0.24) * lantern) * ao;
         vec3 pointLight = vec3(0.0);
@@ -350,7 +355,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::span<const EncounterProjectile> projectiles,
                            std::optional<float> heldSwordSwing,
                            std::span<const EncounterHit> hits,
-                           std::optional<float> heldPickaxeSwing)
+                           std::optional<float> heldPickaxeSwing,
+                           std::optional<float> heldLanternTime)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -550,6 +556,23 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("underground", underground);
     shader_.setInt("cameraInWater", cameraInWater);
     shader_.setInt("carriedLantern", carriedLantern);
+    auto lanternPosition = camera.position();
+    const bool showLantern = heldLanternTime && !heldSwordSwing && !heldPickaxeSwing;
+    if (showLantern) {
+        const auto local = heldLanternLightPosition(*heldLanternTime, static_cast<float>(width) / height);
+        lanternPosition = glm::vec3(glm::inverse(camera.viewMatrix()) * glm::vec4(local, 1));
+        const auto offset = lanternPosition - camera.position();
+        const float distance = glm::length(offset);
+        // The hand has its own near-depth layer. Keep its light in the free
+        // space in front of a close wall even if the visual model overlaps it.
+        const auto wall = raycast(camera.position(), offset, distance, [&](glm::ivec3 cell) {
+            const auto block = world.get(cell);
+            return isOpaque(block) || isStair(block) ? block : Block::Air;
+        });
+        if (wall && distance > .001f)
+            lanternPosition = camera.position() + offset * (std::max(0.0f, wall->distance - .06f) / distance);
+    }
+    shader_.setVec3("carriedLanternPosition", lanternPosition);
     shader_.setInt("monsterCount", static_cast<int>(std::min<std::size_t>(3, monsters.size())));
     for (std::size_t i = 0; i < std::min<std::size_t>(3,monsters.size()); ++i) {
         const auto matrices = monsterMatrices(monsters[i]);
@@ -566,7 +589,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
     visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
-    heldSwordTriangles_ = heldPickaxeTriangles_ = 0;
+    heldSwordTriangles_ = heldPickaxeTriangles_ = heldLanternTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -751,15 +774,16 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glEnable(GL_CULL_FACE);
     }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    if (heldSwordSwing || heldPickaxeSwing) {
-        auto& heldMesh = heldSwordSwing ? heldSword_ : heldPickaxe_;
+    if (heldSwordSwing || heldPickaxeSwing || showLantern) {
+        auto& heldMesh = heldSwordSwing ? heldSword_ : heldPickaxeSwing ? heldPickaxe_ : heldLantern_;
         if (!heldMesh.indexCount())
-            heldMesh.upload(heldSwordSwing ? buildHeldSword() : buildHeldPickaxe());
+            heldMesh.upload(heldSwordSwing ? buildHeldSword() : heldPickaxeSwing ? buildHeldPickaxe() : buildHeldLantern());
         const auto view = camera.viewMatrix();
         const float aspect = static_cast<float>(width) / height;
         const auto handProjection = glm::perspective(glm::radians(65.0f),aspect,.03f,10.0f);
         const auto pose = heldSwordSwing ? heldSwordPose(*heldSwordSwing,aspect)
-                                        : heldPickaxePose(*heldPickaxeSwing,aspect);
+                        : heldPickaxeSwing ? heldPickaxePose(*heldPickaxeSwing,aspect)
+                        : heldLanternPose(*heldLanternTime,aspect);
         shader_.setMat4("viewProjection",handProjection*view);
         shader_.setMat4("model",glm::inverse(view)*pose);
         shader_.setInt("decorative",3);
@@ -783,7 +807,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_TRUE);
         heldMesh.draw();
-        auto& toolTriangles = heldSwordSwing ? heldSwordTriangles_ : heldPickaxeTriangles_;
+        auto& toolTriangles = heldSwordSwing ? heldSwordTriangles_
+                           : heldPickaxeSwing ? heldPickaxeTriangles_ : heldLanternTriangles_;
         toolTriangles = heldMesh.indexCount()/3;
         drawnTriangles_ += toolTriangles;
         glDepthRange(depthRange[0],depthRange[1]);
@@ -808,7 +833,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
 
 std::size_t WorldRenderer::triangleCount() const
 {
-    std::size_t total = monsterTriangles_ + heldSwordTriangles_ + heldPickaxeTriangles_;
+    std::size_t total = monsterTriangles_ + heldSwordTriangles_ + heldPickaxeTriangles_ + heldLanternTriangles_;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
     for (const auto& mesh : water_) total += mesh.indexCount() / 3;
     if (underground_) {
