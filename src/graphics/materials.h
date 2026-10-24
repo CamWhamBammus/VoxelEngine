@@ -25,6 +25,53 @@ float materialNoise(vec2 p) {
     return mix(mix(materialHash(cell), materialHash(cell + vec2(1, 0)), f.x),
                mix(materialHash(cell + vec2(0, 1)), materialHash(cell + 1.0), f.x), f.y);
 }
+// Mineral proportions also drive the embedded geometry in block_relief.cpp.
+// The old coal/copper/iron seams keep their original outlines and paint.
+bool embeddedOre(int id) { return (id >= 7 && id <= 9) || (id >= 65 && id <= 77); }
+bool gemstoneOre(int id) { return id >= 68 && id <= 73; }
+vec2 mineralAspect(int id) {
+    if (id == 65) return vec2(0.90, 0.75);  // Tin flakes.
+    if (id == 66) return vec2(1.10, 0.85);  // Silver ribbons.
+    if (id == 67) return vec2(0.85, 1.20);  // Gold nuggets.
+    if (id == 68) return vec2(1.12, 1.50);  // Quartz points.
+    if (id == 69) return vec2(1.12, 1.80);  // Broad jade lenses.
+    if (id == 70) return vec2(0.88, 1.60);
+    if (id == 71) return vec2(0.80, 1.80);
+    if (id == 72) return vec2(0.92, 1.60);
+    if (id == 73) return vec2(1.20, 1.40);  // Long emerald crystals.
+    if (id == 74) return vec2(1.22, 0.72);
+    if (id == 75) return vec2(1.32, 0.70);
+    if (id == 76) return vec2(1.30, 0.75);
+    if (id == 77) return vec2(1.35, 0.90);  // Glassy volcanic blades.
+    return vec2(1.0);
+}
+vec3 mineralColor(int id) {
+    if (id == 7) return vec3(0.075, 0.090, 0.105);
+    if (id == 8) return vec3(0.72, 0.36, 0.15);
+    if (id == 9) return vec3(0.53, 0.55, 0.57);
+    if (id == 65) return vec3(0.64, 0.72, 0.68);
+    if (id == 66) return vec3(0.78, 0.88, 0.98);
+    if (id == 67) return vec3(0.95, 0.64, 0.13);
+    if (id == 68) return vec3(0.91, 0.86, 0.96);
+    if (id == 69) return vec3(0.20, 0.65, 0.37);
+    if (id == 70) return vec3(0.63, 0.25, 0.91);
+    if (id == 71) return vec3(0.87, 0.075, 0.19);
+    if (id == 72) return vec3(0.13, 0.34, 0.93);
+    if (id == 73) return vec3(0.075, 0.83, 0.34);
+    if (id == 74) return vec3(0.13, 0.39, 0.75);
+    if (id == 75) return vec3(0.60, 0.76, 0.86);
+    if (id == 76) return vec3(0.16, 0.87, 0.72);
+    return vec3(0.18, 0.095, 0.27);
+}
+vec3 mineralHost(int id, float broad) {
+    if (id == 67) return mix(vec3(0.30, 0.26, 0.23), vec3(0.45, 0.38, 0.29), broad);
+    if (id == 68) return mix(vec3(0.39, 0.34, 0.39), vec3(0.53, 0.49, 0.51), broad);
+    if (id == 69) return mix(vec3(0.26, 0.34, 0.28), vec3(0.39, 0.43, 0.30), broad);
+    if (id >= 70 && id <= 73) return mix(vec3(0.25, 0.27, 0.34), vec3(0.38, 0.34, 0.43), broad);
+    if (id >= 74 && id <= 76) return mix(vec3(0.22, 0.30, 0.35), vec3(0.37, 0.41, 0.43), broad);
+    if (id == 77) return mix(vec3(0.075, 0.065, 0.11), vec3(0.19, 0.14, 0.25), broad);
+    return mix(vec3(0.36, 0.40, 0.42), vec3(0.49, 0.49, 0.45), broad);
+}
 // One evaluation supplies color, shallow relief, roughness, and luminous glass.
 // Correlated shapes are sampled on a 32-pixel grid, not random bright checkers.
 MaterialSurface evaluateMaterial() {
@@ -79,7 +126,7 @@ MaterialSurface evaluateMaterial() {
     float roughness = 0.90, emission = 0.0;
     if (materialId == 3 || materialId == 5 || materialId == 6 || materialId == 15
         || materialId == 21 || materialId == 28
-        || (materialId >= 7 && materialId <= 9)) {
+        || embeddedOre(materialId)) {
         bool shale = materialId == 6 || materialId == 15;
         // These irregular fracture lines also anchor the occasional rock chips
         // in block_relief.cpp. Color strokes continue across their boundaries.
@@ -115,6 +162,7 @@ MaterialSurface evaluateMaterial() {
         color = mix(surfaceColor, pigment, materialId == 5 ? 0.32 : 0.42);
         if (materialId == 15) color *= 0.65;
         if (materialId >= 7 && materialId <= 9) color = mix(vec3(0.39, 0.43, 0.47), pigment, 0.28);
+        if (materialId >= 65 && materialId <= 77) color = mineralHost(materialId, broad);
         // Overlapping broad and narrow brush marks suggest rock layers. They
         // never reset at a fracture, avoiding a wall full of separate tiles.
         float strata = materialNoise(vec2(p.x * 1.8 + broad * 0.3, p.y * (shale ? 11.0 : 6.0)) + seed + 5.0);
@@ -142,7 +190,15 @@ MaterialSurface evaluateMaterial() {
             color += vec3(0.065, 0.06, 0.045) * rim * max(edgeLight, 0.0);
             roughness = 0.65;
         }
-        if (materialId >= 7 && materialId <= 9) {
+        if (materialId == 77) {
+            // Conchoidal bands and polished purple edges distinguish volcanic
+            // glass from the rough host rock around every other ore.
+            float band = floor(materialNoise(p * vec2(3.0, 8.0) + seed) * 5.0) / 4.0;
+            color *= 0.72 + band * 0.40;
+            color += vec3(0.10, 0.045, 0.16) * rim * max(edgeLight, 0.0);
+            roughness = 0.34;
+        }
+        if (embeddedOre(materialId)) {
             // These elongated, asymmetric fragments also define the attached
             // ore geometry in block_relief.cpp. Nearby pieces share a direction.
             vec2 mineralUV = decorative == 2 ? uv : p;
@@ -154,28 +210,59 @@ MaterialSurface evaluateMaterial() {
             vec2 along = vec2(0.8, direction * 0.6), across = vec2(-direction * 0.6, 0.8);
             vec2 offset = mineralUV * 2.0 - mineralCell - vec2(0.2 + 0.6 * h, 0.2 + 0.6 * h2);
             vec2 q = vec2(dot(offset, along), dot(offset, across));
-            float halfLength = 0.32 + 0.13 * h2, halfWidth = 0.10 + 0.05 * h3;
-            vec2 corners[4] = vec2[4](vec2(-halfLength, -halfWidth * 0.15), vec2(-halfLength * 0.25, -halfWidth),
-                                      vec2(halfLength, halfWidth * 0.2), vec2(halfLength * 0.20, halfWidth));
+            vec2 aspect = mineralAspect(materialId);
+            float halfLength = (0.32 + 0.13 * h2) * aspect.x;
+            float halfWidth = (0.10 + 0.05 * h3) * aspect.y;
+            vec2 corners[6];
+            int cornerCount = gemstoneOre(materialId) ? 6 : 4;
+            if (cornerCount == 6) {
+                corners[0] = vec2(-halfLength, -halfWidth * 0.15);
+                corners[1] = vec2(-halfLength * 0.45, -halfWidth);
+                corners[2] = vec2(halfLength * 0.45, -halfWidth * 0.85);
+                corners[3] = vec2(halfLength, halfWidth * 0.2);
+                corners[4] = vec2(halfLength * 0.45, halfWidth);
+                corners[5] = vec2(-halfLength * 0.4, halfWidth * 0.85);
+            } else {
+                corners[0] = vec2(-halfLength, -halfWidth * 0.15);
+                corners[1] = vec2(-halfLength * 0.25, -halfWidth);
+                corners[2] = vec2(halfLength, halfWidth * 0.2);
+                corners[3] = vec2(halfLength * 0.20, halfWidth);
+            }
             float edgeDistance = -10.0;
-            for (int i = 0; i < 4; ++i) {
-                vec2 side = corners[(i + 1) % 4] - corners[i];
+            for (int i = 0; i < cornerCount; ++i) {
+                vec2 side = corners[(i + 1) % cornerCount] - corners[i];
                 edgeDistance = max(edgeDistance, dot(q - corners[i], normalize(vec2(side.y, -side.x))));
             }
             if (h > 0.32 && edgeDistance < 0.035) {
-                vec3 ore = materialId == 7 ? vec3(0.075, 0.090, 0.105)
-                    : (materialId == 8 ? vec3(0.72, 0.36, 0.15) : vec3(0.53, 0.55, 0.57));
+                vec3 ore = mineralColor(materialId);
                 if (materialId == 8 && h2 > 0.90) ore = mix(ore, vec3(0.20, 0.40, 0.31), 0.48);
                 if (edgeDistance <= 0.0) {
                     float upper = clamp(q.y / halfWidth * 0.5 + 0.5, 0.0, 1.0);
                     vec3 mineral = ore * (0.78 + 0.29 * upper + 0.06 * stroke);
+                    if (gemstoneOre(materialId)) {
+                        // Broad light/dark facets reveal embedded crystals, with
+                        // a pale ridge instead of noisy dots or emissive paint.
+                        float facet = step(0.0, q.y + q.x * 0.24) * 0.23
+                            + step(0.0, q.x - q.y * 0.35) * 0.16;
+                        mineral = ore * (0.60 + facet + 0.14 * upper);
+                        float ridge = 1.0 - smoothstep(0.01, 0.055, abs(q.y + q.x * 0.24));
+                        mineral += mix(ore, vec3(0.87, 0.94, 1.0), 0.65) * ridge * 0.17;
+                        if (materialId == 69) mineral = mix(mineral, ore * 0.75, 0.25);
+                    } else if (materialId >= 65) {
+                        float grain = floor(materialNoise(q * vec2(6.0, 24.0) + seed) * 4.0) / 3.0;
+                        mineral *= 0.84 + grain * 0.23;
+                    }
                     // Painted highlights remain broad, with a small broken glint.
                     float glint = smoothstep(-0.045, -0.012, edgeDistance) * upper;
                     mineral += (materialId == 7 ? vec3(0.025, 0.035, 0.045) : vec3(0.09, 0.075, 0.045)) * glint;
                     float exposed = smoothstep(-0.95, -0.15, q.x / halfLength)
                         * smoothstep(-1.0, -0.2, q.y / halfWidth);
                     color = mix(color, mineral, exposed);
-                    roughness = mix(roughness, materialId == 7 ? 0.77 : 0.67, exposed);
+                    float mineralRoughness = materialId == 7 ? 0.77 : 0.67;
+                    if (materialId >= 65) mineralRoughness = gemstoneOre(materialId) ? 0.31 : 0.46;
+                    if (materialId == 69) mineralRoughness = 0.43;
+                    if (materialId == 77) mineralRoughness = 0.22;
+                    roughness = mix(roughness, mineralRoughness, exposed);
                     slope += across * 0.055 * exposed;
                 } else {
                     color *= 0.72 + 0.28 * smoothstep(0.0, 0.035, edgeDistance);
