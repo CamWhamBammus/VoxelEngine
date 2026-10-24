@@ -29,6 +29,8 @@ add_library(VoxelCore
     src/graphics/monster_wizard.cpp
     src/graphics/monster_slime.cpp
     src/graphics/held_sword.cpp
+    src/graphics/held_pickaxe.cpp
+    src/graphics/pickaxe_pose.cpp
     src/game_inventory.cpp
     src/equipment.cpp
     src/items.cpp
