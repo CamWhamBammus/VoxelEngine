@@ -132,8 +132,9 @@ int main()
                 check(sectionInterior(glm::ivec3(glm::floor(asset.position))),
                       "all preset scenery can be selected, removed and saved inside the editor");
                 const bool hanging = asset.kind == HubAssetKind::HangingRoots
+                    || asset.kind == HubAssetKind::HangingFern
                     || asset.kind == HubAssetKind::StalactiteCluster;
-                const bool wall = asset.kind == HubAssetKind::RootFan;
+                const bool wall = asset.kind == HubAssetKind::RootFan || asset.kind == HubAssetKind::MossDrape;
                 const auto support = asset.position + (hanging ? glm::vec3(0,.01f,0)
                     : wall ? glm::vec3(-.01f,0,0) : glm::vec3(0,-.01f,0));
                 check(isSolid(world.get(glm::ivec3(glm::floor(support)))),

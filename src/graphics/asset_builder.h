@@ -84,5 +84,7 @@ void appendHubBlacksmith(MeshData& mesh, const HubAsset& asset);
 void appendHubLush(MeshData& mesh, const HubAsset& asset);
 void appendHubFence(MeshData& mesh, const HubAsset& asset);
 void appendHubBuildingKit(MeshData& mesh, const HubAsset& asset);
+void appendJunglePlants(MeshData& mesh, const HubAsset& asset);
+void appendJungleStructures(MeshData& mesh, const HubAsset& asset);
 
 } // namespace voxel

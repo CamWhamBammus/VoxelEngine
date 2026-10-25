@@ -63,7 +63,7 @@ int main()
         World world; buildBlankSection(world);
         SectionMetadata meta;
         std::vector<HubAsset> assets{{HubAssetKind::TrialSpawner, {5.5f, 9, 14.5f}}};
-        check(sectionAssetCatalog().back().kind == HubAssetKind::TrialSpawner
+        check(sectionAssetCatalog()[static_cast<std::size_t>(HubAssetKind::TrialSpawner)].kind == HubAssetKind::TrialSpawner
               && isCreativeAsset(HubAssetKind::TrialSpawner), "Spawner is a separate creative asset");
         check(buildingGridSize(HubAssetKind::TrialSpawner) == glm::ivec3(1), "Spawner occupies one grid cell");
         check(validSpawnerSettings(assets[0].spawner), "Default spawner has valid enemies");

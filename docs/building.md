@@ -67,6 +67,28 @@ Grass wraps over block edges with an uneven fringe above the soil. Natural pigme
 
 Other models attach to the surface you're aiming at. Hang roots and planters from ceilings, attach shelf fungi to walls, and place lotus or water grass on water. Most scenery models have collision, so logs, mushrooms, and rock ledges can be used for parkour.
 
+### Overgrown cave kit
+
+The last two pages of **E → Assets** have 16 more Lush Caves pieces. Each is a solid 3D model: folded leaves have thickness, moss rises above the rock, and roots and masonry have shaped edges. **T** rotates them and **Y** changes their variation.
+
+| Pieces | Placement |
+| --- | --- |
+| Jungle monstera, jungle cycad, bamboo, fiddlehead ferns | Ground plants for dense banks and gardens |
+| Pitcher plants, seed pods | Ground accents with hollow mouths or raised pod seams |
+| Hanging fern | Aim at the underside of a ceiling |
+| Moss drape | Aim at a wall; the foliage hangs down from its attachment |
+| Root bridge | Four blocks long; place across a gap with both ends supported |
+| Root stump | Rooted trunk with raised wood rings and moss |
+| Mossy platform, mossy column | Broad low stepping stone or a two-block-high pillar |
+| Overgrown arch | About three blocks wide, with a two-block-wide passage |
+| Ruined pillar, ruined wall, ruin slab | Chipped masonry for abandoned chambers |
+
+The bridge, platform, column, and slab have clear landing surfaces and collision that follows their geometry. Aim at a flat top to add another piece. The arch keeps its opening clear for walking through. These plants do not light a dark cave; add lamps or glowing plants where you want light.
+
+New **Root jungle** presets include a few examples around their edges. Existing sections are unchanged; add the pieces from the menu wherever you want them.
+
+![The overgrown cave kit rendered in the game](screenshots/jungle-assets.png)
+
 ## Faster building
 
 Press **G** to open Build tools.

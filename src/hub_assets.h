@@ -30,10 +30,14 @@ enum class HubAssetKind {
     // Append new kinds: numeric IDs are stored in authored section files.
     TimberFence, PicketFence, FenceCorner, GardenGate, IronRailing,
     TimberPillar, TimberBeam, DiagonalBrace, StoneDoorway, WindowFrame, WoodenStairs, Barrel,
-    TrialSpawner
+    TrialSpawner,
+    JungleMonstera, JungleCycad, BambooClump, FiddleheadFerns,
+    HangingFern, MossDrape, PitcherPlants, SeedPodCluster,
+    RootBridge, RootStump, MossyPlatform, MossyColumn,
+    OvergrownArch, RuinedPillar, RuinedWall, RuinSlab
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::TrialSpawner) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::RuinSlab) + 1;
 
 inline constexpr int SpawnerMobLimit = 20;
 struct SpawnerSettings {
@@ -105,6 +109,16 @@ constexpr bool isLushAsset(HubAssetKind kind)
     return kind >= HubAssetKind::TreeFern && kind <= HubAssetKind::HangingPlanter;
 }
 
+constexpr bool isJunglePlant(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::JungleMonstera && kind <= HubAssetKind::SeedPodCluster;
+}
+
+constexpr bool isJungleStructure(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::RootBridge && kind <= HubAssetKind::RuinSlab;
+}
+
 constexpr bool isFenceAsset(HubAssetKind kind)
 {
     return kind >= HubAssetKind::TimberFence && kind <= HubAssetKind::IronRailing;
@@ -132,6 +146,8 @@ constexpr glm::ivec3 buildingGridSize(HubAssetKind kind, int facing = 0)
 // Lush ground models sit on their origin. HangingRoots/HangingPlanter grow
 // down from a ceiling; BlossomVines/ShelfFungi/RootFan grow out of a local
 // Z=0 wall toward +Z. CaveLotus/WaterGrass use the water surface as their origin.
+// HangingFern also grows down from Y=0; MossDrape grows out of a Z=0 wall.
+// Other jungle models stand on Y=0, including the root bridge's two footings.
 
 // Includes full model extents for chunk culling and light candidate bounds.
 inline constexpr float HubAssetMargin = 4.0f;

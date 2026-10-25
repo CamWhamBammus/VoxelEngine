@@ -552,6 +552,8 @@ MeshData buildHubAsset(const HubAsset& asset)
         for (const float x : {-.38f,.38f})
             b.box({x-.07f,.84f,-.31f},{x+.07f,.96f,.31f},Block::Stone,stone);
     }
+    else if (isJunglePlant(asset.kind)) appendJunglePlants(mesh, asset);
+    else if (isJungleStructure(asset.kind)) appendJungleStructures(mesh, asset);
     else if (isChestAsset(asset.kind) || isItemPickup(asset.kind)) appendHubProp(mesh, asset);
     else if (isFenceAsset(asset.kind)) appendHubFence(mesh, asset);
     else if (isBuildingKitAsset(asset.kind)) appendHubBuildingKit(mesh, asset);

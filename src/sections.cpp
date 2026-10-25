@@ -105,6 +105,22 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::WoodenStairs, "Wooden stairs", "Buildings / six steps / ground"},
     SectionAssetInfo{HubAssetKind::Barrel, "Barrel", "Buildings / 1 block barrel / ground"},
     SectionAssetInfo{HubAssetKind::TrialSpawner, "Trial spawner", "Encounters / E to set enemies and rewards"},
+    SectionAssetInfo{HubAssetKind::JungleMonstera, "Jungle monstera", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::JungleCycad, "Jungle cycad", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::BambooClump, "Bamboo clump", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::FiddleheadFerns, "Fiddlehead ferns", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::HangingFern, "Hanging fern", "Lush / ceiling"},
+    SectionAssetInfo{HubAssetKind::MossDrape, "Moss drape", "Lush / wall"},
+    SectionAssetInfo{HubAssetKind::PitcherPlants, "Pitcher plants", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::SeedPodCluster, "Seed pods", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::RootBridge, "Root bridge", "Lush / crossings"},
+    SectionAssetInfo{HubAssetKind::RootStump, "Root stump", "Lush / ground"},
+    SectionAssetInfo{HubAssetKind::MossyPlatform, "Mossy platform", "Lush / parkour"},
+    SectionAssetInfo{HubAssetKind::MossyColumn, "Mossy column", "Lush / parkour"},
+    SectionAssetInfo{HubAssetKind::OvergrownArch, "Overgrown arch", "Lush / ruins"},
+    SectionAssetInfo{HubAssetKind::RuinedPillar, "Ruined pillar", "Lush / ruins"},
+    SectionAssetInfo{HubAssetKind::RuinedWall, "Ruined wall", "Lush / ruins"},
+    SectionAssetInfo{HubAssetKind::RuinSlab, "Ruin slab", "Lush / ruins"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};

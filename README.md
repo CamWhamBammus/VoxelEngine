@@ -114,6 +114,8 @@ Start the section builder with **F7**, or launch it directly:
 
 Each world has a starting preset: **Root jungle** mixes dirt, moss, stone, and roots; **Crystal grotto** uses pale rock and mineral seams; **Ember rock** has dark slate, obsidian, and clay. The cave fill carries these materials throughout, including passages you dig later. Choose **Plain stone** for a blank canvas. Existing sections keep their terrain.
 
+Lush Caves also has 16 overgrown models in **E → Assets**: broad-leaf plants, bamboo, hanging ferns, pitcher plants, roots, mossy platforms, and ruined stonework. Their leaves, bark, moss, and chipped edges use actual 3D geometry. The [building guide](docs/building.md#overgrown-cave-kit) shows the full kit and how to place it.
+
 ![Choosing a world preset and section layout](docs/screenshots/section-presets.png)
 
 Menus share a simpler cave palette, and the builder keeps only a small status label, hotbar, and contextual hint on screen. Press **H** for the full controls.

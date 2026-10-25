@@ -53,11 +53,12 @@ void dressCave(World& world, std::vector<HubAsset>& assets, SectionWorld theme)
     // The center aisle and both markers stay clear. Floor and ceiling models
     // touch existing surfaces; the wall root's +Z face turns into the chamber.
     if (theme == SectionWorld::LushCaves) {
-        assets.push_back({HubAssetKind::HangingRoots, {-1.8f,30,26.4f}, 0, 31});
+        assets.push_back({HubAssetKind::HangingFern, {-1.8f,30,26.4f}, 0, 31});
         assets.push_back({HubAssetKind::HangingRoots, {2.5f,30,18.2f}, 0, 47});
         assets.push_back({HubAssetKind::RootFan, {-3,27,21.7f}, 1, 13});
-        assets.push_back({HubAssetKind::Fern, {-2,25,18.3f}, 0, 29});
-        assets.push_back({HubAssetKind::CaveOrchid, {2.6f,25,26.3f}, 0, 17});
+        assets.push_back({HubAssetKind::MossDrape, {-3,28,24.2f}, 1, 51});
+        assets.push_back({HubAssetKind::PitcherPlants, {-1.9f,25,18.3f}, 0, 29});
+        assets.push_back({HubAssetKind::FiddleheadFerns, {2.6f,25,26.3f}, 0, 17});
     } else if (theme == SectionWorld::CrystalHollows) {
         assets.push_back({HubAssetKind::StalactiteCluster, {.5f,30,26.6f}, 0, 24});
         // Embedded mineral faces catch placed light without lighting themselves.
@@ -81,13 +82,16 @@ void dressParkour(World& world, std::vector<HubAsset>& assets, SectionWorld them
     constexpr float ceiling = 56.999f;
     if (theme == SectionWorld::LushCaves) {
         for (const int z : {-22, -7, 9, 24}) {
-            assets.push_back({HubAssetKind::FernBed, {-29.5f,9,float(z)}, 1, unsigned(z + 40)});
-            assets.push_back({HubAssetKind::RootFan, {-32,12,float(z)}, 1, unsigned(z + 50)});
-            assets.push_back({HubAssetKind::MossyStones, {29.7f,9,float(z)}, 0, unsigned(z + 80)});
-            assets.push_back({HubAssetKind::TreeFern, {29.8f,9,float(z) + 3}, 0, unsigned(z + 120)});
+            assets.push_back({z < 0 ? HubAssetKind::JungleMonstera : HubAssetKind::JungleCycad,
+                              {-29.5f,9,float(z)}, 1, unsigned(z + 40)});
+            assets.push_back({HubAssetKind::MossDrape, {-32,12,float(z)}, 1, unsigned(z + 50)});
+            assets.push_back({z < 0 ? HubAssetKind::MossyPlatform : HubAssetKind::RuinedPillar,
+                              {29.7f,9,float(z)}, 0, unsigned(z + 80)});
+            assets.push_back({HubAssetKind::BambooClump, {29.8f,9,float(z) + 3}, 0, unsigned(z + 120)});
         }
         for (const int x : {-23, -11, 12, 24})
-            assets.push_back({HubAssetKind::HangingRoots, {float(x),ceiling,-29}, 0, unsigned(x + 80)});
+            assets.push_back({x < 0 ? HubAssetKind::HangingRoots : HubAssetKind::HangingFern,
+                              {float(x),ceiling,-29}, 0, unsigned(x + 80)});
     } else if (theme == SectionWorld::CrystalHollows) {
         for (const int z : {-22, -6, 10, 25}) {
             assets.push_back({HubAssetKind::CrystalBeacon, {-30,9,float(z)}, 0, unsigned(z + 50)});

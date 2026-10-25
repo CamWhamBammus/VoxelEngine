@@ -73,6 +73,8 @@ add_library(VoxelCore
     src/graphics/hub_building_kit.cpp
     src/graphics/hub_blacksmith.cpp
     src/graphics/hub_lush.cpp
+    src/graphics/jungle_plants.cpp
+    src/graphics/jungle_structures.cpp
     src/editing.cpp
     src/save.cpp
 )
@@ -129,7 +131,7 @@ if(BUILD_TESTING)
         levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
         lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe held_lantern
         mining mining_loot mining_game built_surface_relief cave_game section_naming section_presets section_creation
-        held_compass compass_target
+        held_compass compass_target jungle_assets
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)
