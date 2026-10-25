@@ -105,7 +105,7 @@ Start the section builder with **F7**, or launch it directly:
 ./build/VoxelEngine --dev
 ```
 
-1. Choose a world and create an empty section. Each room has a 64 × 48 × 64 building area inside a protected stone shell.
+1. Choose a world, then **Open room / Parkour** for an empty room or **Cave / Carve from stone** for a solid cave with a small starting chamber. Both have a 64 × 48 × 64 building area inside a protected stone shell.
 2. Press **E** to choose blocks, models, items, and markers. Left click removes, right click places, and middle click picks what you're looking at. **T** rotates pieces; **Y** changes model finishes or gate pose.
 3. Place one **Start** and one **End** marker. You can add a checkpoint too.
 4. Press **F8** to walk through the room. Reach the End, then press **F8** to return to building.
@@ -117,6 +117,12 @@ Lush Caves is the world being worked on now. The other world entries are places 
 ![The creative inventory in the section builder](docs/screenshots/section-builder.png)
 
 **G** opens the faster building tools: area selection, fill, shell, cube brush, and copy/paste. **X** dismisses the paste preview and returns to normal building. **F5** saves a draft; changed work also autosaves. **F9** opens the section library.
+
+Caves start with **Round carve** selected. Hold left click to dig; **E → Tools** also has a box carve, and **G** sets the brush width. Press **X** to switch back to placing blocks and models.
+
+Dark caves rely on lamps, glowing materials, or your equipped lantern. The builder has a temporary light you can turn off with **G → Build light**; F8 tests always use the section's saved lighting. Existing sections and the village keep their usual lighting.
+
+![A carved passage with hanging lamps and darkness beyond their reach](docs/screenshots/cave-exploration.png)
 
 The [building guide](docs/building.md) covers these tools, chest contents, item drops, and how the building pieces fit together.
 
