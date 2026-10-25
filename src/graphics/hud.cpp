@@ -786,11 +786,12 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     button(x+22,y+329,212,32,"COPY AREA",SectionUiCopy,false,selection.has_value());
     button(x+244,y+329,212,32,"PASTE PREVIEW",SectionUiPaste,editor.buildMode()==SectionBuildMode::Paste,!editor.clipboard().empty());
     button(x+466,y+329,212,32,"PASTE SETTINGS",SectionUiPasteSettings);
-    const auto& clipboard=editor.clipboard();
-    fittedText(out,clipboard.empty() ? "CLIPBOARD EMPTY / COPY BLOCKS AND ASSETS TOGETHER"
-                : "COPIED / "+sectionDimensions(clipboard.size)+" / "+std::to_string(clipboard.assets.size())+" ASSETS / START AND END STAY",
-                x+24,y+371,w-48,1.15f,clipboard.empty() ? Muted : Leaf);
-    fittedText(out,"PASTE SETTINGS: FILL GAPS / LOCK HEIGHT / MOVE PREVIEW ONE BLOCK",x+24,y+390,w-48,1.15f,Muted);
+    button(x+22,y+375,154,27,"ROUND CARVE",SectionUiCarveRound,editor.buildMode()==SectionBuildMode::CarveRound);
+    button(x+184,y+375,154,27,"BOX CARVE",SectionUiCarveBox,editor.buildMode()==SectionBuildMode::CarveBox);
+    button(x+346,y+375,162,27,editor.meta().lighting==SectionLighting::Dark ? "LIGHT: DARK" : "LIGHT: AMBIENT",
+           SectionUiLighting,editor.meta().lighting==SectionLighting::Dark);
+    button(x+516,y+375,162,27,editor.builderLight() ? "BUILD LIGHT: ON" : "BUILD LIGHT: OFF",
+           SectionUiBuilderLight,editor.builderLight());
     sectionFeedback(out,editor,x+24,y+413,w-48);
     button(x+22,y+h-42,212,28,"CLEAR SELECTION",SectionUiClearSelection,false,editor.firstCorner().has_value() || editor.secondCorner().has_value());
     button(x+w-234,y+h-42,212,28,"G / ESC - BUILD",SectionUiBack,true);
