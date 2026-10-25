@@ -514,7 +514,25 @@ void oreIcon(Drawing& out, ItemId item, glm::vec2 center, float scale);
 
 void sectionItemIcon(Drawing& out,const SectionPaletteItem& item,glm::vec2 center,float size)
 {
-    if (item.pickup) {
+    if (item.tool) {
+        const auto p=[&](float x,float y){return center+glm::vec2(x,y)*size;};
+        if (*item.tool==SectionBuildMode::CarveRound || *item.tool==SectionBuildMode::CarveBox) {
+            // The cutout shows the brush shape, with a pick to indicate removal.
+            if (*item.tool==SectionBuildMode::CarveRound) {
+                for (int side=0;side<8;++side) {
+                    const float a=side*glm::pi<float>()/4, b=(side+1)*glm::pi<float>()/4;
+                    out.bar(p(std::cos(a)*.35f,std::sin(a)*.35f),
+                            p(std::cos(b)*.35f,std::sin(b)*.35f),size*.045f,Leaf);
+                }
+            } else out.frame(center.x-size*.35f,center.y-size*.35f,size*.7f,size*.7f,Leaf,Canvas);
+            pickaxeIcon(out,center,size/48.f,1);
+        } else if (*item.tool==SectionBuildMode::Select) {
+            for (float sx:{-1.f,1.f}) for (float sy:{-1.f,1.f}) {
+                out.bar(p(sx*.35f,sy*.16f),p(sx*.35f,sy*.35f),size*.06f,Gold);
+                out.bar(p(sx*.16f,sy*.35f),p(sx*.35f,sy*.35f),size*.06f,Gold);
+            }
+        } else out.preview(PalettePreviews::blockId(Block::Stone),center,size);
+    } else if (item.pickup) {
         out.preview(PalettePreviews::itemId(*item.pickup),center,size);
     } else if (item.asset) {
         out.preview(PalettePreviews::assetId(*item.asset),center,size);
@@ -648,15 +666,17 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
 {
     constexpr float w=700,h=478;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY","CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
+    sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY",editor.paletteTab()==4
+        ? "CHOOSE A BUILD TOOL / G CHANGES BRUSH SIZE AND LIGHTING"
+        : "CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
     const auto catalog=sectionAssetCatalog();
     const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& entry){return isCreativeAsset(entry.kind);});
-    const std::array<std::string,4> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
-        "ASSETS "+std::to_string(modelCount),"ITEMS "+std::to_string(ItemCount),"MARKERS"};
-    constexpr std::array tabIds{0,1,3,2};
+    const std::array<std::string,5> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
+        "ASSETS "+std::to_string(modelCount),"ITEMS "+std::to_string(ItemCount),"MARKERS","TOOLS"};
+    constexpr std::array tabIds{0,1,3,2,4};
     for (int tab=0;tab<static_cast<int>(tabs.size());++tab)
-        sectionButton(out,hits,x+22+tab*134,y+62,126,26,tabs[tab],SectionUiPaletteTabBase+tabIds[tab],editor.paletteTab()==tabIds[tab]);
-    sectionButton(out,hits,x+w-118,y+62,96,26,"ESC CLOSE",SectionUiBack);
+        sectionButton(out,hits,x+22+tab*110,y+62,104,26,tabs[tab],SectionUiPaletteTabBase+tabIds[tab],editor.paletteTab()==tabIds[tab]);
+    sectionButton(out,hits,x+584,y+62,94,26,"ESC CLOSE",SectionUiBack);
     const auto& items=editor.paletteItems();
     const int selection=std::clamp(editor.paletteSelection(),0,std::max(0,static_cast<int>(items.size())-1));
     const int page=selection/24;
@@ -684,7 +704,8 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     if (!items.empty()) {
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
-        const auto hint=item.pickup ? "DROP ON GROUND / WALK OVER TO COLLECT"
+        const auto hint=item.tool ? "CLICK TO ACTIVATE / G SIZE AND OPTIONS / X NORMAL PLACEMENT"
+            : item.pickup ? "DROP ON GROUND / WALK OVER TO COLLECT"
             : item.asset && isSpawnerAsset(*item.asset) ? "PLACE / AIM AT SPAWNER AND PRESS E TO SET ENEMIES AND REWARDS"
             : item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
             : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
@@ -707,7 +728,8 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         sectionButton(out,hits,x+w-65,y+340,43,29,">",SectionUiPaletteNext,false,(page+1)*24<static_cast<int>(items.size()));
     }
     sectionHotbar(out,hits,editor,width*0.5f,y+384,true);
-    out.centered("TAB - CATEGORY / ARROWS - ITEM / ENTER - EQUIP / 1-9 - SLOT",width*0.5f,y+444,0.9f,Muted);
+    out.centered(editor.paletteTab()==4 ? "ROUND CARVE: TUNNELS / BOX CARVE: ROOMS / LEFT CLICK DIGS"
+        : "TAB - CATEGORY / ARROWS - ITEM / ENTER - EQUIP / 1-9 - SLOT",width*0.5f,y+444,0.9f,Muted);
     sectionFeedback(out,editor,x+23,y+461,w-46);
 }
 
