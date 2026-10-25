@@ -73,6 +73,7 @@ vec3 shadeWater(vec3 lit, vec3 normal, vec3 viewDirection) {
     bool top = surfaceNormal.y > 0.5 && !exiting;
     float fresnel = pow(1.0 - abs(dot(normal, viewDirection)), 4.0);
     vec3 reflection = underground != 0 ? vec3(0.025, 0.095, 0.12) : vec3(0.32, 0.52, 0.68);
+    if (darkCave != 0) reflection = vec3(0.0);
     if (refractiveWater == 0) return mix(lit, reflection, 0.18 + 0.45 * fresnel);
 
     vec2 uv = gl_FragCoord.xy / vec2(textureSize(opaqueColor, 0));
@@ -91,7 +92,7 @@ vec3 shadeWater(vec3 lit, vec3 normal, vec3 viewDirection) {
     // Red is absorbed first: sand stays visible in shallow jade water while
     // deeper pools become blue-green. Optical thickness follows the view ray.
     vec3 transmission = exp(-vec3(0.48, 0.18, 0.12) * min(thickness, 28.0));
-    vec3 body = max(lit * 0.7, vec3(0.012, 0.095, 0.105));
+    vec3 body = darkCave != 0 ? lit * 0.7 : max(lit * 0.7, vec3(0.012, 0.095, 0.105));
     vec3 water = bottom * transmission + body * (1.0 - transmission);
     if (exiting) return water;
     if (top) {
@@ -117,14 +118,17 @@ vec3 shadeWater(vec3 lit, vec3 normal, vec3 viewDirection) {
                      * (0.08 + 0.92 * smoothstep(0.35, 0.9, ripple))
                      * smoothstep(0.20, 0.65, noise);
         float foam = clamp(shore * 0.65 + splash * 0.78, 0.0, 0.85);
-        water = mix(water, vec3(0.24, 0.43, 0.40) + lit * 0.35, foam);
+        vec3 foamColor = darkCave != 0 ? lit * vec3(1.4, 1.15, 1.0)
+                                      : vec3(0.24, 0.43, 0.40) + lit * 0.35;
+        water = mix(water, foamColor, foam);
     } else {
         // Thin falling curtains reveal hints of the cliff through bright,
         // downward-moving strands instead of looking like opaque blue walls.
         vec2 falling = vec2(worldPosition.x + worldPosition.z, worldPosition.y + timeSeconds * 2.4);
         float strands = materialNoise(falling * vec2(5.5, 0.42));
         float spray = smoothstep(0.50, 0.85, strands);
-        vec3 curtain = lit + mix(vec3(0.018, 0.055, 0.065), vec3(0.16, 0.25, 0.24), spray);
+        vec3 curtain = darkCave != 0 ? lit * (1.0 + spray)
+            : lit + mix(vec3(0.018, 0.055, 0.065), vec3(0.16, 0.25, 0.24), spray);
         water = mix(water, curtain, 0.48 + spray * 0.32);
     }
     return water;
