@@ -610,7 +610,8 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     constexpr float w=700,h=470;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
     sectionPanel(out,width,height,x,y,w,h,"YOUR SECTIONS",sectionWorldName(editor.selectedWorld())+" / DRAFTS AND ACCEPTED SECTIONS");
-    sectionButton(out,hits,x+22,y+65,w-44,37,"+ NEW EMPTY SECTION / 64 X 48 X 64",SectionUiLibraryNew,editor.selection()==0);
+    sectionButton(out,hits,x+22,y+65,318,37,"+ OPEN ROOM / PARKOUR",SectionUiLibraryNew,editor.selection()==0);
+    sectionButton(out,hits,x+360,y+65,318,37,"+ CAVE / CARVE FROM STONE",SectionUiLibraryCave);
     const auto& drafts=editor.draftEntries();
     const auto& entries=editor.entries();
     const int count=static_cast<int>(drafts.size()+entries.size());
