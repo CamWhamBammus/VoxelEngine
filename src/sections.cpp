@@ -488,6 +488,24 @@ void buildBlankSection(World& world)
     }
 }
 
+void buildCaveSection(World& world)
+{
+    for (std::size_t index = 0; index < World::ChunkCount; ++index) {
+        const auto origin = world.origin(index);
+        for (int y = 0; y < Chunk::Size; ++y)
+            for (int z = 0; z < Chunk::Size; ++z)
+                for (int x = 0; x < Chunk::Size; ++x) {
+                    const auto cell = origin + glm::ivec3(x, y, z);
+                    const bool room = cell.x >= SectionInteriorMin.x - 1 && cell.x <= SectionInteriorMax.x
+                        && cell.y >= SectionInteriorMin.y - 1 && cell.y <= SectionInteriorMax.y
+                        && cell.z >= SectionInteriorMin.z - 1 && cell.z <= SectionInteriorMax.z;
+                    const bool chamber = cell.x >= -3 && cell.x < 4 && cell.y >= 25 && cell.y < 30
+                        && cell.z >= 17 && cell.z < 28;
+                    world.set(cell, room && !chamber ? Block::Stone : Block::Air);
+                }
+    }
+}
+
 bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision* assets)
 {
     constexpr float half = Player::Width * 0.5f;

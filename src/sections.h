@@ -35,6 +35,8 @@ std::span<const SectionAssetInfo> sectionAssetCatalog();
 
 inline constexpr glm::ivec3 SectionInteriorMin{-32, 9, -32};
 inline constexpr glm::ivec3 SectionInteriorMax{32, 57, 32};
+inline constexpr glm::vec3 SectionCaveSpawn{.5f, 25.f, 24.5f};
+inline constexpr glm::vec3 SectionCaveFinish{.5f, 25.f, 19.5f};
 inline constexpr std::size_t SectionMaxAssets = 4096;
 constexpr bool sectionInterior(glm::ivec3 cell)
 {
@@ -70,6 +72,8 @@ struct SectionEntry {
 // Clears the old scene and makes a closed 64 x 48 x 64 stone building room.
 // The shell is outside the editable interior and is protected by the editor.
 void buildBlankSection(World& world);
+// A stone-filled room for carving, with a small clear starting chamber and no lamps.
+void buildCaveSection(World& world);
 // A marker needs full player clearance and support under the player's footprint.
 bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision* assets = nullptr);
 

@@ -149,6 +149,35 @@ int main()
         }
     }
 
+    World cave(943);
+    cave.set({80, 80, 80}, Block::Lantern);
+    buildCaveSection(cave);
+    check(cave.seed() == 943 && cave.get({80, 80, 80}) == Block::Air,
+          "cave template replaces the previous scene while preserving its seed");
+    bool allCaveCellsMatch = true;
+    for (int x = -33; x <= 32; ++x)
+        for (int y = 8; y <= 57; ++y)
+            for (int z = -33; z <= 32; ++z) {
+                const bool chamber = x >= -3 && x < 4 && y >= 25 && y < 30 && z >= 17 && z < 28;
+                allCaveCellsMatch &= cave.get({x, y, z}) == (chamber ? Block::Air : Block::Stone);
+            }
+    check(allCaveCellsMatch, "cave has one small chamber, stone everywhere else, an intact shell and no built-in lights");
+    check(sectionMarkerSafe(cave, SectionCaveSpawn) && sectionMarkerSafe(cave, SectionCaveFinish),
+          "both cave markers start with solid footing and full player clearance");
+    SectionMetadata caveMeta;
+    caveMeta.category = SectionCategory::Exploration;
+    caveMeta.spawn = SectionCaveSpawn;
+    caveMeta.finish = SectionCaveFinish;
+    caveMeta.lighting = SectionLighting::Dark;
+    caveMeta.tested = true;
+    const auto caveFile = acceptSection(cave, caveMeta, {}, temp.path / "cave-library");
+    const auto restoredCave = loadSection(caveFile);
+    check(restoredCave.world.sameContents(cave) && restoredCave.meta.lighting == SectionLighting::Dark
+          && restoredCave.meta.category == SectionCategory::Exploration
+          && restoredCave.meta.spawn == SectionCaveSpawn && restoredCave.meta.finish == SectionCaveFinish
+          && listSections(temp.path / "cave-library").front().meta.lighting == SectionLighting::Dark,
+          "accepted exploration caves preserve dark lighting, markers and carved terrain in the library");
+
     SectionMetadata meta;
     check(meta.lighting == SectionLighting::Ambient, "new ordinary sections keep existing ambient lighting");
     meta.name = "Fern bridge";
