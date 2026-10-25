@@ -98,6 +98,7 @@ if(VOXEL_BUILD_APP)
         tests/held_sword_smoke.cpp
         tests/held_pickaxe_smoke.cpp
         tests/held_lantern_smoke.cpp
+        tests/cave_lighting_smoke.cpp
         tests/ore_material_smoke.cpp
         tests/surface_relief_smoke.cpp
         tests/material_continuity_smoke.cpp
