@@ -114,6 +114,8 @@ Start the section builder with **F7**, or launch it directly:
 
 Lush Caves is the world being worked on now. The other world entries are places to organize future sections.
 
+Name a draft at any time with **F2** or **G → Rename section**. Type a name and press **Enter** to save; **Escape** cancels. You don't need to finish a playtest first.
+
 ![The creative inventory in the section builder](docs/screenshots/section-builder.png)
 
 **G** opens the faster building tools: area selection, fill, shell, cube brush, and copy/paste. **X** dismisses the paste preview and returns to normal building. **F5** saves a draft; changed work also autosaves. **F9** opens the section library.

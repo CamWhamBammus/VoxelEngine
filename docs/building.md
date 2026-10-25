@@ -2,6 +2,8 @@
 
 Open the builder with **F7** or `./build/VoxelEngine --dev`. Choose a world, then create a new section or open a draft. These instructions are for the section builder; `--editor` opens the older terrain sandbox.
 
+Press **F2** while building, or choose **G → Rename section**, to name your section before testing it. Type the name and press **Enter** to save it with the draft; **Escape** cancels. Click the name field or use **Cmd/Ctrl+A** to replace the whole name. Renaming keeps your build and completed playtest intact. On a Mac, you may need **Fn+F2**.
+
 ## Carving a cave
 
 Choose **Cave / Carve from stone** in the world's library. The 64 × 48 × 64 building area starts filled with stone, with a small room around Start. It uses the Exploration category and dark lighting. **Open room / Parkour** still creates the empty room.
@@ -32,6 +34,7 @@ You can switch any section between **Light: Dark** and **Light: Ambient**. That 
 | Space / Ctrl | Fly up / down |
 | Shift / Alt (Option) | Faster / slower flight |
 | E | Open the creative inventory, or edit the chest you're aiming at |
+| F2 | Name or rename the current section |
 | 1–9 / mouse wheel | Select a hotbar slot |
 | Left / right click | Remove / place |
 | Middle click | Pick a block or model |

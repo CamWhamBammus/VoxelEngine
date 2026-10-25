@@ -324,6 +324,88 @@ void verifyCaveAuthoring(int width,int height,const std::filesystem::path& libra
     }
 }
 
+void verifySectionNaming(int width,int height,const std::filesystem::path& library,Hud& hud)
+{
+    for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+        const float dpi=size.x==640 ? 2.f : 1.f;
+        const float scale=std::min({dpi,size.x/736.f,size.y/516.f});
+        Options options;options.dev=true;options.smokeTest=true;
+        options.sectionLibrary=(library/std::to_string(size.x)).string();
+        Game game(options);
+        const auto act=[&](int id) {InputActions a;a.active=true;a.devClick=id;game.update(a);};
+        const auto press=[&](bool InputActions::*key) {InputActions a;a.active=true;a.*key=true;game.update(a);};
+        const auto type=[&](const std::string& text) {InputActions a;a.active=true;a.devText=text;game.update(a);};
+        const auto hit=[&](float px,float py,bool rename) {
+            const float x=(size.x/scale-(rename ? 620 : 700))*.5f;
+            const float y=(size.y/scale-(rename ? 270 : 478))*.5f;
+            return Hud::sectionClick(game,size.x,size.y,dpi,(x+px)*scale,(y+py)*scale);
+        };
+        const auto click=[&](float px,float py,bool rename,int id) {
+            const auto target=hit(px,py,rename);
+            require(target==id,"Section name control disagrees with its scaled display");
+            act(*target);
+        };
+        const auto draw=[&] {
+            glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,size.x,size.y);glDisable(GL_SCISSOR_TEST);
+            glClearColor(.13f,.17f,.15f,1);glClear(GL_COLOR_BUFFER_BIT);
+            const auto before=state();hud.drawSection(game,size.x,size.y,dpi);
+            require(state()==before,"Section naming HUD changed OpenGL state");
+            Pixels pixels(static_cast<std::size_t>(size.x)*size.y*4);
+            glReadPixels(0,0,size.x,size.y,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+            require(glGetError()==GL_NO_ERROR,"Section naming HUD generated an OpenGL error");
+            return pixels;
+        };
+        act(SectionUiWorldBase);act(SectionUiLibraryNew);
+        auto& editor=game.sectionEditor();
+        require(!editor.meta().tested,"Name editor fixture must not have completed a walk test");
+        const auto originalName=editor.meta().name;
+        press(&InputActions::devTools);
+        const auto tools=draw();
+        click(350,450,false,SectionUiRename);
+        require(editor.screen()==SectionEditorScreen::Rename && editor.typing()
+                && editor.renameText()==originalName && editor.nameSelected(),
+                "Rename button did not open the preselected section name before a walk test");
+        require(difference(tools,draw())>2000,"Name dialog did not replace the building tools panel");
+        require(hit(310,106,true)==SectionUiNameField && hit(109,234,true)==SectionUiBack
+                && hit(471,234,true)==SectionUiRenameApply,
+                "Name dialog field, Cancel or Save targets disagree with their scaled display");
+        type("   ");
+        require(!hit(471,234,true),"Blank names leave the Save button clickable");
+        draw();
+        click(109,234,true,SectionUiBack);
+        require(editor.screen()==SectionEditorScreen::Tools && editor.meta().name==originalName
+                && !editor.dirty(),"Cancelling a name edit changed the document or lost the prior menu");
+        click(350,450,false,SectionUiRename);
+        type("Temporary");
+        const auto selectedName=draw();
+        click(310,106,true,SectionUiNameField);
+        require(editor.nameSelected(),"Clicking the name field did not select its existing text");
+        type("  Mossy Hall  ");
+        require(editor.renameText()=="  Mossy Hall  " && editor.meta().name==originalName,
+                "Typing in the name dialog changed the saved document before applying");
+        require(difference(selectedName,draw())>15,"Name dialog did not display the newly typed name");
+        click(471,234,true,SectionUiRenameApply);
+        require(editor.screen()==SectionEditorScreen::Tools && editor.meta().name=="Mossy Hall"
+                && !editor.dirty() && !editor.meta().tested,
+                "Saving an untested section name did not trim and persist it before returning to Tools");
+        const auto drafts=listSectionDrafts(options.sectionLibrary);
+        require(drafts.size()==1 && drafts.front().meta.name=="Mossy Hall" && !drafts.front().meta.tested,
+                "Name Save did not persist the same untested draft");
+        draw();
+        act(SectionUiBack);
+        require(editor.screen()==SectionEditorScreen::Build,"Rename fixture could not return to building");
+        press(&InputActions::devRename);
+        require(editor.screen()==SectionEditorScreen::Rename && editor.renameText()=="Mossy Hall",
+                "F2 naming action did not work directly from the build view");
+        draw();
+        type("Discard this name");
+        click(109,234,true,SectionUiBack);
+        require(editor.screen()==SectionEditorScreen::Build && editor.meta().name=="Mossy Hall",
+                "Cancelling an F2 name edit failed to restore the build view and original name");
+        draw();
+    }
+}
+
 }
 
 void verifySectionHud(int width,int height)
@@ -715,8 +797,9 @@ void verifySectionHud(int width,int height)
         verifyChestAuthoring(width,height,temporary/"chest-workshop",hud);
         verifySpawnerAuthoring(width,height,temporary/"spawner-workshop",hud);
         verifyCaveAuthoring(width,height,temporary/"cave-workshop",hud);
+        verifySectionNaming(width,height,temporary/"section-naming",hud);
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout << "Section HUD passed: world library, cave creation, carving and lighting controls, five palette tabs, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
+    std::cout << "Section HUD passed: world library, cave creation, carving and lighting controls, five palette tabs, section naming before testing, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
 }
 }

@@ -794,6 +794,7 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
            SectionUiBuilderLight,editor.builderLight());
     sectionFeedback(out,editor,x+24,y+413,w-48);
     button(x+22,y+h-42,212,28,"CLEAR SELECTION",SectionUiClearSelection,false,editor.firstCorner().has_value() || editor.secondCorner().has_value());
+    button(x+244,y+h-42,212,28,"F2 - RENAME SECTION",SectionUiRename);
     button(x+w-234,y+h-42,212,28,"G / ESC - BUILD",SectionUiBack,true);
 }
 
@@ -826,6 +827,24 @@ void sectionPasteMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     sectionFeedback(out,editor,x+24,y+414,w-48);
     sectionButton(out,hits,x+22,y+h-42,212,28,"ESC - BACK TO TOOLS",SectionUiBack);
     sectionButton(out,hits,x+w-260,y+h-42,238,28,"RESUME PREVIEW",SectionUiPasteResume,true,copied);
+}
+
+void sectionRenameMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=620,h=270;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,"NAME YOUR SECTION","SAVE A DRAFT NAME AT ANY TIME / NO PLAYTEST REQUIRED");
+    out.text(editor.nameSelected() ? "SECTION NAME / TYPE TO REPLACE" : "SECTION NAME / CLICK TO SELECT ALL",x+23,y+72,1,Muted);
+    out.frame(x+22,y+88,w-44,36,Gold,Canvas);
+    if (editor.nameSelected()) out.quad(x+31,y+95,std::min(w-62,editor.renameText().size()*9.f+10),22,{.34f,.27f,.17f,1});
+    fittedText(out,editor.renameText()+(editor.nameSelected() ? "" : "_"),x+35,y+100,w-70,1.5f,Cream);
+    hits.push_back({x+22,y+88,w-44,36,SectionUiNameField});
+    fittedText(out,"TYPE A NAME / CMD OR CTRL+A SELECT ALL / BACKSPACE DELETE",x+24,y+141,w-48,1,Muted);
+    fittedText(out,"SAVES WITH YOUR DRAFT / YOUR BUILD AND PLAYTEST STAY AS THEY ARE",x+24,y+162,w-48,1,Leaf);
+    sectionFeedback(out,editor,x+24,y+190,w-48);
+    sectionButton(out,hits,x+22,y+h-51,175,30,"ESC - CANCEL",SectionUiBack);
+    sectionButton(out,hits,x+w-275,y+h-51,253,30,"ENTER - SAVE NAME",SectionUiRenameApply,true,
+                  editor.renameText().find_first_not_of(' ')!=std::string::npos);
 }
 
 void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
@@ -970,7 +989,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
     } else {
         out.frame(x,14,w,66,Edge);
         out.quad(x+2,16,3,62,Leaf);
-        out.text("SECTION WORKSHOP / CREATIVE",x+16,25,1,Leaf);
+        out.text("SECTION WORKSHOP / F2 RENAME",x+16,25,1,Leaf);
         fittedText(out,editor.meta().name,x+16,43,380,1.5f,Cream);
         fittedText(out,sectionWorldName(editor.selectedWorld()),x+w-205,25,188,1,Muted);
         out.text(editor.dirty() ? "DRAFT / UNSAVED CHANGES" : "DRAFT SAVED",x+w-205,45,1,Muted);
@@ -1040,6 +1059,7 @@ void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float
     case SectionEditorScreen::Library: sectionLibraryMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Palette: sectionPaletteMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Accept: sectionAcceptMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::Rename: sectionRenameMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Tools: sectionToolsMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::PasteSettings: sectionPasteMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::ChestContents: sectionChestMenu(out,hits,editor,width,height); break;

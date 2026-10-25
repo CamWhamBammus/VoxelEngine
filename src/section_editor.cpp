@@ -215,7 +215,7 @@ void SectionEditor::invalidateTest()
 void SectionEditor::changed(Edit edit)
 {
     if (edit.beforeAssets != assets_) ++assetRevision_;
-    invalidateTest();
+    if (!edit.nameOnly) invalidateTest();
     edit.afterMeta = meta_; edit.afterAssets = assets_;
     undo_.push_back(std::move(edit));
     if (undo_.size() > 256) undo_.pop_front();
@@ -235,9 +235,19 @@ void SectionEditor::undo(Game& game, bool redo)
     auto& destination = redo ? undo_ : redo_;
     if (source.empty()) { message_ = redo ? "NOTHING TO REDO" : "NOTHING TO UNDO"; return; }
     auto edit = std::move(source.back()); source.pop_back();
+    if (edit.nameOnly) {
+        meta_.name = redo ? edit.afterMeta.name : edit.beforeMeta.name;
+        destination.push_back(std::move(edit));
+        dirty_ = true; ++revision_;
+        message_ = redo ? "REDID SECTION NAME" : "UNDID SECTION NAME";
+        return;
+    }
     if (edit.position) game.world.set(*edit.position, redo ? edit.after : edit.before);
     for (const auto& block : edit.blocks) game.world.set(block.position, redo ? block.after : block.before);
+    // A terrain/marker edit must not restore the name captured when it was made.
+    const auto name = meta_.name;
     meta_ = redo ? edit.afterMeta : edit.beforeMeta;
+    meta_.name = name;
     const auto& restoredAssets = redo ? edit.afterAssets : edit.beforeAssets;
     if (assets_ != restoredAssets) ++assetRevision_;
     assets_ = restoredAssets;
@@ -249,6 +259,11 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
 {
     try {
         if (!actions.active && !actions.closeMenu) return;
+        if (screen_ == SectionEditorScreen::Rename) {
+            updateRename(game, actions);
+            game.status = message_;
+            return;
+        }
         if (screen_ == SectionEditorScreen::ChestContents) {
             updateChestContents(game, actions);
             game.status = message_;
@@ -260,6 +275,14 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
             return;
         }
         const int click = actions.devClick.value_or(-1);
+        const bool canRename = hasSection_ && (screen_ == SectionEditorScreen::Build
+            || screen_ == SectionEditorScreen::Palette || screen_ == SectionEditorScreen::Tools
+            || screen_ == SectionEditorScreen::PasteSettings);
+        if (canRename && (actions.devRename || click == SectionUiRename)) {
+            openRename(game);
+            game.status = message_;
+            return;
+        }
         const bool authoring = hasSection_ && (screen_ == SectionEditorScreen::Build
             || screen_ == SectionEditorScreen::Palette || screen_ == SectionEditorScreen::Tools);
         if (authoring && click == SectionUiBuilderLight) {
@@ -1338,6 +1361,61 @@ void SectionEditor::openAccept(Game& game)
     screen_ = SectionEditorScreen::Accept;
     nameSelected_ = true;
     message_ = "NAME THE SECTION, CHOOSE A CATEGORY, THEN ENTER TO ACCEPT";
+}
+void SectionEditor::openRename(Game& game)
+{
+    renameReturn_ = screen_;
+    renameText_ = meta_.name;
+    nameSelected_ = true;
+    screen_ = SectionEditorScreen::Rename;
+    preview_.reset(); game.target.reset();
+    message_ = "NAME YOUR SECTION | ENTER SAVES THE DRAFT | ESC CANCELS";
+}
+void SectionEditor::updateRename(Game& game, const InputActions& actions)
+{
+    const int click = actions.devClick.value_or(-1);
+    if (actions.closeMenu || click == SectionUiBack) {
+        screen_ = renameReturn_;
+        renameText_.clear(); nameSelected_ = false;
+        message_ = "NAME CHANGE CANCELLED";
+        return;
+    }
+    if (actions.devSelectAll || click == SectionUiNameField) nameSelected_ = true;
+    if (actions.devBackspace) {
+        if (nameSelected_) renameText_.clear();
+        else if (!renameText_.empty()) renameText_.pop_back();
+        nameSelected_ = false;
+    }
+    for (const unsigned char letter : actions.devText) {
+        if (letter < 32 || letter >= 127) continue;
+        if (nameSelected_) { renameText_.clear(); nameSelected_ = false; }
+        if (renameText_.size() < 48) renameText_ += static_cast<char>(letter);
+    }
+    if (!(actions.upgrade || actions.save || click == SectionUiRenameApply
+          || click == SectionUiConfirm || click == SectionUiSave)) return;
+    const auto first = renameText_.find_first_not_of(' ');
+    if (first == std::string::npos) { message_ = "GIVE YOUR SECTION A NAME"; return; }
+    const auto name = renameText_.substr(first, renameText_.find_last_not_of(' ') - first + 1);
+    Edit edit;
+    edit.nameOnly = true; edit.beforeMeta = meta_; edit.beforeAssets = assets_;
+    const bool wasDirty = dirty_;
+    const float autosaveElapsed = autosaveElapsed_;
+    meta_.name = name;
+    // Keep the dialog recoverable on disk errors, without applying an unsaved name
+    // to the live document or its undo history. Cancel still restores the original.
+    if (!saveDraft(game)) {
+        meta_ = edit.beforeMeta;
+        dirty_ = wasDirty; autosaveElapsed_ = autosaveElapsed;
+        return;
+    }
+    if (edit.beforeMeta.name != name) {
+        changed(std::move(edit));
+        dirty_ = false; // The complete draft was persisted above.
+    }
+    refreshLibrary();
+    screen_ = renameReturn_;
+    renameText_.clear(); nameSelected_ = false;
+    message_ = "NAME SAVED | " + meta_.name;
 }
 void SectionEditor::accept(Game& game)
 {

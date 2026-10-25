@@ -44,6 +44,7 @@ struct InputActions {
     bool devToggle = false, devPalette = false, devTest = false, devAccept = false, devLibrary = false;
     bool devRotate = false, devVariation = false, devBackspace = false, devSelectAll = false;
     bool devTools = false; // G opens/closes the building tools menu.
+    bool devRename = false; // F2 names the current section without a playtest.
     bool devCopy = false, devPaste = false; // Cmd/Ctrl+C/V, once per physical key press.
     bool devCancel = false, devCornerA = false, devCornerB = false; // X cancels; J/K select corners.
     bool devPastePin = false, devPasteLevel = false; // P pins a preview; L chooses its floor level.
@@ -198,7 +199,7 @@ private:
         bool previousCrossing = false;
         bool nextCrossing = false;
         bool returnToHub = false;
-        bool devToggle = false, devTest = false, devAccept = false;
+        bool devToggle = false, devTest = false, devAccept = false, devRename = false;
         bool levelCreator = false, levelMenu = false;
         bool rotate = false, variation = false, backspace = false, selectAll = false;
         bool menuLeft = false, menuRight = false;

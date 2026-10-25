@@ -79,6 +79,7 @@ Input::Buttons Input::readButtons() const
         .devToggle = keyDown(GLFW_KEY_F7),
         .devTest = keyDown(GLFW_KEY_F8),
         .devAccept = keyDown(GLFW_KEY_F10),
+        .devRename = keyDown(GLFW_KEY_F2),
         .levelCreator = keyDown(GLFW_KEY_F11),
         .levelMenu = keyDown(GLFW_KEY_F4),
         .rotate = keyDown(GLFW_KEY_T),
@@ -284,6 +285,7 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
     actions_.interact = !flying && !modal && pressed(buttons.interact, previous.interact);
     actions_.devTest = pressed(buttons.devTest, previous.devTest);
     actions_.devAccept = pressed(buttons.devAccept, previous.devAccept);
+    actions_.devRename = !typing && (flying || modal) && pressed(buttons.devRename, previous.devRename);
     actions_.devLibrary = pressed(buttons.load, previous.load);
     actions_.save = pressed(buttons.save, previous.save);
     actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);

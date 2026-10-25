@@ -17,7 +17,7 @@ namespace voxel {
 class Game;
 struct InputActions;
 
-enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents, SpawnerSettings };
+enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents, SpawnerSettings, Rename };
 enum class SectionBuildMode { Single, Select, Brush, Paste, CarveRound, CarveBox };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
@@ -53,6 +53,7 @@ inline constexpr int SectionUiPasteSettings = 3340, SectionUiPasteModeBase = 335
 inline constexpr int SectionUiPasteResume = 3352;
 inline constexpr int SectionUiCarveRound = 3380, SectionUiCarveBox = 3381;
 inline constexpr int SectionUiLighting = 3382, SectionUiBuilderLight = 3383;
+inline constexpr int SectionUiRename = 3384, SectionUiNameField = 3385, SectionUiRenameApply = 3386;
 inline constexpr int SectionUiChestSlotBase = 3400;
 inline constexpr int SectionUiChestItemBase = 3500;
 inline constexpr int SectionUiChestMinus = 3600, SectionUiChestPlus = 3601;
@@ -75,7 +76,8 @@ public:
     SectionEditorScreen screen() const { return screen_; }
     bool menuOpen() const;
     bool flying() const { return screen_ == SectionEditorScreen::Build; }
-    bool typing() const { return screen_ == SectionEditorScreen::Accept || screen_ == SectionEditorScreen::ChestContents; }
+    bool typing() const { return screen_ == SectionEditorScreen::Accept || screen_ == SectionEditorScreen::ChestContents
+        || screen_ == SectionEditorScreen::Rename; }
     bool hasSection() const { return hasSection_; }
     SectionWorld selectedWorld() const { return selectedWorld_; }
     int selection() const { return selection_; }
@@ -95,6 +97,7 @@ public:
     const std::string& message() const { return message_; }
     bool dirty() const { return dirty_; }
     bool nameSelected() const { return nameSelected_; }
+    const std::string& renameText() const { return renameText_; }
     bool testComplete() const { return testComplete_; }
     bool checkpointReached() const { return checkpointReached_; }
     void respawnAfterDeath(Game& game);
@@ -133,6 +136,7 @@ public:
 
 private:
     struct Edit {
+        bool nameOnly = false;
         std::optional<glm::ivec3> position;
         Block before = Block::Air, after = Block::Air;
         std::vector<SectionBlockEdit> blocks;
@@ -151,6 +155,8 @@ private:
     void resetTest(Game& game, bool restart);
     void openAccept(Game& game);
     void accept(Game& game);
+    void openRename(Game& game);
+    void updateRename(Game& game, const InputActions& actions);
     void refreshTarget(Game& game);
     void changed(Edit edit);
     void undo(Game& game, bool redo);
@@ -192,6 +198,8 @@ private:
     mutable std::uint64_t collisionRevision_ = ~std::uint64_t(0);
     mutable std::shared_ptr<AssetCollision> assetCollision_;
     bool nameSelected_ = false;
+    std::string renameText_;
+    SectionEditorScreen renameReturn_ = SectionEditorScreen::Build;
     bool hasSection_ = false, dirty_ = false, testComplete_ = false, checkpointReached_ = false;
     float testElapsed_ = 0.0f, autosaveElapsed_ = 0.0f;
     int testFalls_ = 0;
