@@ -2,6 +2,28 @@
 
 Open the builder with **F7** or `./build/VoxelEngine --dev`. Choose a world, then create a new section or open a draft. These instructions are for the section builder; `--editor` opens the older terrain sandbox.
 
+## Carving a cave
+
+Choose **Cave / Carve from stone** in the world's library. The 64 × 48 × 64 building area starts filled with stone, with a small room around Start. It uses the Exploration category and dark lighting. **Open room / Parkour** still creates the empty room.
+
+1. Hold **left click** on a wall to dig with **Round carve**. Move and aim as you dig to make passages and chambers.
+2. Press **G** to choose a width of **1, 3, 5, or 9** blocks. **Round carve** makes rounded cuts; **Box carve** clears a cube. Both are also available in **E → Tools**.
+3. Press **X** to return to normal placement. Add blocks, ores, water, greenery, and lights from the creative inventory. The Assets tab starts with **Lantern**, **Wall bracket**, **Hanging lamp**, and **Crystal beacon**. Glowing mushrooms and crystal flowers are light sources too.
+4. Move **End** from its temporary spot in the starting room to the end of your route. Add a checkpoint if you want one.
+5. Press **F8** to walk through it with the same lighting players get. **F8** returns to building; **F10** names and accepts a completed test.
+
+Each carve stamp can be undone with **Cmd/Ctrl+Z**. A held click repeats stamps. Carving removes models anchored inside the cut as well as blocks; it leaves Start, End, and Checkpoint in place. Check their footing if you dig underneath them. The outer shell stays protected.
+
+![Carving tools in the creative inventory](screenshots/cave-tools.png)
+
+### Cave lighting
+
+**G → Light: Dark** saves a section with no ambient light or invisible camera lamp. Without a light source, its stone, ordinary foliage, and water are black. Placed lamps illuminate nearby surfaces and stone walls block their light. Glowing blocks and plants remain visible as light sources.
+
+**Build light: On** is temporary help for editing. Switch it off to preview your lighting while building. It never carries into **F8** tests or published levels. During play, select the lantern with **2** for personal light; select another tool to put it away.
+
+You can switch any section between **Light: Dark** and **Light: Ambient**. That setting is saved with the section and follows it into assembled levels. Existing sections keep their original ambient lighting. Changing the setting requires another playtest before accepting.
+
 ## Moving and placing things
 
 | Control | Action |
@@ -18,7 +40,7 @@ Open the builder with **F7** or `./build/VoxelEngine --dev`. Choose a world, the
 | Cmd/Ctrl+Shift+Z or Cmd/Ctrl+Y | Redo |
 | Escape / Tab | Pause / resume |
 
-The inventory has tabs for blocks, models, collectible items, and markers. Select a hotbar slot, then click something to equip it. The preview shows where it will go.
+The inventory has tabs for blocks, models, collectible items, markers, and building tools. Select a hotbar slot, then click an item to equip it. Tools activate immediately without replacing a hotbar item. The preview shows where your next edit will go.
 
 Fences, gates, railings, and corners use one-block footprints. Place them in neighboring cells or aim at an existing piece's end to extend a run. Pillars stack in one-block lengths. Beams are one block long and a quarter-block thick. Doorway frames fill a 3 × 3 wall opening, with at least 1 × 2 clear space inside; window frames fit 1 × 1 openings. **T** turns the selected piece. Gates have fixed open and closed poses, selected with **Y**; they don't have an interaction during play yet.
 
