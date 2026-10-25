@@ -18,7 +18,7 @@ class Game;
 struct InputActions;
 
 enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents, SpawnerSettings };
-enum class SectionBuildMode { Single, Select, Brush, Paste };
+enum class SectionBuildMode { Single, Select, Brush, Paste, CarveRound, CarveBox };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
     std::string name;
@@ -26,11 +26,12 @@ struct SectionPaletteItem {
     std::optional<HubAssetKind> asset;
     SectionMarker marker = SectionMarker::None;
     std::optional<ItemId> pickup = std::nullopt;
+    std::optional<SectionBuildMode> tool = std::nullopt;
 };
 
 // The HUD and controller share these IDs, so mouse and keyboard use the same actions.
 inline constexpr int SectionUiWorldBase = 100;
-inline constexpr int SectionUiLibraryNew = 200;
+inline constexpr int SectionUiLibraryNew = 200, SectionUiLibraryCave = 201;
 inline constexpr int SectionUiLibraryDraftBase = 300;
 inline constexpr int SectionUiLibraryEntryBase = 1000;
 inline constexpr int SectionUiPaletteTabBase = 2000;
@@ -50,6 +51,8 @@ inline constexpr int SectionUiCopy = 3333, SectionUiPaste = 3334, SectionUiPaste
 inline constexpr int SectionUiClearSelection = 3336, SectionUiHeightDown = 3337, SectionUiHeightUp = 3338;
 inline constexpr int SectionUiPasteSettings = 3340, SectionUiPasteModeBase = 3350;
 inline constexpr int SectionUiPasteResume = 3352;
+inline constexpr int SectionUiCarveRound = 3380, SectionUiCarveBox = 3381;
+inline constexpr int SectionUiLighting = 3382, SectionUiBuilderLight = 3383;
 inline constexpr int SectionUiChestSlotBase = 3400;
 inline constexpr int SectionUiChestItemBase = 3500;
 inline constexpr int SectionUiChestMinus = 3600, SectionUiChestPlus = 3601;
@@ -105,6 +108,7 @@ public:
     SectionBuildMode buildMode() const { return buildMode_; }
     int brushSize() const { return brushSize_; }
     bool brushErasing() const { return brushErasing_; }
+    bool builderLight() const { return builderLight_; }
     std::optional<SectionBox> buildSelection() const;
     const std::optional<glm::ivec3>& firstCorner() const { return cornerA_; }
     const std::optional<glm::ivec3>& secondCorner() const { return cornerB_; }
@@ -136,7 +140,7 @@ private:
         std::vector<HubAsset> beforeAssets, afterAssets;
     };
     void refreshLibrary();
-    void newSection(Game& game);
+    void newSection(Game& game, bool cave = false);
     void openSection(Game& game, const SectionEntry& entry, bool draft);
     void selectLibrary(Game& game);
     void updateMenu(Game& game, const InputActions& actions);
@@ -153,6 +157,7 @@ private:
     void invalidateTest();
     void faceMarker(Game& game, glm::vec3 position);
     void resetBuildTools();
+    void selectBuildTool(Game& game, SectionBuildMode mode);
     void updateToolsMenu(Game& game, const InputActions& actions);
     void updatePasteSettings(Game& game, const InputActions& actions);
     void positionPaste(Game& game, const InputActions& actions);
@@ -177,7 +182,7 @@ private:
     SectionMetadata meta_;
     std::vector<HubAsset> assets_;
     std::vector<SectionEntry> entries_, drafts_;
-    std::array<std::vector<SectionPaletteItem>, 4> palette_;
+    std::array<std::vector<SectionPaletteItem>, 5> palette_;
     std::array<SectionPaletteItem, 9> hotbar_;
     int selection_ = 0, paletteTab_ = 0, paletteSelection_ = 0, selectedSlot_ = 0, facing_ = 0;
     std::uint32_t variation_ = 0;
@@ -205,6 +210,7 @@ private:
     SectionBuildMode buildMode_ = SectionBuildMode::Single;
     int brushSize_ = 3, pasteRotation_ = 0;
     bool pasteIncludesAir_ = false, toolPreviewValid_ = false, brushErasing_ = false;
+    bool builderLight_ = true;
     std::optional<glm::ivec3> cornerA_, cornerB_;
     std::optional<SectionBox> toolPreview_;
     SectionClipboard clipboard_;

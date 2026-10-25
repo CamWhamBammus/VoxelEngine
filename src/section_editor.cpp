@@ -36,6 +36,10 @@ std::optional<float> assetHit(glm::vec3 minimum, glm::vec3 maximum, glm::vec3 or
     }
     return near;
 }
+bool carving(SectionBuildMode mode)
+{
+    return mode == SectionBuildMode::CarveRound || mode == SectionBuildMode::CarveBox;
+}
 SectionBox brushBox(const RayHit& hit, int size, bool place)
 {
     const int radius = size / 2;
@@ -60,6 +64,11 @@ SectionEditor::SectionEditor(std::filesystem::path libraryRoot) : libraryRoot_(s
                    {"End", {}, {}, SectionMarker::End}};
     for (const auto& item : itemCatalog())
         palette_[3].push_back({std::string(item.name), {}, HubAssetKind::ItemPickup, SectionMarker::None, item.id});
+    palette_[4] = {{"Round carve", {}, {}, SectionMarker::None, {}, SectionBuildMode::CarveRound},
+                   {"Box carve", {}, {}, SectionMarker::None, {}, SectionBuildMode::CarveBox},
+                   {"Select area", {}, {}, SectionMarker::None, {}, SectionBuildMode::Select},
+                   {"Cube brush", {}, {}, SectionMarker::None, {}, SectionBuildMode::Brush},
+                   {"Single placement", {}, {}, SectionMarker::None, {}, SectionBuildMode::Single}};
     const std::array blocks{Block::Stone, Block::Grass, Block::Timber, Block::Planks,
         Block::Water, Block::Leaves, Block::Lantern, Block::Crystal, Block::Path};
     for (std::size_t i = 0; i < hotbar_.size(); ++i)
@@ -109,12 +118,20 @@ void SectionEditor::refreshLibrary()
     std::erase_if(drafts_, [&](const SectionEntry& entry) { return entry.meta.world != selectedWorld_; });
     selection_ = 0;
 }
-void SectionEditor::newSection(Game& game)
+void SectionEditor::newSection(Game& game, bool cave)
 {
     if (hasSection_ && dirty_ && !saveDraft(game)) return;
-    buildBlankSection(game.world);
+    if (cave) buildCaveSection(game.world);
+    else buildBlankSection(game.world);
     meta_ = {};
     meta_.world = selectedWorld_;
+    if (cave) {
+        meta_.name = "Untitled cave";
+        meta_.category = SectionCategory::Exploration;
+        meta_.lighting = SectionLighting::Dark;
+        meta_.spawn = SectionCaveSpawn;
+        meta_.finish = SectionCaveFinish;
+    }
     assets_.clear(); ++assetRevision_;
     draftPath_.clear();
     acceptedPath_.clear();
@@ -127,10 +144,13 @@ void SectionEditor::newSection(Game& game)
     ++revision_;
     screen_ = SectionEditorScreen::Build;
     game.camera.reset();
-    game.camera.setPosition(meta_.spawn + glm::vec3(0, 5, 1));
-    pointCamera(game.camera, {0, -.25f, -1});
-    message_ = "NEW 64 X 48 X 64 ROOM | E BLOCKS / ASSETS / ITEMS | F8 WALK TEST";
+    game.camera.setPosition(meta_.spawn + (cave ? glm::vec3(0, Player::EyeHeight, 0) : glm::vec3(0, 5, 1)));
+    pointCamera(game.camera, cave ? glm::vec3(0, 0, -1) : glm::vec3(0, -.25f, -1));
+    builderLight_ = true;
+    if (cave) buildMode_ = SectionBuildMode::CarveRound;
     saveDraft(game);
+    if (!dirty_) message_ = cave ? "CAVE READY | HOLD LEFT TO CARVE | E TOOLS / LIGHTS | G SIZE | F8 TEST REAL LIGHTING"
+        : "NEW 64 X 48 X 64 ROOM | E BLOCKS / ASSETS / ITEMS | F8 WALK TEST";
 }
 void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draft)
 {
@@ -153,8 +173,10 @@ void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draf
     undo_.clear(); redo_.clear(); ++revision_;
     resetBuildTools();
     screen_ = SectionEditorScreen::Build;
-    game.camera.setPosition(meta_.spawn + glm::vec3(0, 4, 1));
-    pointCamera(game.camera, meta_.finish - meta_.spawn + glm::vec3(0, -8, 0));
+    // Reopening a carved room must not put the camera above its low ceiling.
+    game.camera.setPosition(meta_.spawn + glm::vec3(0, Player::EyeHeight, 0));
+    pointCamera(game.camera, meta_.finish - meta_.spawn + glm::vec3(0, -.1f, 0));
+    builderLight_ = true;
     message_ = markersNeedRepair ? "OPENED " + meta_.name + " | MOVE BLOCKED / UNSUPPORTED MARKERS BEFORE F8 TEST"
                                 : "OPENED " + meta_.name + " | F8 TEST | F10 ACCEPT A NEW COPY";
 }
@@ -237,6 +259,26 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
             game.status = message_;
             return;
         }
+        const int click = actions.devClick.value_or(-1);
+        const bool authoring = hasSection_ && (screen_ == SectionEditorScreen::Build
+            || screen_ == SectionEditorScreen::Palette || screen_ == SectionEditorScreen::Tools);
+        if (authoring && click == SectionUiBuilderLight) {
+            builderLight_ = !builderLight_;
+            message_ = builderLight_ ? "BUILDER LIGHT ON | EDITING ONLY; F8 USES THE SECTION'S LIGHTING"
+                                     : "BUILDER LIGHT OFF | SHOWING THE SECTION'S LIGHTING";
+            game.status = message_;
+            return;
+        }
+        if (authoring && click == SectionUiLighting) {
+            Edit edit; edit.beforeMeta = meta_; edit.beforeAssets = assets_;
+            meta_.lighting = meta_.lighting == SectionLighting::Dark ? SectionLighting::Ambient : SectionLighting::Dark;
+            changed(std::move(edit));
+            message_ = meta_.lighting == SectionLighting::Dark
+                ? "DARK CAVE | PLACE LIGHTS FROM E ASSETS / BLOCKS | F8 TEST | CTRL/CMD+Z UNDO"
+                : "AMBIENT LIGHTING | F8 TEST | CTRL/CMD+Z UNDO";
+            game.status = message_;
+            return;
+        }
         if (actions.save && hasSection_) saveDraft(game);
         if (actions.devLibrary || (actions.devClick && *actions.devClick == SectionUiLibrary)) {
             if (hasSection_ && dirty_ && !saveDraft(game)) return;
@@ -290,6 +332,7 @@ void SectionEditor::updateMenu(Game& game, const InputActions& actions)
     }
     if (screen_ == SectionEditorScreen::Library) {
         if (back) { screen_ = SectionEditorScreen::Worlds; selection_ = static_cast<int>(selectedWorld_); return; }
+        if (click == SectionUiLibraryCave) { newSection(game, true); return; }
         const int count = 1 + static_cast<int>(drafts_.size() + entries_.size());
         const int step = actions.devMenuStep.x + actions.devMenuStep.y;
         if (step) selection_ = wrap(selection_ + step, count);
@@ -312,11 +355,11 @@ void SectionEditor::updateMenu(Game& game, const InputActions& actions)
         if (back || actions.devPalette) { screen_ = SectionEditorScreen::Build; return; }
         int tab = paletteTab_;
         if (actions.devTabStep) {
-            constexpr std::array order{0, 1, 3, 2};
+            constexpr std::array order{0, 1, 3, 2, 4};
             const int index = static_cast<int>(std::find(order.begin(), order.end(), tab) - order.begin());
             tab = order[wrap(index + actions.devTabStep, static_cast<int>(order.size()))];
         }
-        if (click >= SectionUiPaletteTabBase && click < SectionUiPaletteTabBase + 4) tab = click - SectionUiPaletteTabBase;
+        if (click >= SectionUiPaletteTabBase && click < SectionUiPaletteTabBase + 5) tab = click - SectionUiPaletteTabBase;
         if (tab != paletteTab_) { paletteTab_ = tab; paletteSelection_ = 0; }
         if (paletteTab_ == 3 && (click == SectionUiPickupMinus || click == SectionUiPickupPlus)) {
             const int direction = click == SectionUiPickupPlus ? 1 : -1;
@@ -336,6 +379,10 @@ void SectionEditor::updateMenu(Game& game, const InputActions& actions)
         const bool itemClick = click >= SectionUiPaletteItemBase && click < SectionUiPaletteItemBase + count;
         if (itemClick) paletteSelection_ = click - SectionUiPaletteItemBase;
         if (confirm || itemClick) {
+            if (const auto tool = paletteItems()[paletteSelection_].tool) {
+                selectBuildTool(game, *tool);
+                return;
+            }
             hotbar_[selectedSlot_] = paletteItems()[paletteSelection_];
             message_ = "SLOT " + std::to_string(selectedSlot_ + 1) + ": " + hotbar_[selectedSlot_].name;
         }
@@ -922,6 +969,20 @@ void SectionEditor::fillSelection(Game& game, SectionFillMode mode)
               mode == SectionFillMode::Erase ? "CLEARED SELECTION" : mode == SectionFillMode::Hollow ? "BUILT SHELL" : "FILLED SELECTION");
 }
 
+void SectionEditor::selectBuildTool(Game& game, SectionBuildMode mode)
+{
+    buildMode_ = mode;
+    brushErasing_ = carving(mode);
+    screen_ = SectionEditorScreen::Build;
+    message_ = mode == SectionBuildMode::CarveRound ? "ROUND CARVE | HOLD LEFT TO DIG | G SIZE | X SINGLE BUILD | CTRL/CMD+Z UNDO"
+        : mode == SectionBuildMode::CarveBox ? "BOX CARVE | HOLD LEFT TO DIG | G SIZE | X SINGLE BUILD | CTRL/CMD+Z UNDO"
+        : mode == SectionBuildMode::Select ? "LEFT CLICK CORNER A / RIGHT CLICK CORNER B | J / K SET AT YOUR POSITION"
+        : mode == SectionBuildMode::Brush ? "CUBE BRUSH | RIGHT ADD / LEFT CLEAR | G CHOOSE SIZE"
+        : "SINGLE BLOCKS AND ASSETS | G BUILD TOOLS";
+    refreshTarget(game);
+    refreshToolPreview(game);
+}
+
 void SectionEditor::updateToolsMenu(Game& game, const InputActions& actions)
 {
     if (actions.undo || actions.redo) { undo(game, actions.redo && !actions.undo); return; }
@@ -933,18 +994,16 @@ void SectionEditor::updateToolsMenu(Game& game, const InputActions& actions)
     }
     if (actions.devPalette) { screen_ = SectionEditorScreen::Palette; return; }
     if (click >= SectionUiModeBase && click < SectionUiModeBase + 3) {
-        buildMode_ = static_cast<SectionBuildMode>(click - SectionUiModeBase);
-        brushErasing_ = false;
-        screen_ = SectionEditorScreen::Build;
-        message_ = buildMode_ == SectionBuildMode::Select ? "LEFT CLICK CORNER A / RIGHT CLICK CORNER B | J / K SET AT YOUR POSITION"
-            : buildMode_ == SectionBuildMode::Brush ? "CUBE BRUSH | RIGHT ADD / LEFT CLEAR | G CHOOSE SIZE"
-            : "SINGLE BLOCKS AND ASSETS | G BUILD TOOLS";
+        selectBuildTool(game, static_cast<SectionBuildMode>(click - SectionUiModeBase));
+    } else if (click == SectionUiCarveRound || click == SectionUiCarveBox) {
+        selectBuildTool(game, click == SectionUiCarveRound ? SectionBuildMode::CarveRound : SectionBuildMode::CarveBox);
     } else if (click >= SectionUiBrushSizeBase && click < SectionUiBrushSizeBase + 4) {
         constexpr int sizes[]{1,3,5,9};
         brushSize_ = sizes[click - SectionUiBrushSizeBase];
-        brushErasing_ = false;
-        buildMode_ = SectionBuildMode::Brush;
-        message_ = "BRUSH SIZE " + std::to_string(brushSize_) + " | G RETURN TO BUILD";
+        brushErasing_ = carving(buildMode_);
+        if (!carving(buildMode_)) buildMode_ = SectionBuildMode::Brush;
+        message_ = std::string(carving(buildMode_) ? "CARVE SIZE " : "BRUSH SIZE ")
+            + std::to_string(brushSize_) + " | G RETURN TO BUILD";
     } else if (click == SectionUiFill) fillSelection(game, SectionFillMode::Solid);
     else if (click == SectionUiShell) fillSelection(game, SectionFillMode::Hollow);
     else if (click == SectionUiErase) fillSelection(game, SectionFillMode::Erase);
@@ -990,8 +1049,17 @@ void SectionEditor::updatePasteSettings(Game& game, const InputActions& actions)
 void SectionEditor::refreshToolPreview(Game& game)
 {
     toolPreview_.reset(); toolPreviewValid_ = false;
-    if (buildMode_ != SectionBuildMode::Brush && buildMode_ != SectionBuildMode::Paste) return;
+    if (buildMode_ != SectionBuildMode::Brush && buildMode_ != SectionBuildMode::Paste && !carving(buildMode_)) return;
     preview_.reset(); targetAsset_.reset();
+    if (carving(buildMode_)) {
+        if (!game.target || !sectionInterior(game.target->position)) return;
+        const auto center = game.target->position;
+        const glm::ivec3 radius(brushSize_ / 2);
+        toolPreview_ = SectionBox{glm::max(center - radius, SectionInteriorMin),
+                                 glm::min(center + radius, SectionInteriorMax - 1)};
+        toolPreviewValid_ = validSectionBox(*toolPreview_);
+        return;
+    }
     if (buildMode_ == SectionBuildMode::Brush) {
         if (!game.target || game.target->normal == glm::ivec3(0)) return;
         toolPreview_ = brushBox(*game.target, brushSize_, !brushErasing_);
@@ -1082,7 +1150,7 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
     if (actions.devTools) {
         screen_ = SectionEditorScreen::Tools; preview_.reset(); game.target.reset(); return true;
     }
-    if (actions.devCancel) {
+    if (actions.devCancel || (actions.closeMenu && carving(buildMode_))) {
         buildMode_ = SectionBuildMode::Single; toolPreview_.reset();
         pasteFloorHeight_.reset(); pinnedPasteOrigin_.reset();
         message_ = "SINGLE BUILD | SELECTION AND CLIPBOARD KEPT"; return true;
@@ -1129,6 +1197,22 @@ bool SectionEditor::updateBuildTools(Game& game, const InputActions& actions)
                 refreshTarget(game); refreshToolPreview(game);
             }
         }
+        return true;
+    }
+    if (carving(buildMode_)) {
+        if (!actions.remove) {
+            if (actions.place) message_ = "CARVE ONLY REMOVES | HOLD LEFT TO DIG | X RETURNS TO PLACEMENT";
+            return true;
+        }
+        if (!game.target || !sectionInterior(game.target->position)) {
+            message_ = "AIM AT STONE INSIDE THE ROOM | THE OUTER SHELL IS PROTECTED";
+            return true;
+        }
+        const bool round = buildMode_ == SectionBuildMode::CarveRound;
+        applyPlan(game, planSectionCarve(game.world, assets_, game.target->position, brushSize_,
+                  round ? SectionCarveShape::Round : SectionCarveShape::Box),
+                  round ? "CARVED ROUND" : "CARVED BOX");
+        refreshTarget(game); refreshToolPreview(game);
         return true;
     }
     if (!actions.remove && !actions.place) return true;

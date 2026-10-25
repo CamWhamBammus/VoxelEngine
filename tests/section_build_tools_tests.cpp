@@ -336,6 +336,112 @@ int main()
               "erase brush restores removed blocks and models in one undo");
         press(game, &InputActions::place);
         check(!editor.brushErasing(), "right brush strokes restore the add-volume preview");
+
+        // A cave is a separate starting layout. It uses the same saved sections,
+        // markers, undo history, palette and test workflow as an open room.
+        press(game, &InputActions::devLibrary);
+        click(game, SectionUiLibraryCave);
+        check(editor.screen() == SectionEditorScreen::Build && editor.buildMode() == SectionBuildMode::CarveRound
+              && editor.meta().category == SectionCategory::Exploration && editor.meta().lighting == SectionLighting::Dark,
+              "new cave starts an Exploration section with dark lighting and the round carving tool");
+        check(editor.meta().spawn == SectionCaveSpawn && editor.meta().finish == SectionCaveFinish
+              && game.camera.position() == SectionCaveSpawn + glm::vec3(0, Player::EyeHeight, 0)
+              && game.world.get(glm::ivec3(glm::floor(game.camera.position()))) == Block::Air,
+              "new cave camera starts inside the hollow chamber instead of inside its stone ceiling");
+        check(game.world.get({12,27,12}) == Block::Stone && editor.assets().empty() && editor.builderLight()
+              && !editor.dirty(), "new cave is filled with stone and has an editing-only light and saved draft");
+        press(game, &InputActions::devTest);
+        for (int frame = 0; frame < 160 && !editor.testComplete(); ++frame) game.update(walking, 1.0f / 60);
+        check(editor.testComplete() && editor.meta().tested, "cave starter markers have enough space and support to walk-test");
+        press(game, &InputActions::devTest);
+        press(game, &InputActions::save);
+        tools(game);
+        const auto testedRevision = editor.revision();
+        click(game, SectionUiBuilderLight);
+        check(!editor.builderLight() && editor.meta().tested && !editor.dirty() && editor.revision() == testedRevision,
+              "turning off the builder light neither changes the saved scene nor invalidates a passed test");
+        click(game, SectionUiBuilderLight);
+        click(game, SectionUiLighting);
+        check(editor.meta().lighting == SectionLighting::Ambient && editor.dirty() && !editor.meta().tested,
+              "changing authored lighting is a real edit and invalidates the previous walk test");
+        press(game, &InputActions::undo);
+        check(editor.meta().lighting == SectionLighting::Dark && !editor.meta().tested,
+              "undo restores the dark lighting and still requires a fresh walk test");
+        press(game, &InputActions::redo);
+        check(editor.meta().lighting == SectionLighting::Ambient, "redo restores the authored lighting change");
+        press(game, &InputActions::undo);
+        closeTools(game);
+
+        // Tools live in their own palette tab and never overwrite a hotbar slot.
+        const auto storedSlot = editor.hotbar()[editor.selectedSlot()];
+        press(game, &InputActions::devPalette);
+        click(game, SectionUiPaletteTabBase + 4);
+        check(editor.paletteItems().size() >= 4 && editor.paletteItems()[0].tool == SectionBuildMode::CarveRound
+              && editor.paletteItems()[1].tool == SectionBuildMode::CarveBox,
+              "creative Tools tab exposes both carving shapes alongside the existing build tools");
+        click(game, SectionUiPaletteItemBase);
+        check(editor.screen() == SectionEditorScreen::Build && editor.buildMode() == SectionBuildMode::CarveRound
+              && editor.hotbar()[editor.selectedSlot()].name == storedSlot.name
+              && !editor.hotbar()[editor.selectedSlot()].tool,
+              "choosing a palette tool returns to building without replacing the selected inventory item");
+        tools(game); click(game, SectionUiBrushSizeBase + 1); closeTools(game);
+        check(editor.brushSize() == 3 && editor.buildMode() == SectionBuildMode::CarveRound,
+              "changing carve size keeps the selected round tool");
+        game.camera.setPosition({.5f,27.5f,24.5f}); aim(game.camera,{.5f,27.5f,16.5f}); update(game);
+        check(game.target && game.target->position == glm::ivec3(0,27,16)
+              && boxIs(editor.toolPreview(), {-1,26,15}, {1,28,17}) && editor.toolPreviewValid(),
+              "carve preview is centered on the solid hit, extending into the cave wall");
+        const auto beforeCarve = editor.revision();
+        press(game, &InputActions::place);
+        check(editor.revision() == beforeCarve && editor.assets().empty(),
+              "right click in carve mode cannot place the selected hotbar model by accident");
+        press(game, &InputActions::remove);
+        check(game.world.get({0,27,16}) == Block::Air && game.world.get({0,27,15}) == Block::Air
+              && game.world.get({1,28,15}) == Block::Stone && editor.revision() == beforeCarve + 1,
+              "round carve opens the rock inward while retaining corners outside its sphere");
+        press(game, &InputActions::undo);
+        check(game.world.get({0,27,16}) == Block::Stone && game.world.get({0,27,15}) == Block::Stone,
+              "one undo restores a complete carving stroke");
+        press(game, &InputActions::redo);
+        check(game.world.get({0,27,16}) == Block::Air && game.world.get({0,27,15}) == Block::Air,
+              "one redo reapplies the carving stroke");
+        press(game, &InputActions::undo);
+        tools(game); click(game, SectionUiCarveBox);
+        press(game, &InputActions::remove);
+        check(editor.buildMode() == SectionBuildMode::CarveBox && game.world.get({1,28,15}) == Block::Air,
+              "box carving removes corners for squared rooms and corridors");
+        press(game, &InputActions::undo);
+        tools(game); click(game, SectionUiBrushSizeBase + 3); closeTools(game);
+        game.camera.setPosition({29.5f,35.5f,0.5f}); aim(game.camera,{35.5f,35.5f,0.5f}); update(game);
+        check(editor.buildMode() == SectionBuildMode::CarveBox && editor.brushSize() == 9
+              && editor.toolPreview() && editor.toolPreview()->max.x == SectionInteriorMax.x - 1,
+              "large carving brushes clip their preview to the protected outer shell");
+        press(game, &InputActions::remove);
+        check(game.world.get({31,35,0}) == Block::Air && game.world.get({32,35,0}) == Block::Stone,
+              "carving near a boundary clears only editable stone and retains the sealed shell");
+        press(game, &InputActions::devCancel);
+        check(editor.buildMode() == SectionBuildMode::Single && !editor.toolPreview(),
+              "X removes the carving outline and returns to normal single placement");
+        press(game, &InputActions::save);
+        const auto caveDrafts = listSectionDrafts(options.sectionLibrary);
+        const auto caveDraft = std::find_if(caveDrafts.begin(), caveDrafts.end(), [](const auto& entry) {
+            return entry.meta.name == "Untitled cave";
+        });
+        check(caveDraft != caveDrafts.end(), "cave layout has its own persistent draft");
+        if (caveDraft != caveDrafts.end()) {
+            const auto savedCave = loadSection(caveDraft->path);
+            check(savedCave.meta.lighting == SectionLighting::Dark && savedCave.meta.category == SectionCategory::Exploration
+                  && savedCave.world.get({31,35,0}) == Block::Air,
+                  "saving a cave preserves its lighting, category and excavation");
+            press(game, &InputActions::devLibrary);
+            const auto found = std::find_if(editor.draftEntries().begin(), editor.draftEntries().end(),
+                [&](const auto& entry) { return entry.path == caveDraft->path; });
+            if (found == editor.draftEntries().end()) throw std::runtime_error("cave draft not in library");
+            click(game, SectionUiLibraryDraftBase + static_cast<int>(found - editor.draftEntries().begin()));
+            check(editor.meta().lighting == SectionLighting::Dark && editor.builderLight()
+                  && game.world.get(glm::ivec3(glm::floor(game.camera.position()))) == Block::Air,
+                  "reopening the saved cave restores dark lighting and a camera inside the starting room");
+        }
     } catch (const std::exception& error) {
         std::cerr << "unexpected exception: " << error.what() << '\n'; ++failures;
     }
