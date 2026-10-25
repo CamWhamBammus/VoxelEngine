@@ -2,6 +2,7 @@
 
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
+#include "graphics/held_compass.h"
 #include "world.h"
 #include "editing.h"
 #include "hub_assets.h"
@@ -33,7 +34,8 @@ public:
                 std::optional<float> heldSwordSwing = {},
                 std::span<const EncounterHit> hits = {},
                 std::optional<float> heldPickaxeSwing = {},
-                std::optional<float> heldLanternTime = {}, bool darkCave = false);
+                std::optional<float> heldLanternTime = {}, bool darkCave = false,
+                std::optional<HeldCompassState> heldCompass = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -56,9 +58,11 @@ private:
     GpuMesh heldSword_;
     GpuMesh heldPickaxe_;
     GpuMesh heldLantern_;
+    GpuMesh heldCompass_, compassNeedle_;
     std::size_t heldSwordTriangles_ = 0;
     std::size_t heldPickaxeTriangles_ = 0;
     std::size_t heldLanternTriangles_ = 0;
+    std::size_t heldCompassTriangles_ = 0;
     std::size_t monsterTriangles_ = 0;
     std::optional<World> meshedWorld_;
     std::vector<Light> lights_; // Rebuilt only when world contents change.

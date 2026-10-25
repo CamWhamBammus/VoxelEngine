@@ -32,6 +32,7 @@ add_library(VoxelCore
     src/graphics/held_sword.cpp
     src/graphics/held_pickaxe.cpp
     src/graphics/held_lantern.cpp
+    src/graphics/held_compass.cpp
     src/graphics/pickaxe_pose.cpp
     src/game_inventory.cpp
     src/equipment.cpp
@@ -99,6 +100,7 @@ if(VOXEL_BUILD_APP)
         tests/held_sword_smoke.cpp
         tests/held_pickaxe_smoke.cpp
         tests/held_lantern_smoke.cpp
+        tests/held_compass_smoke.cpp
         tests/cave_lighting_smoke.cpp
         tests/ore_material_smoke.cpp
         tests/surface_relief_smoke.cpp
@@ -127,6 +129,7 @@ if(BUILD_TESTING)
         levels levels_game inventory loot_game chest_editor key_loot item_pickup_editor item_pickup_game
         lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe held_lantern
         mining mining_loot mining_game built_surface_relief cave_game section_naming section_presets section_creation
+        held_compass compass_target
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

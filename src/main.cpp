@@ -47,7 +47,7 @@ int main(int argc, char** argv)
         std::string statusText = game.statusText(0, 0, 0, 0, input.captured(), input.helpVisible());
         bool previousHelpVisible = input.helpVisible();
         bool previousCaptured = input.captured();
-        float lanternTime = 0;
+        float carriedToolTime = 0;
 
         // 3. Each frame: read input, update the world, then draw it.
         while (true) {
@@ -99,8 +99,14 @@ int main(int argc, char** argv)
             game.update(actions, deltaSeconds);
             const bool holdLantern = game.healthVisible() && !game.health().dead()
                 && game.equipment.selectedTool() == voxel::Tool::Lantern;
-            if (holdLantern && actions.active)
-                lanternTime = std::fmod(lanternTime + deltaSeconds, 8.0f);
+            const bool holdCompass = game.healthVisible() && !game.health().dead()
+                && game.equipment.selectedTool() == voxel::Tool::Compass;
+            if ((holdLantern || holdCompass) && actions.active)
+                carriedToolTime = std::fmod(carriedToolTime + deltaSeconds, 8.0f);
+            std::optional<voxel::HeldCompassState> heldCompass;
+            if (holdCompass) heldCompass = {
+                voxel::compassBearing(game.camera.position(), game.camera.forward(), game.compassTarget()),
+                carriedToolTime};
 
             int width, height;
             window.framebufferSize(width, height);
@@ -121,8 +127,8 @@ int main(int argc, char** argv)
                             game.healthVisible() && !game.health().dead()
                                 && game.equipment.selectedTool() == voxel::Tool::Pickaxe
                                 ? std::optional<float>(game.mining().swing()) : std::nullopt,
-                            holdLantern ? std::optional<float>(lanternTime) : std::nullopt,
-                            game.darkCave());
+                            holdLantern ? std::optional<float>(carriedToolTime) : std::nullopt,
+                            game.darkCave(), heldCompass);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {

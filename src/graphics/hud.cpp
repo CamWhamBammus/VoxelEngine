@@ -4,6 +4,7 @@
 #include "root_crossings.h"
 #include "section_editor.h"
 #include "section_presets.h"
+#include "graphics/held_compass.h"
 #include "level_editor.h"
 
 #include <algorithm>
@@ -316,6 +317,12 @@ void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0)
     out.triangle(p(-4,23),p(4,23),p(0,26),Gold);
     out.triangle(p(0,-1),p(3,2),p(0,5),{.18f,.72f,.70f,1});
     out.triangle(p(0,-1),p(0,5),p(-3,2),{.51f,.92f,.81f,1});
+}
+
+glm::vec2 compassNeedle(const Game& game)
+{
+    const float bearing=compassBearing(game.camera.position(),game.camera.forward(),game.compassTarget());
+    return {std::sin(bearing),-std::cos(bearing)};
 }
 
 void toolBelt(Drawing& out,const Equipment& equipment,float center,float top,glm::vec2 needle={0,-1})
@@ -988,7 +995,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         quietText(out,editor.testComplete() ? "COMPLETE / F10 ACCEPT / F8 BUILD"
             : editor.checkpointReached() ? "CHECKPOINT SAVED / F8 BUILD" : "F8 BACK TO BUILD",18,36,width-36,
             editor.testComplete() || editor.checkpointReached() ? Leaf : Muted);
-        toolBelt(out,game.equipment,center,height-64);
+        toolBelt(out,game.equipment,center,height-64,compassNeedle(game));
         quietText(out,"H HELP",width-82,height-27,64,Muted);
         return;
     }
@@ -1644,17 +1651,9 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
 
     const auto offset = game.compassTarget() - game.camera.position();
     const glm::vec2 target(offset.x,offset.z);
-    const auto forward3 = game.camera.forward();
-    glm::vec2 forward(forward3.x,forward3.z);
-    if (glm::length(forward) > 0.0001f) forward = glm::normalize(forward);
-    else forward = {0,-1};
-    const glm::vec2 right(-forward.y,forward.x);
-    glm::vec2 needle(glm::dot(target,right),-glm::dot(target,forward));
-    if (glm::length(needle) > 0.1f) needle = glm::normalize(needle);
-    else needle = {0,-1};
     const float center = width * 0.5f;
     const float barTop = height - 64;
-    toolBelt(drawing,equipment,center,barTop,needle);
+    toolBelt(drawing,equipment,center,barTop,compassNeedle(game));
     quietText(drawing,"H HELP",width-82,height-27,64,Muted);
     if (selected==Tool::Compass && !game.menuOpen()) {
         const auto distance=static_cast<int>(std::round(glm::length(target)));

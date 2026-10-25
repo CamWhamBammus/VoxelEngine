@@ -242,12 +242,17 @@ void main() {
             vec4 source = lightData(i, 0);
             vec3 offset = source.xyz - lightPosition;
             float distanceSquared = dot(offset, offset);
-            if (distanceSquared >= source.w * source.w || dot(surfaceNormal, offset) <= 0.0) continue;
+            if (distanceSquared >= source.w * source.w
+                || (firstPerson != 2 && dot(surfaceNormal, offset) <= 0.0)) continue;
             vec3 lightColor = lightData(i, 1).rgb;
             float distanceToLight = sqrt(distanceSquared);
             float falloff = max(1.0 - distanceToLight / source.w, 0.0);
             vec3 direction = offset / max(distanceToLight, 0.001);
             float facing = max(dot(normal, direction), 0.0);
+            // The compass dial faces the eyes, so lamps ahead mostly hit its
+            // back. A small diffuse wrap keeps its markings readable in a lit
+            // room. It still requires a visible source and emits no light.
+            if (firstPerson == 2) facing = .22 + .78 * facing;
             if (facing <= 0.0) continue;
             float strength = falloff * falloff
                 * lightVisibility(start, source.xyz, direction, falloff * falloff * facing);
@@ -367,7 +372,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::optional<float> heldSwordSwing,
                            std::span<const EncounterHit> hits,
                            std::optional<float> heldPickaxeSwing,
-                           std::optional<float> heldLanternTime, bool darkCave)
+                           std::optional<float> heldLanternTime, bool darkCave,
+                           std::optional<HeldCompassState> heldCompass)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -571,6 +577,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("carriedLantern", carriedLantern);
     auto lanternPosition = camera.position();
     const bool showLantern = heldLanternTime && !heldSwordSwing && !heldPickaxeSwing;
+    const bool showCompass = heldCompass && !heldSwordSwing && !heldPickaxeSwing && !showLantern;
     if (showLantern) {
         const auto local = heldLanternLightPosition(*heldLanternTime, static_cast<float>(width) / height);
         lanternPosition = glm::vec3(glm::inverse(camera.viewMatrix()) * glm::vec4(local, 1));
@@ -602,7 +609,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setInt("lightSources", 1);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
     visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
-    heldSwordTriangles_ = heldPickaxeTriangles_ = heldLanternTriangles_ = 0;
+    heldSwordTriangles_ = heldPickaxeTriangles_ = heldLanternTriangles_ = heldCompassTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
@@ -787,20 +794,24 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glEnable(GL_CULL_FACE);
     }
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    if (heldSwordSwing || heldPickaxeSwing || showLantern) {
-        auto& heldMesh = heldSwordSwing ? heldSword_ : heldPickaxeSwing ? heldPickaxe_ : heldLantern_;
+    if (heldSwordSwing || heldPickaxeSwing || showLantern || showCompass) {
+        auto& heldMesh = heldSwordSwing ? heldSword_ : heldPickaxeSwing ? heldPickaxe_
+                      : showLantern ? heldLantern_ : heldCompass_;
         if (!heldMesh.indexCount())
-            heldMesh.upload(heldSwordSwing ? buildHeldSword() : heldPickaxeSwing ? buildHeldPickaxe() : buildHeldLantern());
+            heldMesh.upload(heldSwordSwing ? buildHeldSword() : heldPickaxeSwing ? buildHeldPickaxe()
+                          : showLantern ? buildHeldLantern() : buildHeldCompass());
+        if (showCompass && !compassNeedle_.indexCount()) compassNeedle_.upload(buildHeldCompassNeedle());
         const auto view = camera.viewMatrix();
         const float aspect = static_cast<float>(width) / height;
         const auto handProjection = glm::perspective(glm::radians(65.0f),aspect,.03f,10.0f);
         const auto pose = heldSwordSwing ? heldSwordPose(*heldSwordSwing,aspect)
                         : heldPickaxeSwing ? heldPickaxePose(*heldPickaxeSwing,aspect)
-                        : heldLanternPose(*heldLanternTime,aspect);
+                        : showLantern ? heldLanternPose(*heldLanternTime,aspect)
+                        : heldCompassPose(heldCompass->timeSeconds,aspect);
         shader_.setMat4("viewProjection",handProjection*view);
         shader_.setMat4("model",glm::inverse(view)*pose);
         shader_.setInt("decorative",3);
-        shader_.setInt("firstPerson",1);
+        shader_.setInt("firstPerson",showCompass ? 2 : 1);
         shader_.setInt("refractiveWater",0);
         const auto cell = glm::clamp(glm::ivec3(glm::floor(eye)),World::Min,World::MaxExclusive-1)-World::Min;
         const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
@@ -821,8 +832,14 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glDepthMask(GL_TRUE);
         heldMesh.draw();
         auto& toolTriangles = heldSwordSwing ? heldSwordTriangles_
-                           : heldPickaxeSwing ? heldPickaxeTriangles_ : heldLanternTriangles_;
+                           : heldPickaxeSwing ? heldPickaxeTriangles_
+                           : showLantern ? heldLanternTriangles_ : heldCompassTriangles_;
         toolTriangles = heldMesh.indexCount()/3;
+        if (showCompass) {
+            shader_.setMat4("model",glm::inverse(view)*pose*heldCompassNeedlePose(heldCompass->bearingRadians));
+            compassNeedle_.draw();
+            toolTriangles += compassNeedle_.indexCount()/3;
+        }
         drawnTriangles_ += toolTriangles;
         glDepthRange(depthRange[0],depthRange[1]);
         glDepthFunc(static_cast<GLenum>(depthFunction));
@@ -846,7 +863,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
 
 std::size_t WorldRenderer::triangleCount() const
 {
-    std::size_t total = monsterTriangles_ + heldSwordTriangles_ + heldPickaxeTriangles_ + heldLanternTriangles_;
+    std::size_t total = monsterTriangles_ + heldSwordTriangles_ + heldPickaxeTriangles_ + heldLanternTriangles_
+                      + heldCompassTriangles_;
     for (const auto& mesh : meshes_) total += mesh.indexCount() / 3;
     for (const auto& mesh : water_) total += mesh.indexCount() / 3;
     if (underground_) {

@@ -146,6 +146,8 @@ Place a **Start** marker and an **End** marker from the Markers tab. Placing ano
 
 Press **F8** to test. Reach the gold End to pass, then press **F8** to go back to building. **R** returns to the Start or checkpoint; **Shift+R** restarts the attempt.
 
+During a playtest, press **3** to hold the compass. Its red needle points toward your placed **End** marker. The compass follows each section's own End in an assembled level; checkpoints and respawns do not change its destination.
+
 Walk onto the checkpoint to activate it. Playtests start with 100 health and use the same fall damage as published levels: drops over three blocks cost about 10 health per extra block, while water cushions falls. Death briefly pauses the attempt, then respawns you at full health at the activated checkpoint or Start. Loot you've already collected stays collected for the rest of that test. Building mode doesn't take damage.
 
 Press **F10** to give the section a name and category, then accept it. Any later edit requires another test. Categories organize sections; choosing Puzzle or Mining doesn't add puzzle logic or mining mechanics.
