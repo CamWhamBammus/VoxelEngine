@@ -132,6 +132,7 @@ flat in int materialId;
 uniform vec3 cameraPosition;
 uniform vec3 cameraForward;
 uniform int underground;
+uniform int darkCave;
 uniform int cameraInWater;
 uniform int decorative;
 uniform int firstPerson;
@@ -180,10 +181,13 @@ void main() {
         // Spell cores use authored cyan/violet colors and bloom, with ordinary
         // scene depth so a wall or a creature can hide the projectile.
         float haze = smoothstep(35.0, 100.0, length(cameraPosition-worldPosition)) * .45;
-        fragmentColor = vec4(mix(surfaceColor*2.1,vec3(.025,.027,.044),haze),1.0-haze);
+        fragmentColor = vec4(mix(surfaceColor*2.1,darkCave != 0 ? vec3(0) : vec3(.025,.027,.044),haze),1.0-haze);
         return;
     }
     MaterialSurface surface = evaluateMaterial();
+    // Ordinary leaves have a little artistic fill in the hub. Only explicitly
+    // glowing foliage may emit light in an authored dark cave.
+    if (darkCave != 0 && (materialId == 17 || materialId == 30)) surface.emission = 0.0;
     if (firstPerson != 0 && (materialId == 8 || materialId == 9))
         surface.roughness = materialId == 9 ? .28 : .36;
     vec3 normal = normalize(surface.normal);
@@ -209,11 +213,21 @@ void main() {
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
         vec3 ambient = mix(vec3(0.05, 0.035, 0.065), vec3(0.045, 0.09, 0.085),
                            surfaceNormal.y * 0.5 + 0.5);
+        // Authored exploration caves are lit only by their actual sources.
+        // The usual hub fill and camera light remain available as builder aid.
+        if (darkCave != 0) { headlamp = 0.0; ambient = vec3(0.0); }
+        // A bevel can point into its host voxel: shadow rays start outside its
+        // supporting face. Viewmodels sample at the eyes to avoid close walls.
+        vec3 anchorNormal = decorative == 2 ? reliefSurface.xyz : surfaceNormal;
+        vec3 start = firstPerson != 0 ? cameraPosition : worldPosition + anchorNormal * 0.03;
         vec3 toLantern = carriedLanternPosition - worldPosition;
         float lanternDistance = length(toLantern);
         vec3 lanternDirection = toLantern / max(lanternDistance, 0.001);
         float lantern = carriedLantern != 0 ? 0.65 * (0.35 + 0.65 * max(dot(normal, lanternDirection), 0.0))
             / (1.0 + 0.045 * lanternDistance * lanternDistance) : 0.0;
+        if (darkCave != 0 && lantern > 0.0)
+            lantern *= (1.0 - smoothstep(7.0, 11.0, lanternDistance))
+                * visibleLight(start, carriedLanternPosition);
         vec3 light = (ambient + vec3(0.82, 0.91, 1.0) * headlamp
                       + vec3(1.0, 0.60, 0.24) * lantern) * ao;
         vec3 pointLight = vec3(0.0);
@@ -221,10 +235,6 @@ void main() {
         // A viewmodel can extend visually into a nearby wall. Sample its light
         // at the player's eyes, while its real normals still shape the shading.
         vec3 lightPosition = firstPerson != 0 ? cameraPosition : worldPosition;
-        // A bevel's own normal can point sideways into its host voxel. Start
-        // shadow rays outside the supporting face while lighting the real facet.
-        vec3 anchorNormal = decorative == 2 ? reliefSurface.xyz : surfaceNormal;
-        vec3 start = firstPerson != 0 ? cameraPosition : worldPosition + anchorNormal * 0.03;
         // Every source that reaches this surface contributes. A nearest-light
         // cap would cause visible boundaries wherever the source ranking swaps,
         // even if the ranking were based on world position instead of the camera.
@@ -254,6 +264,7 @@ void main() {
         surfaceHighlight = highlight;
         fogColor = mix(vec3(0.012, 0.035, 0.043), vec3(0.025, 0.027, 0.044),
                        smoothstep(8.0, 46.0, worldPosition.y));
+        if (darkCave != 0) fogColor = vec3(0.0);
         fog = smoothstep(35.0, 135.0, cameraDistance) * 0.55;
     } else {
         float sun = max(dot(normal, normalize(vec3(-0.6, 1.0, 0.3))), 0.0);
@@ -288,7 +299,7 @@ void main() {
         && (firstPerson != 0 || waterCell(ivec3(floor(worldPosition + surfaceNormal * 0.04))))) {
         vec3 transmission = exp(-vec3(0.22, 0.075, 0.05) * min(cameraDistance, 36.0));
         fragmentColor.rgb = fragmentColor.rgb * transmission
-            + vec3(0.012, 0.095, 0.105) * (1.0 - transmission);
+            + (darkCave != 0 ? vec3(0.0) : vec3(0.012, 0.095, 0.105)) * (1.0 - transmission);
         if (underground != 0) fragmentColor.a *= transmission.g;
     }
 }
@@ -356,7 +367,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::optional<float> heldSwordSwing,
                            std::span<const EncounterHit> hits,
                            std::optional<float> heldPickaxeSwing,
-                           std::optional<float> heldLanternTime)
+                           std::optional<float> heldLanternTime, bool darkCave)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -534,7 +545,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     const bool cameraInWater = glm::all(glm::greaterThanEqual(eye, glm::vec3(World::Min)))
         && glm::all(glm::lessThan(eye, glm::vec3(World::MaxExclusive)))
         && world.get(glm::ivec3(glm::floor(eye))) == Block::Water;
-    const auto background = cameraInWater ? glm::vec3(0.012f, 0.095f, 0.105f)
+    const auto background = darkCave && underground ? glm::vec3(0)
+        : cameraInWater ? glm::vec3(0.012f, 0.095f, 0.105f)
         : underground ? glm::vec3(0.025f, 0.026f, 0.065f) : glm::vec3(0.48f, 0.70f, 0.90f);
     glClearColor(background.r, background.g, background.b, underground ? 0.0f : 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -554,6 +566,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setVec3("cameraPosition", camera.position());
     shader_.setVec3("cameraForward", camera.forward());
     shader_.setInt("underground", underground);
+    shader_.setInt("darkCave", darkCave && underground);
     shader_.setInt("cameraInWater", cameraInWater);
     shader_.setInt("carriedLantern", carriedLantern);
     auto lanternPosition = camera.position();

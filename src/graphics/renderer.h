@@ -33,7 +33,7 @@ public:
                 std::optional<float> heldSwordSwing = {},
                 std::span<const EncounterHit> hits = {},
                 std::optional<float> heldPickaxeSwing = {},
-                std::optional<float> heldLanternTime = {});
+                std::optional<float> heldLanternTime = {}, bool darkCave = false);
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
