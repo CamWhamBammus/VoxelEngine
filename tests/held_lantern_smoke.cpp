@@ -134,7 +134,7 @@ void verifyHeldLantern(int width, int height)
     require(sceneBrightness(idle)>sceneBrightness(absent)+4,
             "Equipping the lantern did not illuminate the cave around the player");
     // A wall immediately in front of the camera must not slice the cage or
-    // glove. Only the model's reserved near-depth band is compared here.
+    // carry handle. Only the model's reserved near-depth band is compared here.
     for (int y=39; y<=46; ++y) for (int x=-8; x<=8; ++x)
         world.set({x,y,3},Block::Stone);
     const auto wall=draw(0,width,height);

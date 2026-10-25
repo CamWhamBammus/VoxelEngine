@@ -6,7 +6,7 @@
 namespace voxel {
 
 // Origin is the carry grip. The cage hangs below it, with its broad front
-// facing +Z. Metal, amber panes and the leather glove are closed solid shapes.
+// facing +Z. Metal, amber panes and the leather grip are closed solid shapes.
 MeshData buildHeldLantern();
 
 // A small idle sway, in view space at the tools' 65-degree vertical FOV.

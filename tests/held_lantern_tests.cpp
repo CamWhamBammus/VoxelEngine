@@ -46,10 +46,8 @@ int main()
     for (const auto& v : mesh.vertices) {
         valid &= finite(v.position) && finite(v.normal) && finite(v.color)
             && std::abs(glm::length(v.normal)-1)<.001f;
-        if (v.material!=static_cast<float>(Block::Slate)) {
-            lo=glm::min(lo,v.position);
-            hi=glm::max(hi,v.position);
-        }
+        lo=glm::min(lo,v.position);
+        hi=glm::max(hi,v.position);
         iron |= v.material==static_cast<float>(Block::IronOre);
         brass |= v.material==static_cast<float>(Block::CopperOre);
         leather |= v.material==static_cast<float>(Block::Timber);
@@ -85,20 +83,19 @@ int main()
     check(valid && winding,"Lantern needs finite unit normals and nondegenerate, consistently wound faces");
     check(volume>.02 && std::all_of(edgeBalance.begin(),edgeBalance.end(),[](const auto& entry) {
         return entry.second==0;
-    }),"Lantern cage, cap, handle and glove must be closed outward-facing solids");
+    }),"Lantern cage, cap and handle must be closed outward-facing solids");
     check(iron && brass && leather && glass,"Lantern needs separate forged frame, brass, leather and luminous glass");
     check(glassHi.x-glassLo.x>.25f && glassHi.z-glassLo.z>.24f
           && glassHi.y-glassLo.y>.28f && std::all_of(paneFaces.begin(),paneFaces.end(),[](bool value){return value;}),
           "Glowing cage must have substantial depth and four genuine side panes");
-    check(lo.y<-.63f && hi.y>.10f && hi.x-lo.x<.5f && hi.z-lo.z>.36f,
-          "Lantern should be a compact hanging cage with a carry handle and glove above it");
+    check(lo.y<-.63f && hi.y>.03f && hi.y<.05f && hi.x-lo.x<.5f && hi.z-lo.z>.36f,
+          "Lantern should be a compact hanging cage with a leather carry handle above it");
 
     bool bounded=true,poseFinite=true,smooth=true,lightAttached=true,centreClear=true;
     float minDepth=100,maxDepth=-100;
     for (float aspect : {3.0f/4.0f,4.0f/3.0f,16.0f/9.0f,21.0f/9.0f,32.0f/9.0f}) {
         const auto projection=glm::perspective(glm::radians(65.0f),aspect,.03f,10.0f);
         glm::vec3 previousLight{};
-        bool sleeveExitsRight=true;
         for (int frame=0; frame<=240; ++frame) {
             const float time=frame/30.0f;
             const auto pose=heldLanternPose(time,aspect);
@@ -111,23 +108,17 @@ int main()
                 && glm::all(glm::lessThan(localLight,glassHi));
             if (frame>0) smooth &= glm::length(light-previousLight)<.003f;
             previousLight=light;
-            float sleeveRight=0;
             for (const auto& v : mesh.vertices) {
                 const auto p=pose*glm::vec4(v.position,1);
                 const auto clip=projection*p;
                 const auto ndc=glm::vec3(clip)/clip.w;
                 minDepth=std::min(minDepth,p.z);
                 maxDepth=std::max(maxDepth,p.z);
-                const bool sleeve=v.material==static_cast<float>(Block::Slate);
-                if (sleeve) sleeveRight=std::max(sleeveRight,ndc.x);
                 bounded &= finite(ndc) && p.z<-.15f && ndc.x>0
-                    && (sleeve || ndc.x<.98f) && ndc.y<.20f
-                    && (sleeve || ndc.y>-.98f);
+                    && ndc.x<.98f && ndc.y<.20f && ndc.y>-.98f;
                 centreClear &= ndc.x>.18f;
             }
-            sleeveExitsRight &= sleeveRight>1.05f;
         }
-        check(sleeveExitsRight,"Forearm must continue off the right edge throughout the idle cycle");
     }
     check(poseFinite && bounded && centreClear,
           "Lantern must fit the lower-right view, leave the aim clear and avoid clipping across aspect ratios");
