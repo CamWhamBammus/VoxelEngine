@@ -10,6 +10,7 @@ SectionBox normalizedSectionBox(glm::ivec3 a, glm::ivec3 b);
 bool validSectionBox(const SectionBox& box);
 
 enum class SectionFillMode { Solid, Hollow, Erase };
+enum class SectionCarveShape { Round, Box };
 struct SectionBlockEdit {
     glm::ivec3 position;
     Block before, after;
@@ -38,6 +39,10 @@ glm::ivec3 rotatedSectionSize(const SectionClipboard& clipboard, int quarterTurn
 SectionEditPlan planSectionFill(const World& world, std::span<const HubAsset> assets,
                                const SectionBox& box, Block material, SectionFillMode mode,
                                glm::vec3 cameraPosition);
+// Sizes are 1, 3, 5 or 9 cells across. Carving clips at the protected room shell
+// and removes only models anchored in the carved cells. The center must be editable.
+SectionEditPlan planSectionCarve(const World& world, std::span<const HubAsset> assets,
+                                glm::ivec3 center, int size, SectionCarveShape shape);
 // Positive turns match HubAsset::facing: local +Z rotates toward +X.
 // includeAir replaces the whole destination (including its anchored models).
 // emptyOnly repairs terrain gaps: copies nonair blocks only into air, ignores

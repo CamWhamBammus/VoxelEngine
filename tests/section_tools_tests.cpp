@@ -87,6 +87,71 @@ int main()
     rejected(planSectionFill(world, plants, {SectionInteriorMin, SectionInteriorMax}, Block::Stone, SectionFillMode::Solid, camera), plants,
              "a selection touching the protected shell fails without clipping or partial writes");
 
+    World cave;
+    buildCaveSection(cave);
+    const glm::ivec3 carveCenter{0, 20, 0};
+    cave.set(carveCenter, Block::RubyOre);
+    const std::vector<HubAsset> caveAssets{
+        {HubAssetKind::CrystalChest, {.5f,20.f,.5f}, 0, 8, {{ItemId::Ruby, 7}}},
+        {HubAssetKind::Fern, {1.9f,21.9f,1.9f}, 0, 2},
+        {HubAssetKind::LanternCap, {3.5f,20.f,.5f}, 0, 5}
+    };
+    const auto roundCarve = planSectionCarve(cave, caveAssets, carveCenter, 3, SectionCarveShape::Round);
+    check(roundCarve.error.empty() && roundCarve.blocks.size() == 19
+          && roundCarve.assets == std::vector<HubAsset>(caveAssets.begin() + 1, caveAssets.end()),
+          "round brush cuts a spherical volume and removes only models anchored inside its cells");
+    check(contains(roundCarve, carveCenter, Block::Air)
+          && contains(roundCarve, carveCenter + glm::ivec3(1,1,0), Block::Air)
+          && !contains(roundCarve, carveCenter + glm::ivec3(1,1,1), Block::Air)
+          && cave.get(carveCenter) == Block::RubyOre,
+          "round carve keeps cube corners and only plans changes without modifying ore or terrain");
+    const auto originalCave = cave;
+    apply(cave, roundCarve);
+    check(cave.get(carveCenter) == Block::Air && cave.get(carveCenter + glm::ivec3(1,1,1)) == Block::Stone,
+          "applying a round carve opens the chamber without removing its rounded corners");
+    const auto repeatedCarve = planSectionCarve(cave, roundCarve.assets, carveCenter, 3, SectionCarveShape::Round);
+    check(repeatedCarve.error.empty() && repeatedCarve.blocks.empty() && repeatedCarve.assets == roundCarve.assets,
+          "carving the same empty volume twice is a no-op");
+    for (const auto& edit : roundCarve.blocks) cave.set(edit.position, edit.before);
+    check(cave.sameContents(originalCave), "one carve's undo data restores the exact ore and stone it removed");
+
+    const auto boxCarve = planSectionCarve(cave, caveAssets, carveCenter, 3, SectionCarveShape::Box);
+    check(boxCarve.error.empty() && boxCarve.blocks.size() == 27
+          && boxCarve.assets == std::vector<HubAsset>{caveAssets.back()},
+          "box carving removes cube corners and their model anchors while keeping adjacent models");
+    const std::array<int,4> sizes{1,3,5,9}, roundCounts{1,19,81,389};
+    for (std::size_t i = 0; i < sizes.size(); ++i) {
+        const auto round = planSectionCarve(cave, {}, carveCenter, sizes[i], SectionCarveShape::Round);
+        const auto cube = planSectionCarve(cave, {}, carveCenter, sizes[i], SectionCarveShape::Box);
+        check(round.error.empty() && round.blocks.size() == static_cast<std::size_t>(roundCounts[i])
+              && cube.error.empty() && cube.blocks.size() == static_cast<std::size_t>(sizes[i] * sizes[i] * sizes[i]),
+              "all four brush sizes carve their promised spherical or cubic dimensions");
+    }
+    for (const auto center : {SectionInteriorMin, SectionInteriorMax - glm::ivec3(1)}) {
+        for (const auto shape : {SectionCarveShape::Round, SectionCarveShape::Box}) {
+            const auto edge = planSectionCarve(cave, caveAssets, center, 9, shape);
+            check(edge.error.empty() && !edge.blocks.empty()
+                  && std::all_of(edge.blocks.begin(), edge.blocks.end(), [](const SectionBlockEdit& edit) {
+                      return sectionInterior(edit.position) && edit.after == Block::Air;
+                  }), "brushes clip at both room corners without removing a protected shell voxel");
+            if (shape == SectionCarveShape::Box)
+                check(edge.blocks.size() == 125, "clipped corner box retains exactly the editable portion");
+        }
+    }
+    for (const int size : {0, -1, 2, 7, 10, std::numeric_limits<int>::max()})
+        rejected(planSectionCarve(cave, caveAssets, carveCenter, size, SectionCarveShape::Round), caveAssets,
+                 "unsupported brush sizes never produce partial edits");
+    for (const auto center : {SectionInteriorMin - glm::ivec3(1), SectionInteriorMax,
+                              glm::ivec3(std::numeric_limits<int>::max()),
+                              glm::ivec3(std::numeric_limits<int>::min())})
+        rejected(planSectionCarve(cave, caveAssets, center, 9, SectionCarveShape::Box), caveAssets,
+                 "invalid carve centers cannot overflow coordinates or damage the protected shell");
+    rejected(planSectionCarve(cave, caveAssets, carveCenter, 3, static_cast<SectionCarveShape>(99)), caveAssets,
+             "invalid brush shapes never produce partial edits");
+    const auto airOnlyModels = planSectionCarve(world, plants, {0,11,0}, 1, SectionCarveShape::Round);
+    check(airOnlyModels.blocks.empty() && airOnlyModels.assets == std::vector<HubAsset>{plants.back()},
+          "carving also clears an anchored model in an already empty voxel");
+
     // A rectangular clipboard distinguishes the clockwise transform from its inverse.
     World source;
     const SectionBox sourceBox{{0, 15, 0}, {1, 16, 2}};

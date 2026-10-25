@@ -188,6 +188,39 @@ SectionEditPlan planSectionFill(const World& world, std::span<const HubAsset> as
     return plan;
 }
 
+SectionEditPlan planSectionCarve(const World& world, std::span<const HubAsset> assets,
+                                glm::ivec3 center, int size, SectionCarveShape shape)
+{
+    if (!sectionInterior(center)) return failed(assets, "AIM INSIDE THE EDITABLE ROOM");
+    if (size != 1 && size != 3 && size != 5 && size != 9)
+        return failed(assets, "CHOOSE A 1, 3, 5 OR 9 BLOCK BRUSH");
+    if (shape != SectionCarveShape::Round && shape != SectionCarveShape::Box)
+        return failed(assets, "INVALID CARVING BRUSH");
+    const int half = size / 2;
+    const SectionBox bounds{glm::max(center - glm::ivec3(half), SectionInteriorMin),
+                            glm::min(center + glm::ivec3(half), SectionInteriorMax - glm::ivec3(1))};
+    const auto carved = [&](glm::ivec3 cell) {
+        if (!sectionInterior(cell)) return false;
+        const auto offset = cell - center;
+        return shape == SectionCarveShape::Box
+            || 4 * (offset.x * offset.x + offset.y * offset.y + offset.z * offset.z) <= size * size;
+    };
+    SectionEditPlan plan{{}, {assets.begin(), assets.end()}, {}};
+    for (int z = bounds.min.z; z <= bounds.max.z; ++z)
+        for (int y = bounds.min.y; y <= bounds.max.y; ++y)
+            for (int x = bounds.min.x; x <= bounds.max.x; ++x) {
+                const glm::ivec3 position{x, y, z};
+                const auto before = world.get(position);
+                if (before != Block::Air && carved(position))
+                    plan.blocks.push_back({position, before, Block::Air});
+            }
+    std::erase_if(plan.assets, [&](const HubAsset& asset) {
+        // Bounds validate the floating-point anchor before converting to a cell.
+        return anchoredIn(asset, bounds) && carved(glm::ivec3(glm::floor(asset.position)));
+    });
+    return plan;
+}
+
 SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> assets,
                                 const SectionClipboard& clipboard, glm::ivec3 origin,
                                 int quarterTurns, bool includeAir, glm::vec3 cameraPosition,
