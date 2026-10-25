@@ -99,6 +99,9 @@ public:
     { return monsterPreviewActive_ ? monsterPreview_.monsters() : encounters_.monsters(); }
     bool editorMode() const { return editorMode_; }
     bool devMode() const { return devMode_; }
+    // Render the current section's lighting even while a menu or transition is open.
+    bool darkCave() const;
+    bool carriedLantern() const;
     bool devFlying() const { return devMode_ && sectionEditor_.flying(); }
     bool devMenuOpen() const { return devMode_ && sectionEditor_.menuOpen(); }
     SectionEditor& sectionEditor() { return sectionEditor_; }

@@ -245,6 +245,24 @@ bool Game::saveAuthoringDraft()
     return !levelController_.dirty() || levelController_.saveDraft();
 }
 
+bool Game::darkCave() const
+{
+    if (devMode_ && sectionEditor_.hasSection()) {
+        const bool editingLight = sectionEditor_.screen() != SectionEditorScreen::Test
+            && sectionEditor_.builderLight();
+        return sectionEditor_.meta().lighting == SectionLighting::Dark && !editingLight;
+    }
+    return levelController_.active() && levelController_.meta().lighting == SectionLighting::Dark;
+}
+
+bool Game::carriedLantern() const
+{
+    if (editorMode_ || monsterPreviewActive_ || health_.dead()) return false;
+    if (devMode_ && sectionEditor_.screen() != SectionEditorScreen::Test)
+        return sectionEditor_.hasSection() && sectionEditor_.builderLight();
+    return equipment.selectedTool() == Tool::Lantern;
+}
+
 void Game::update(const InputActions& actions, float deltaSeconds)
 {
     if (!actions.active || menuOpen()) mining_.cancelTarget();
