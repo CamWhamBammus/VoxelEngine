@@ -759,7 +759,7 @@ std::string Game::statusText(std::size_t visibleChunks, std::size_t drawnTriangl
             text << "\nR CHECKPOINT | SHIFT+R RESTART TEST | F8 RETURN TO BUILD";
         } else {
             text << "\nE PALETTE | G BUILD TOOLS | F8 WALK TEST | F10 ACCEPT"
-                 << "\nF5 DRAFT | F9 LIBRARY | 1-9 HOTBAR"
+                 << "\nF2 NAME | F5 DRAFT | F9 LIBRARY | 1-9 HOTBAR"
                  << "\nLEFT REMOVE | RIGHT PLACE | MIDDLE PICK | T ROTATE | Y VARIANT"
                  << "\nWASD FLY | SPACE UP | CTRL DOWN | SHIFT BOOST"
                  << "\nCTRL/CMD Z UNDO | CTRL/CMD C COPY | CTRL/CMD V PASTE | X CANCEL";

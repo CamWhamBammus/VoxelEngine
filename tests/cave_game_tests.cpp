@@ -46,6 +46,8 @@ int main()
               "world chooser has no active dark section or authoring lamp");
         click(game, SectionUiWorldBase);
         click(game, SectionUiLibraryCave);
+        click(game, SectionUiPresetBase + 1);
+        click(game, SectionUiCreate);
         check(editor.hasSection() && editor.screen() == SectionEditorScreen::Build
               && editor.meta().lighting == SectionLighting::Dark
               && editor.meta().category == SectionCategory::Exploration

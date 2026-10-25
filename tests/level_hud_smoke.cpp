@@ -202,6 +202,19 @@ void verifyLevelHud(int width,int height)
         require(game.levelController().screen()==LevelScreen::Library,"Level world click did not open library");
         const auto library=draw(width,height);
         require(difference(worlds,library)>2000,"Level library did not replace worlds");
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.f : 1.f;
+            const float scale=std::min({dpi,size.x/776.f,size.y/550.f});
+            const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+            const std::array<std::pair<glm::vec2,int>,5> controls{{
+                {{181,81},LevelUiNew},{{515,81},LevelUiResume},
+                {{350,125},LevelUiEntryBase},{{101,453},LevelUiBack},{{558,453},LevelUiPlay}
+            }};
+            for (const auto& [point,id]:controls)
+                require(hit(x+point.x,y+point.y,size.x,size.y,dpi)==id,
+                        "Simplified level library lost a scaled action target");
+            draw(size.x,size.y,dpi);
+        }
         act(LevelUiResume);
         require(game.levelController().screen()==LevelScreen::Compose,"Saved composition did not resume");
         require(game.levelController().definition().sections.size()==9,"Saved composition lost repeated sections");

@@ -87,6 +87,8 @@ void newRoom(Game& game)
 {
     press(game, &InputActions::devLibrary);
     click(game, SectionUiLibraryNew);
+    click(game, SectionUiPresetBase + 1);
+    click(game, SectionUiCreate);
 }
 }
 
@@ -106,6 +108,8 @@ int main()
         auto& editor = game.sectionEditor();
         click(game, SectionUiWorldBase);
         click(game, SectionUiLibraryNew);
+        click(game, SectionUiPresetBase + 1);
+        click(game, SectionUiCreate);
         const auto originalSpawn = editor.meta().spawn;
         const auto originalFinish = editor.meta().finish;
         const auto originalRevision = editor.revision();
@@ -341,6 +345,8 @@ int main()
         // markers, undo history, palette and test workflow as an open room.
         press(game, &InputActions::devLibrary);
         click(game, SectionUiLibraryCave);
+        click(game, SectionUiPresetBase + 1);
+        click(game, SectionUiCreate);
         check(editor.screen() == SectionEditorScreen::Build && editor.buildMode() == SectionBuildMode::CarveRound
               && editor.meta().category == SectionCategory::Exploration && editor.meta().lighting == SectionLighting::Dark,
               "new cave starts an Exploration section with dark lighting and the round carving tool");

@@ -105,14 +105,18 @@ Start the section builder with **F7**, or launch it directly:
 ./build/VoxelEngine --dev
 ```
 
-1. Choose a world, then **Open room / Parkour** for an empty room or **Cave / Carve from stone** for a solid cave with a small starting chamber. Both have a 64 × 48 × 64 building area inside a protected stone shell.
+1. Choose a world, then **Parkour** for an open room or **Cave exploration** for a filled cave with a small starting chamber. Pick a preset and click **Create**. Both have a 64 × 48 × 64 building area inside a protected shell.
 2. Press **E** to choose blocks, models, items, and markers. Left click removes, right click places, and middle click picks what you're looking at. **T** rotates pieces; **Y** changes model finishes or gate pose.
 3. Place one **Start** and one **End** marker. You can add a checkpoint too.
 4. Press **F8** to walk through the room. Reach the End, then press **F8** to return to building.
 5. Press **F10** to name the section, choose its category, and accept it. Editing it again means testing it again.
 6. Open the level creator with **F11**. Add accepted sections in order, give the level a name and number, and click **Publish**. It will appear in the **F4** level picker.
 
-Lush Caves is the world being worked on now. The other world entries are places to organize future sections.
+Each world has a starting preset: **Root jungle** mixes dirt, moss, stone, and roots; **Crystal grotto** uses pale rock and mineral seams; **Ember rock** has dark slate, obsidian, and clay. The cave fill carries these materials throughout, including passages you dig later. Choose **Plain stone** for a blank canvas. Existing sections keep their terrain.
+
+![Choosing a world preset and section layout](docs/screenshots/section-presets.png)
+
+Menus share a simpler cave palette, and the builder keeps only a small status label, hotbar, and contextual hint on screen. Press **H** for the full controls.
 
 Name a draft at any time with **F2** or **G → Rename section**. Type a name and press **Enter** to save; **Escape** cancels. You don't need to finish a playtest first.
 

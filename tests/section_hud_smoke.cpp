@@ -227,6 +227,90 @@ void verifySpawnerAuthoring(int width,int height,const std::filesystem::path& li
             "Spawner settings did not save enemies and rewards together");
 }
 
+void verifyPresetChooser(int width,int height,const std::filesystem::path& library,Hud& hud)
+{
+    for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+        const float dpi=size.x==640 ? 2.f : 1.f;
+        const float scale=std::min({dpi,size.x/736.f,size.y/516.f});
+        const float x=(size.x/scale-620)*.5f,y=(size.y/scale-360)*.5f;
+        Options options;options.dev=true;options.smokeTest=true;
+        options.sectionLibrary=(library/std::to_string(size.x)).string();
+        Game game(options);
+        const auto act=[&](int id) {InputActions a;a.active=true;a.devClick=id;game.update(a);};
+        const auto hit=[&](float px,float py) {
+            return Hud::sectionClick(game,size.x,size.y,dpi,(x+px)*scale,(y+py)*scale);
+        };
+        const auto click=[&](float px,float py,int id) {
+            const auto target=hit(px,py);
+            require(target==id,"Preset chooser target disagrees with its scaled display");
+            act(*target);
+        };
+        const auto draw=[&] {
+            glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,size.x,size.y);glDisable(GL_SCISSOR_TEST);
+            glClearColor(.13f,.17f,.15f,1);glClear(GL_COLOR_BUFFER_BIT);
+            const auto before=state();hud.drawSection(game,size.x,size.y,dpi);
+            require(state()==before,"Preset chooser changed OpenGL state");
+            Pixels pixels(static_cast<std::size_t>(size.x)*size.y*4);
+            glReadPixels(0,0,size.x,size.y,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+            require(glGetError()==GL_NO_ERROR,"Preset chooser generated an OpenGL error");
+            return pixels;
+        };
+        auto& editor=game.sectionEditor();
+        Pixels previousWorld;
+        for (const auto& world:sectionWorldCatalog()) {
+            act(SectionUiWorldBase+static_cast<int>(world.id));
+            act(SectionUiLibraryCave);
+            require(editor.screen()==SectionEditorScreen::Create && editor.creationCave()
+                    && editor.creationPreset()==SectionPreset::WorldTheme,
+                    "Every world's cave entry must default to its themed preset");
+            const auto themed=draw();
+            if (!previousWorld.empty())
+                require(difference(previousWorld,themed)>100,"World preset cards did not change with the selected world");
+            previousWorld=themed;
+            const std::array<std::pair<glm::vec2,int>,6> controls{{
+                {{163,86},SectionUiLayoutBase},{{457,86},SectionUiLayoutBase+1},
+                {{163,201},SectionUiPresetBase},{{457,201},SectionUiPresetBase+1},
+                {{97,323},SectionUiBack},{{488,323},SectionUiCreate}
+            }};
+            for (const auto& [point,id]:controls)
+                require(hit(point.x,point.y)==id,"A layout, preset, Back or Create control is not reachable");
+            require(!hit(310,201),"Adjacent preset cards overlap");
+            click(457,201,SectionUiPresetBase+1);
+            require(editor.creationPreset()==SectionPreset::PlainStone && editor.creationCave(),
+                    "Selecting plain stone changed the chosen room layout");
+            require(difference(themed,draw())>100,"Preset selection did not visibly update");
+            click(163,86,SectionUiLayoutBase);
+            require(!editor.creationCave() && editor.creationPreset()==SectionPreset::PlainStone,
+                    "Choosing parkour discarded the selected material preset");
+            draw();
+            click(163,201,SectionUiPresetBase);
+            click(457,86,SectionUiLayoutBase+1);
+            require(editor.creationCave() && editor.creationPreset()==SectionPreset::WorldTheme,
+                    "Themed cave layout could not be selected again");
+            draw();
+            click(97,323,SectionUiBack);
+            require(editor.screen()==SectionEditorScreen::Library && !editor.hasSection()
+                    && listSectionDrafts(options.sectionLibrary).empty(),
+                    "Cancelling the chooser created a draft or left its world library");
+            act(SectionUiBack);
+            require(editor.screen()==SectionEditorScreen::Worlds,"Preset fixture cannot return to world selection");
+        }
+        act(SectionUiWorldBase);act(SectionUiLibraryNew);
+        require(editor.screen()==SectionEditorScreen::Create && !editor.creationCave(),
+                "Parkour library entry did not select the open room layout");
+        draw();
+        click(163,201,SectionUiPresetBase);
+        click(488,323,SectionUiCreate);
+        require(editor.screen()==SectionEditorScreen::Build && editor.hasSection()
+                && editor.meta().world==SectionWorld::LushCaves
+                && editor.meta().category==SectionCategory::Parkour,
+                "Create did not build the selected world's parkour preset");
+        require(listSectionDrafts(options.sectionLibrary).size()==1,
+                "Confirming a preset must save exactly one new draft");
+        draw();
+    }
+}
+
 void verifyCaveAuthoring(int width,int height,const std::filesystem::path& library,Hud& hud)
 {
     for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
@@ -263,6 +347,10 @@ void verifyCaveAuthoring(int width,int height,const std::filesystem::path& libra
         require(!hit(350,83),"New room and cave actions overlap in the world library");
         click(519,83,SectionUiLibraryCave);
         auto& editor=game.sectionEditor();
+        require(editor.screen()==SectionEditorScreen::Create && editor.creationCave(),
+                "New Cave did not open its preset chooser");
+        draw();
+        act(SectionUiCreate);
         require(editor.screen()==SectionEditorScreen::Build && editor.meta().lighting==SectionLighting::Dark
                 && editor.meta().category==SectionCategory::Exploration && editor.builderLight(),
                 "Clicking the displayed New Cave action did not open the dark Exploration template");
@@ -355,7 +443,7 @@ void verifySectionNaming(int width,int height,const std::filesystem::path& libra
             require(glGetError()==GL_NO_ERROR,"Section naming HUD generated an OpenGL error");
             return pixels;
         };
-        act(SectionUiWorldBase);act(SectionUiLibraryNew);
+        act(SectionUiWorldBase);act(SectionUiLibraryNew);act(SectionUiCreate);
         auto& editor=game.sectionEditor();
         require(!editor.meta().tested,"Name editor fixture must not have completed a walk test");
         const auto originalName=editor.meta().name;
@@ -504,7 +592,9 @@ void verifySectionHud(int width,int height)
         const auto library=draw(width,height);
         require(difference(worlds,library)>2000,"Section library did not replace world cards");
         act(SectionUiLibraryNew);
-        require(game.sectionEditor().screen()==SectionEditorScreen::Build,"New section did not open creative mode");
+        require(game.sectionEditor().screen()==SectionEditorScreen::Create,"New section did not open its preset chooser");
+        act(SectionUiPresetBase+1);act(SectionUiCreate);
+        require(game.sectionEditor().screen()==SectionEditorScreen::Build,"Create section did not open creative mode");
         const auto build=draw(width,height);
         press(&InputActions::devTools);
         require(game.sectionEditor().screen()==SectionEditorScreen::Tools,"Building tools menu did not open");
@@ -796,10 +886,11 @@ void verifySectionHud(int width,int height)
         require(state()==before,"Minimized section HUD changed OpenGL state");
         verifyChestAuthoring(width,height,temporary/"chest-workshop",hud);
         verifySpawnerAuthoring(width,height,temporary/"spawner-workshop",hud);
+        verifyPresetChooser(width,height,temporary/"preset-chooser",hud);
         verifyCaveAuthoring(width,height,temporary/"cave-workshop",hud);
         verifySectionNaming(width,height,temporary/"section-naming",hud);
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout << "Section HUD passed: world library, cave creation, carving and lighting controls, five palette tabs, section naming before testing, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
+    std::cout << "Section HUD passed: world library, themed and plain presets, cave creation, carving and lighting controls, five palette tabs, section naming before testing, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
 }
 }

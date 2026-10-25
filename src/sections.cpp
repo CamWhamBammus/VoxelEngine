@@ -22,8 +22,8 @@ namespace {
 
 constexpr std::array Worlds{
     SectionWorldInfo{SectionWorld::LushCaves, "Lush Caves", "Roots, gardens, trees and water", "lush-caves"},
-    SectionWorldInfo{SectionWorld::CrystalHollows, "Crystal Hollows", "A collection for future crystal caves", "crystal-hollows"},
-    SectionWorldInfo{SectionWorld::EmberDepths, "Ember Depths", "A collection for future volcanic caves", "ember-depths"},
+    SectionWorldInfo{SectionWorld::CrystalHollows, "Crystal Hollows", "Pale stone, slate and crystal seams", "crystal-hollows"},
+    SectionWorldInfo{SectionWorld::EmberDepths, "Ember Depths", "Slate, obsidian and warm clay bands", "ember-depths"},
 };
 constexpr std::array Categories{
     SectionCategoryInfo{SectionCategory::Parkour, "Parkour", "Jumps, climbs and careful crossings", "parkour"},

@@ -192,6 +192,8 @@ int main()
         check(editor.pasteFloorHeight() == SectionInteriorMin.y,
               "the protected room floor chooses the first editable layer rather than the shell");
         press(game, &InputActions::devLibrary); click(game, SectionUiLibraryNew);
+        click(game, SectionUiPresetBase + 1);
+        click(game, SectionUiCreate);
         check(!editor.pastePinned() && !editor.pasteFloorHeight() && editor.buildMode() == SectionBuildMode::Single,
               "starting a new room cannot inherit the previous section's placement locks");
     } catch (const std::exception& error) {

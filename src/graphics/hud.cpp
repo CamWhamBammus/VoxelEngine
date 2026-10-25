@@ -3,6 +3,7 @@
 #include "equipment.h"
 #include "root_crossings.h"
 #include "section_editor.h"
+#include "section_presets.h"
 #include "level_editor.h"
 
 #include <algorithm>
@@ -133,15 +134,14 @@ struct Vertex {
     glm::vec2 uv{-1, -1};
 };
 
-// The field satchel palette is shared by play, authoring menus and the pack.
+// Warm cave tones, quiet outlines, and one accent for the active choice.
 constexpr glm::vec4 Cream{0.95f,0.91f,0.79f,1};
-constexpr glm::vec4 Muted{0.73f,0.64f,0.49f,1};
+constexpr glm::vec4 Muted{0.64f,0.63f,0.55f,1};
 constexpr glm::vec4 Gold{0.95f,0.70f,0.30f,1};
-constexpr glm::vec4 Panel{0.09f,0.061f,0.043f,0.98f};
-constexpr glm::vec4 Edge{0.46f,0.34f,0.22f,1};
-constexpr glm::vec4 Canvas{0.16f,0.105f,0.072f,1};
-constexpr glm::vec4 Selected{0.24f,0.18f,0.10f,1};
-constexpr glm::vec4 Stitch{0.54f,0.42f,0.27f,0.70f};
+constexpr glm::vec4 Panel{0.065f,0.064f,0.052f,0.97f};
+constexpr glm::vec4 Edge{0.27f,0.26f,0.21f,1};
+constexpr glm::vec4 Canvas{0.105f,0.105f,0.084f,1};
+constexpr glm::vec4 Selected{0.17f,0.15f,0.10f,1};
 constexpr glm::vec4 Leaf{0.45f,0.86f,0.60f,1};
 
 // Small colored triangles and bitmap glyphs share one buffer and draw call.
@@ -227,20 +227,8 @@ public:
             for (std::size_t i=0;i<points.size();++i)
                 triangle(center,points[i],points[(i+1)%points.size()],color);
         };
-        polygon(x,y,width,height,corner,border);
-        polygon(x+2,y+2,width-4,height-4,std::max(1.0f,corner-1),fill);
-        // Keep seams away from labels on small buttons and counts in hotbar pockets.
-        if (width>=34 && height>=36 && fill.a>.9f) {
-            const bool pocket=width<=80;
-            for (float step=pocket ? 25 : 10;step<width-10;step+=9)
-                quad(x+step,y+5,4,1,Stitch);
-            for (float step=10;step<width-(pocket ? 25 : 10);step+=9)
-                quad(x+step,y+height-6,4,1,Stitch);
-            for (float step=pocket ? 22 : 12;step<height-10;step+=9) {
-                quad(x+5,y+step,1,4,Stitch);
-                quad(x+width-6,y+step,1,4,Stitch);
-            }
-        }
+        polygon(x,y,width,height,std::min(corner,3.f),border);
+        polygon(x+1,y+1,width-2,height-2,std::min(corner,2.f),fill);
     }
 
 private:
@@ -423,9 +411,7 @@ void crossingPicker(Drawing& out, const Game& game, float width, float height)
     out.quad(0,0,width,height,{.025f,.016f,.009f,.72f});
     constexpr float panelWidth=578, panelHeight=420;
     const float x=(width-panelWidth)*0.5f, y=(height-panelHeight)*0.5f;
-    out.quad(x+6,y+7,panelWidth,panelHeight,{0,0,0,0.35f});
     out.frame(x,y,panelWidth,panelHeight,Edge);
-    out.quad(x+12,y+12,panelWidth-24,43,Canvas);
     out.text("ROOT CROSSINGS",x+23,y+18,2,Cream);
     fittedText(out,"LUSH CAVES / 10 PLAYABLE LAYOUTS",x+24,y+43,panelWidth-48,1,Muted);
     fittedText(out,"ESC - CLOSE",x+panelWidth-112,y+22,90,1,Muted);
@@ -449,9 +435,7 @@ void crossingPicker(Drawing& out, const Game& game, float width, float height)
     out.quad(x+23,y+316,panelWidth-46,1,Edge);
     wrappedDescription(out,catalog[selection].description,x+24,y+330,
                        static_cast<std::size_t>((panelWidth-48)/(6*out.fontPixel(1))));
-    fittedText(out,"CYAN CHECKPOINT / GOLD EXIT / FALLS RESET",x+24,y+359,panelWidth-48,0.9f,Leaf);
     fittedText(out,"UP/DOWN OR 1-9/0 - SELECT",x+24,y+376,322,1,Muted);
-    fittedText(out,"WASD MOVE / SPACE JUMP / SHIFT SPRINT",x+24,y+395,322,1,Muted);
     out.frame(x+360,y+370,194,34,Gold,{0.72f,0.49f,0.20f,1});
     fittedCentered(out,"ENTER - START",x+457,y+382,174,1.5f,Panel);
 }
@@ -503,9 +487,7 @@ void sectionPanel(Drawing& out,float width,float height,float x,float y,float w,
                   std::string_view title,std::string_view subtitle)
 {
     out.quad(0,0,width,height,{.025f,.016f,.009f,.76f});
-    out.quad(x+6,y+7,w,h,{0,0,0,0.35f});
     out.frame(x,y,w,h,Edge);
-    out.quad(x+12,y+12,w-24,43,Canvas);
     fittedText(out,title,x+22,y+18,w-44,2,Cream);
     fittedText(out,subtitle,x+23,y+43,w-46,1,Muted);
 }
@@ -594,7 +576,8 @@ void sectionFeedback(Drawing& out,const SectionEditor& editor,float x,float y,fl
 {
     auto feedback=editor.message();
     std::replace(feedback.begin(),feedback.end(),'\n',' ');
-    if (feedback.size()>96) feedback=feedback.substr(0,93)+"...";
+    if (const auto separator=feedback.find(" | ");separator!=std::string::npos)
+        feedback.resize(separator);
     fittedText(out,feedback,x,y,width,1,Leaf);
 }
 
@@ -602,7 +585,7 @@ void sectionWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
 {
     constexpr float w=620,h=410;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"SECTION WORKSHOP","CHOOSE THE WORLD YOUR NEW SECTION WILL BELONG TO");
+    sectionPanel(out,width,height,x,y,w,h,"SECTION WORKSHOP","CHOOSE A WORLD");
     const auto worlds=sectionWorldCatalog();
     for (int index=0;index<static_cast<int>(worlds.size());++index) {
         const auto& world=worlds[index];
@@ -616,8 +599,6 @@ void sectionWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
         fittedText(out,world.description,x+95,top+42,w-133,1,Muted);
         hits.push_back({x+22,top,w-44,68,SectionUiWorldBase+index});
     }
-    out.text("BUILD / WALK YOUR ROUTE / NAME AND ACCEPT",x+24,y+319,1,Leaf);
-    out.text("64 X 48 X 64 BLOCK BUILDING ROOM",x+24,y+339,1,Muted);
     sectionButton(out,hits,x+22,y+365,158,28,"B - VILLAGE",SectionUiBack);
     sectionButton(out,hits,x+192,y+365,176,28,"F11 LEVEL CREATOR",SectionUiLevelCreator);
     sectionButton(out,hits,x+w-242,y+365,220,28,"ENTER - CHOOSE WORLD",SectionUiConfirm,true);
@@ -627,9 +608,9 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
 {
     constexpr float w=700,h=470;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"YOUR SECTIONS",sectionWorldName(editor.selectedWorld())+" / DRAFTS AND ACCEPTED SECTIONS");
-    sectionButton(out,hits,x+22,y+65,318,37,"+ OPEN ROOM / PARKOUR",SectionUiLibraryNew,editor.selection()==0);
-    sectionButton(out,hits,x+360,y+65,318,37,"+ CAVE / CARVE FROM STONE",SectionUiLibraryCave);
+    sectionPanel(out,width,height,x,y,w,h,"YOUR SECTIONS",sectionWorldName(editor.selectedWorld()));
+    sectionButton(out,hits,x+22,y+65,318,37,"+ PARKOUR",SectionUiLibraryNew,editor.selection()==0);
+    sectionButton(out,hits,x+360,y+65,318,37,"+ CAVE EXPLORATION",SectionUiLibraryCave);
     const auto& drafts=editor.draftEntries();
     const auto& entries=editor.entries();
     const int count=static_cast<int>(drafts.size()+entries.size());
@@ -643,15 +624,14 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
         const bool selected=editor.selection()==index+1;
         out.frame(x+22,top,w-44,35,selected ? Gold : Edge,selected ? Selected : Panel);
         fittedText(out,entry.meta.name,x+35,top+8,400,1.15f,Cream);
-        out.text(draft ? "DRAFT / CONTINUE" : "ACCEPTED / EDIT COPY",x+487,top+9,0.9f,draft ? Gold : Leaf);
+        out.text(draft ? "DRAFT" : "EDIT COPY",x+487,top+9,0.9f,draft ? Gold : Leaf);
         fittedText(out,sectionCategoryName(entry.meta.category),x+35,top+23,390,0.8f,Muted);
         hits.push_back({x+22,top,w-44,35,draft ? SectionUiLibraryDraftBase+index
                         : SectionUiLibraryEntryBase+index-static_cast<int>(drafts.size())});
     }
     if (!count) {
-        out.centered("YOUR FIRST SECTION STARTS HERE",width*0.5f,y+190,1.5f,Cream);
-        out.centered("BUILD A ROUTE, PLAYTEST IT, THEN ACCEPT IT.",width*0.5f,y+218,1,Muted);
-        out.centered("ACCEPTED SECTIONS APPEAR IN THIS WORLD'S LIBRARY.",width*0.5f,y+240,1,Muted);
+        out.centered("NO SECTIONS YET",width*0.5f,y+190,1.5f,Cream);
+        out.centered("CHOOSE PARKOUR OR CAVE ABOVE TO START.",width*0.5f,y+218,1,Muted);
     }
     sectionButton(out,hits,x+22,y+358,100,26,"< PREVIOUS",SectionUiLibraryPrevious,false,page>0);
     out.centered(std::to_string(count)+" SAVED / PAGE "+std::to_string(page+1)+" OF "+std::to_string(std::max(1,(count+5)/6)),width*0.5f,y+367,1,Muted);
@@ -662,17 +642,47 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     sectionButton(out,hits,x+w-230,y+h-46,208,29,"ENTER - OPEN",SectionUiConfirm,true);
 }
 
+void sectionCreateMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
+{
+    constexpr float w=620,h=360;
+    const float x=(width-w)*.5f,y=(height-h)*.5f;
+    sectionPanel(out,width,height,x,y,w,h,"NEW SECTION",sectionWorldName(editor.selectedWorld()));
+    sectionButton(out,hits,x+22,y+70,282,32,"PARKOUR / OPEN ROOM",SectionUiLayoutBase,!editor.creationCave());
+    sectionButton(out,hits,x+316,y+70,282,32,"CAVE / CARVE YOUR ROUTE",SectionUiLayoutBase+1,editor.creationCave());
+    out.text("STARTING PRESET",x+23,y+116,1,Muted);
+    std::array<Block,3> materials{Block::RootedDirt,Block::MossStone,Block::RootWood};
+    if (editor.selectedWorld()==SectionWorld::CrystalHollows)
+        materials={Block::Calcite,Block::Slate,Block::AmethystOre};
+    else if (editor.selectedWorld()==SectionWorld::EmberDepths)
+        materials={Block::Slate,Block::Obsidian,Block::Clay};
+    for (int index=0;index<2;++index) {
+        const auto preset=index==0 ? SectionPreset::WorldTheme : SectionPreset::PlainStone;
+        const bool selected=editor.creationPreset()==preset;
+        const float left=x+22+index*294;
+        out.frame(left,y+135,282,132,selected ? Gold : Edge,selected ? Selected : Panel);
+        fittedText(out,sectionPresetName(editor.selectedWorld(),preset),left+14,y+149,254,1.5f,selected ? Gold : Cream);
+        for (int material=0;material<3;++material)
+            out.preview(PalettePreviews::blockId(index==0 ? materials[material] : Block::Stone),
+                        {left+65+material*76,y+202},58);
+        fittedText(out,sectionPresetDescription(editor.selectedWorld(),preset),left+14,y+246,254,1,Muted);
+        hits.push_back({left,y+135,282,132,SectionUiPresetBase+index});
+    }
+    if (!editor.message().empty()) sectionFeedback(out,editor,x+23,y+285,w-46);
+    else fittedText(out,editor.creationCave() ? "SMALL START ROOM / DARK UNTIL YOU ADD LIGHTS"
+                                            : "OPEN SPACE / READY FOR YOUR OWN ROUTE",
+                    x+23,y+285,w-46,1,Muted);
+    sectionButton(out,hits,x+22,y+308,150,30,"ESC - BACK",SectionUiBack);
+    sectionButton(out,hits,x+378,y+308,220,30,"ENTER - CREATE",SectionUiCreate,true);
+}
+
 void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
 {
     constexpr float w=700,h=478;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"CREATIVE INVENTORY",editor.paletteTab()==4
-        ? "CHOOSE A BUILD TOOL / G CHANGES BRUSH SIZE AND LIGHTING"
-        : "CHOOSE A SLOT BELOW, THEN CLICK AN ITEM TO EQUIP IT");
-    const auto catalog=sectionAssetCatalog();
-    const auto modelCount=std::count_if(catalog.begin(),catalog.end(),[](const auto& entry){return isCreativeAsset(entry.kind);});
-    const std::array<std::string,5> tabs{"BLOCKS "+std::to_string(PlaceableBlocks.size()),
-        "ASSETS "+std::to_string(modelCount),"ITEMS "+std::to_string(ItemCount),"MARKERS","TOOLS"};
+    sectionPanel(out,width,height,x,y,w,h,"BUILD MATERIALS",editor.paletteTab()==4
+        ? "CHOOSE A TOOL / G OPTIONS"
+        : "SELECT A HOTBAR SLOT, THEN AN ITEM");
+    const std::array<std::string_view,5> tabs{"BLOCKS","ASSETS","ITEMS","MARKERS","TOOLS"};
     constexpr std::array tabIds{0,1,3,2,4};
     for (int tab=0;tab<static_cast<int>(tabs.size());++tab)
         sectionButton(out,hits,x+22+tab*110,y+62,104,26,tabs[tab],SectionUiPaletteTabBase+tabIds[tab],editor.paletteTab()==tabIds[tab]);
@@ -704,16 +714,16 @@ void sectionPaletteMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     if (!items.empty()) {
         const auto& item=items[selection];
         fittedText(out,item.name,x+23,y+341,320,1.4f,Gold);
-        const auto hint=item.tool ? "CLICK TO ACTIVATE / G SIZE AND OPTIONS / X NORMAL PLACEMENT"
-            : item.pickup ? "DROP ON GROUND / WALK OVER TO COLLECT"
-            : item.asset && isSpawnerAsset(*item.asset) ? "PLACE / AIM AT SPAWNER AND PRESS E TO SET ENEMIES AND REWARDS"
-            : item.asset && isChestAsset(*item.asset) ? "PLACE EMPTY / AIM AT CHEST AND PRESS E TO ADD ITEMS"
-            : item.asset ? std::string(sectionItemGroup(item))+" / SOLID MODEL SURFACES" : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
-            : item.block && isStair(*item.block) ? "HALF-HEIGHT STEPS / T ROTATE / WALK UP WITHOUT JUMPING"
+        const auto hint=item.tool ? "CLICK TO USE / G OPTIONS / X FINISH"
+            : item.pickup ? "WALK OVER TO PICK UP"
+            : item.asset && isSpawnerAsset(*item.asset) ? "E ON PLACED SPAWNER: ENEMIES AND REWARDS"
+            : item.asset && isChestAsset(*item.asset) ? "E ON PLACED CHEST: SET CONTENTS"
+            : item.asset ? std::string(sectionItemGroup(item)) : item.block && *item.block==Block::Water ? "WATER / SWIM THROUGH"
+            : item.block && isStair(*item.block) ? "T ROTATE / WALK UP WITHOUT JUMPING"
             : item.marker==SectionMarker::Start || item.marker==SectionMarker::End ? "ONE PER SECTION - PLACING MOVES IT"
             : item.marker!=SectionMarker::None ? "PLACE ON A SAFE WALKABLE SURFACE"
-            : item.block && isLeafBlock(*item.block) ? "LEAF CUTOUTS / SOLID FOR WALKING"
-            : "BUILD WALKABLE SURFACES WITH BLOCKS";
+            : item.block && isLeafBlock(*item.block) ? "LEAVES / WALKABLE"
+            : "BUILDING BLOCK";
         fittedText(out,hint,x+23,y+359,405,0.9f,Muted);
     }
     if (editor.paletteTab()==3) {
@@ -747,7 +757,7 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
 {
     constexpr float w=700,h=478;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"BUILDING TOOLS","BUILD TERRAIN IN VOLUMES / COPY YOUR FAVORITE PIECES");
+    sectionPanel(out,width,height,x,y,w,h,"BUILDING TOOLS","G OR ESC TO RETURN");
     const auto button=[&](float left,float top,float width,float height,std::string_view label,int id,
                           bool selected=false,bool enabled=true) {
         sectionButton(out,hits,left,top,width,height,label,id,selected,enabled,1.25f);
@@ -761,9 +771,12 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     for (int index=0;index<4;++index)
         button(x+145+index*65,y+103,56,26,std::to_string(sizes[index]),
                       SectionUiBrushSizeBase+index,editor.brushSize()==sizes[index]);
-    fittedText(out,"BLOCKS / ONE UNDO PER STAMP",x+422,y+112,252,1.15f,Muted);
-    fittedText(out,"SELECT AREA: LEFT CLICK = CORNER A / RIGHT CLICK = CORNER B",x+24,y+143,w-48,1.15f,Cream);
-    fittedText(out,"IN EMPTY AIR: J = CORNER A / K = CORNER B AT YOUR FLYING POSITION",x+24,y+161,w-48,1.15f,Muted);
+    fittedText(out,"BLOCKS",x+422,y+112,252,1.15f,Muted);
+    const bool carving=editor.buildMode()==SectionBuildMode::CarveRound || editor.buildMode()==SectionBuildMode::CarveBox;
+    fittedText(out,carving ? "HOLD LEFT CLICK TO CARVE / X FINISH" : "SELECT AREA: LEFT / RIGHT CLICK SETS THE TWO CORNERS",
+               x+24,y+143,w-48,1.15f,Cream);
+    fittedText(out,carving ? "BUILD LIGHT HELPS WHILE EDITING; PLAYTEST USES REAL LIGHTS" : "J / K SET CORNERS AT YOUR POSITION",
+               x+24,y+161,w-48,1.15f,Muted);
     out.frame(x+22,y+183,w-44,72,Edge);
     const auto selection=editor.buildSelection();
     if (selection) {
@@ -772,7 +785,7 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
         fittedText(out,"FROM "+sectionCell(selection->min)+" TO "+sectionCell(selection->max),x+34,y+215,425,1.15f,Muted);
     } else {
         fittedText(out,editor.firstCorner() ? "CORNER A SET / CHOOSE CORNER B" : "PICK TWO CORNERS TO SELECT AN AREA",x+34,y+195,430,1.15f,Leaf);
-        fittedText(out,"THE OUTLINE SHOWS EXACTLY WHICH BLOCKS ARE INCLUDED",x+34,y+215,430,1.15f,Muted);
+        fittedText(out,"J / K WORK IN EMPTY AIR",x+34,y+215,430,1.15f,Muted);
     }
     fittedText(out,"HEIGHT",x+w-189,y+194,155,1.15f,Muted);
     button(x+w-189,y+213,70,27,"- 1",SectionUiHeightDown,false,selection.has_value());
@@ -782,7 +795,7 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     button(x+22,y+267,212,32,"FILL SOLID",SectionUiFill,false,selection && item.block.has_value());
     button(x+244,y+267,212,32,"BUILD SHELL",SectionUiShell,false,selection && item.block.has_value());
     button(x+466,y+267,212,32,"CLEAR AREA",SectionUiErase,false,selection.has_value());
-    fittedText(out,"SHELL BUILDS BOUNDARY / CLEAR REMOVES BLOCKS AND ASSETS / MARKERS STAY",x+24,y+307,w-48,1.15f,Muted);
+    fittedText(out,"CLEAR KEEPS YOUR START, END AND CHECKPOINTS",x+24,y+307,w-48,1.15f,Muted);
     button(x+22,y+329,212,32,"COPY AREA",SectionUiCopy,false,selection.has_value());
     button(x+244,y+329,212,32,"PASTE PREVIEW",SectionUiPaste,editor.buildMode()==SectionBuildMode::Paste,!editor.clipboard().empty());
     button(x+466,y+329,212,32,"PASTE SETTINGS",SectionUiPasteSettings);
@@ -795,33 +808,28 @@ void sectionToolsMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     sectionFeedback(out,editor,x+24,y+413,w-48);
     button(x+22,y+h-42,212,28,"CLEAR SELECTION",SectionUiClearSelection,false,editor.firstCorner().has_value() || editor.secondCorner().has_value());
     button(x+244,y+h-42,212,28,"F2 - RENAME SECTION",SectionUiRename);
-    button(x+w-234,y+h-42,212,28,"G / ESC - BUILD",SectionUiBack,true);
+    button(x+w-234,y+h-42,212,28,"BACK TO BUILD",SectionUiBack,true);
 }
 
 void sectionPasteMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
 {
     constexpr float w=700,h=478;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"PASTE SETTINGS","CHOOSE HOW YOUR COPIED PIECE FITS INTO THE WORLD");
+    sectionPanel(out,width,height,x,y,w,h,"PASTE SETTINGS","COPY, ROTATE AND PLACE");
     const bool copied=!editor.clipboard().empty();
     sectionButton(out,hits,x+22,y+66,322,34,"STANDARD PASTE",SectionUiPasteModeBase,!editor.pasteFillGaps(),copied,1.3f);
     sectionButton(out,hits,x+356,y+66,322,34,"FILL GAPS",SectionUiPasteModeBase+1,editor.pasteFillGaps(),copied,1.3f);
-    fittedText(out,"COPY BLOCKS AND DECORATIONS",x+30,y+116,306,1.15f,Cream);
-    fittedText(out,"SNAP TO THE AIMED SURFACE",x+30,y+138,306,1.0f,Muted);
-    fittedText(out,"REPLACE EXISTING BLOCKS",x+30,y+158,306,1.0f,Muted);
-    fittedText(out,"ADD BLOCKS ONLY IN EMPTY SPACES",x+364,y+116,306,1.15f,Leaf);
-    fittedText(out,"KEEP BLOCKS AND DECORATIONS",x+364,y+138,306,1.0f,Muted);
-    fittedText(out,"SKIP COPIED MODELS",x+364,y+158,306,1.0f,Muted);
+    fittedText(out,"REPLACES BLOCKS AND PLACES ASSETS",x+30,y+121,306,1,Cream);
+    fittedText(out,"ADDS BLOCKS ONLY IN EMPTY SPACE",x+364,y+121,306,1,Leaf);
     out.frame(x+22,y+190,w-44,60,Edge);
     sectionButton(out,hits,x+34,y+204,194,30,editor.pasteIncludesAir() ? "WITH AIR: ON" : "WITH AIR: OFF",
                   SectionUiPasteAir,editor.pasteIncludesAir() && !editor.pasteFillGaps(),!editor.pasteFillGaps(),1.15f);
-    fittedText(out,"STANDARD ONLY: COPY EMPTY SPACE TOO",x+246,y+204,416,1.1f,Cream);
-    fittedText(out,"WITH AIR ALSO CLEARS DECORATIONS IN THE STAMP",x+246,y+225,416,1.0f,Muted);
-    fittedText(out,"FILL GAPS: AIM AT A FLOOR TOP / LEFT CLICK OR L TO LOCK ITS HEIGHT",x+24,y+271,w-48,1.1f,Leaf);
-    fittedText(out,"MOVE THE PREVIEW ACROSS THE FLOOR / ONLY NEW BLOCKS GLOW GREEN",x+24,y+293,w-48,1.1f,Muted);
-    fittedText(out,"ARROWS MOVE ONE BLOCK / PAGE UP-DOWN MOVE VERTICALLY",x+24,y+322,w-48,1.15f,Cream);
-    fittedText(out,"FIRST NUDGE PINS THE PREVIEW / P TOGGLE PIN OR FOLLOW AIM",x+24,y+344,w-48,1.1f,Muted);
-    fittedText(out,"RIGHT CLICK STAMP / T ROTATE / X CANCEL",x+24,y+366,w-48,1.15f,Muted);
+    fittedText(out,"COPY EMPTY SPACE TOO",x+246,y+204,416,1.1f,Cream);
+    fittedText(out,"CLEARS BLOCKS AND ASSETS IN COPIED GAPS",x+246,y+225,416,1.0f,Muted);
+    fittedText(out,editor.pasteFillGaps() ? "LEFT CLICK A FLOOR TO LOCK ITS HEIGHT" : "AIM AT A SURFACE TO PLACE THE COPY",
+               x+24,y+279,w-48,1.1f,Leaf);
+    fittedText(out,"RIGHT CLICK PLACE / T ROTATE / X FINISH",x+24,y+306,w-48,1.1f,Cream);
+    fittedText(out,"ARROWS NUDGE / PAGE UP-DOWN HEIGHT / P PIN",x+24,y+332,w-48,1.1f,Muted);
     fittedText(out,copied ? "COPIED / "+sectionDimensions(editor.clipboard().size)
                          : "CLIPBOARD EMPTY / SELECT AND COPY AN AREA FIRST",x+24,y+394,w-48,1.1f,copied ? Leaf : Gold);
     sectionFeedback(out,editor,x+24,y+414,w-48);
@@ -833,14 +841,13 @@ void sectionRenameMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
 {
     constexpr float w=620,h=270;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
-    sectionPanel(out,width,height,x,y,w,h,"NAME YOUR SECTION","SAVE A DRAFT NAME AT ANY TIME / NO PLAYTEST REQUIRED");
-    out.text(editor.nameSelected() ? "SECTION NAME / TYPE TO REPLACE" : "SECTION NAME / CLICK TO SELECT ALL",x+23,y+72,1,Muted);
+    sectionPanel(out,width,height,x,y,w,h,"RENAME SECTION","");
+    out.text("NAME",x+23,y+72,1,Muted);
     out.frame(x+22,y+88,w-44,36,Gold,Canvas);
     if (editor.nameSelected()) out.quad(x+31,y+95,std::min(w-62,editor.renameText().size()*9.f+10),22,{.34f,.27f,.17f,1});
     fittedText(out,editor.renameText()+(editor.nameSelected() ? "" : "_"),x+35,y+100,w-70,1.5f,Cream);
     hits.push_back({x+22,y+88,w-44,36,SectionUiNameField});
-    fittedText(out,"TYPE A NAME / CMD OR CTRL+A SELECT ALL / BACKSPACE DELETE",x+24,y+141,w-48,1,Muted);
-    fittedText(out,"SAVES WITH YOUR DRAFT / YOUR BUILD AND PLAYTEST STAY AS THEY ARE",x+24,y+162,w-48,1,Leaf);
+    fittedText(out,"CMD / CTRL+A SELECTS ALL",x+24,y+141,w-48,1,Muted);
     sectionFeedback(out,editor,x+24,y+190,w-48);
     sectionButton(out,hits,x+22,y+h-51,175,30,"ESC - CANCEL",SectionUiBack);
     sectionButton(out,hits,x+w-275,y+h-51,253,30,"ENTER - SAVE NAME",SectionUiRenameApply,true,
@@ -851,8 +858,8 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
 {
     constexpr float w=620,h=454;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
-    sectionPanel(out,width,height,x,y,w,h,"ADD TO WORLD",sectionWorldName(editor.selectedWorld())+" / NAME AND CLASSIFY THIS SECTION");
-    out.text(editor.nameSelected() ? "SECTION NAME / TYPE TO REPLACE SELECTED NAME" : "SECTION NAME / CTRL+A SELECTS ALL",x+23,y+72,1,Muted);
+    sectionPanel(out,width,height,x,y,w,h,"ADD TO WORLD",sectionWorldName(editor.selectedWorld()));
+    out.text("NAME",x+23,y+72,1,Muted);
     out.frame(x+22,y+88,w-44,36,Gold,Canvas);
     if (editor.nameSelected()) out.quad(x+31,y+95,std::min(w-62,editor.meta().name.size()*9.0f+10),22,{.34f,.27f,.17f,1});
     fittedText(out,editor.meta().name+(editor.nameSelected() ? "" : "_"),x+35,y+100,w-70,1.5f,Cream);
@@ -872,7 +879,6 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
     sectionFeedback(out,editor,x+24,y+377,w-48);
     sectionButton(out,hits,x+22,y+h-51,175,30,"ESC - KEEP EDITING",SectionUiBack);
     sectionButton(out,hits,x+w-275,y+h-51,253,30,"ENTER - ACCEPT SECTION",SectionUiConfirm,true,editor.meta().tested);
-    out.centered("TYPE NAME / CTRL+A SELECT ALL / UP-DOWN CATEGORY",width*0.5f,y+h-13,0.8f,Muted);
 }
 
 void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
@@ -882,15 +888,15 @@ void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     const bool locked=editor.editingChestKind()==HubAssetKind::IronboundChest;
     const bool rewards=isSpawnerAsset(editor.editingChestKind());
     sectionPanel(out,width,height,x,y,w,h,rewards ? "TRIAL REWARDS" : "CHEST CONTENTS",
-        rewards ? "ITEMS POP OUT OF THE SPAWNER WHEN EVERY ENEMY IS DEFEATED"
+        rewards ? "DROPPED WHEN THE TRIAL IS CLEARED"
             : std::string(chestAssetName(editor.editingChestKind()))
-                +(locked ? " / REQUIRES A CAVE KEY" : " / EXACT ITEMS SAVED WITH THIS CHEST"));
+                +(locked ? " / REQUIRES A CAVE KEY" : ""));
     const auto& slots=editor.chestSlots();
     const int selection=std::clamp(editor.chestSelection(),0,ChestSlotCount-1);
     const auto& selected=slots[selection];
     const bool occupied=selected.count>0 && validItem(selected.item);
     const auto used=std::count_if(slots.begin(),slots.end(),[](const ItemStack& stack){return stack.count>0;});
-    out.text("ITEM CATALOG",x+22,y+73,1,Muted);
+    out.text("ITEMS",x+22,y+73,1,Muted);
     out.text(std::string(rewards ? "REWARDS / " : "CHEST / ")+std::to_string(used)+" OF 20 SLOTS",x+324,y+73,1,Gold);
     // Two columns leave enough width for readable names even on small displays.
     const auto catalog=itemCatalog();
@@ -944,7 +950,7 @@ void sectionSpawnerMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
 {
     constexpr float w=610,h=440;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
-    sectionPanel(out,width,height,x,y,w,h,"TRIAL SPAWNER","ACTIVATES AUTOMATICALLY WHEN A PLAYER COMES WITHIN 8 BLOCKS");
+    sectionPanel(out,width,height,x,y,w,h,"TRIAL SPAWNER","ACTIVATES WITHIN 8 BLOCKS");
     const auto& counts=editor.spawnerCounts();
     constexpr std::array<std::string_view,3> labels{"SKELETON","WIZARD","SLIME"};
     constexpr std::array<std::string_view,3> details{"CHASES AND SLASHES","CASTS DODGEABLE BOLTS","HOPS TOWARD THE PLAYER"};
@@ -966,7 +972,7 @@ void sectionSpawnerMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     sectionButton(out,hits,x+22,y+318,w-44,35,
         "EDIT REWARDS / "+std::to_string(editor.spawnerRewards().size())
             +(editor.spawnerRewards().size()==1 ? " ITEM STACK" : " ITEM STACKS"),SectionUiSpawnerRewards);
-    fittedText(out,"CLEARS PERMANENTLY / UNFINISHED TRIALS RESET ON DEATH",x+24,y+365,w-48,1,Muted);
+    fittedText(out,"CLEARS PERMANENTLY ON COMPLETION",x+24,y+365,w-48,1,Muted);
     sectionFeedback(out,editor,x+24,y+384,w-48);
     sectionButton(out,hits,x+22,y+405,172,27,"ESC - CANCEL",SectionUiSpawnerCancel);
     sectionButton(out,hits,x+w-273,y+405,251,27,"ENTER - SAVE SPAWNER",SectionUiSpawnerApply,true,total>0);
@@ -976,9 +982,7 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
 {
     const auto& editor=game.sectionEditor();
     const bool testing=editor.screen()==SectionEditorScreen::Test;
-    const float center=width*0.5f;
-    constexpr float w=620;
-    const float x=center-w*0.5f;
+    const float center=width*.5f;
     if (testing) {
         quietText(out,"PLAYTEST / "+editor.meta().name,18,20,width-300);
         quietText(out,editor.testComplete() ? "COMPLETE / F10 ACCEPT / F8 BUILD"
@@ -986,69 +990,62 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
             editor.testComplete() || editor.checkpointReached() ? Leaf : Muted);
         toolBelt(out,game.equipment,center,height-64);
         quietText(out,"H HELP",width-82,height-27,64,Muted);
-    } else {
-        out.frame(x,14,w,66,Edge);
-        out.quad(x+2,16,3,62,Leaf);
-        out.text("SECTION WORKSHOP / F2 RENAME",x+16,25,1,Leaf);
-        fittedText(out,editor.meta().name,x+16,43,380,1.5f,Cream);
-        fittedText(out,sectionWorldName(editor.selectedWorld()),x+w-205,25,188,1,Muted);
-        out.text(editor.dirty() ? "DRAFT / UNSAVED CHANGES" : "DRAFT SAVED",x+w-205,45,1,Muted);
-        fittedText(out,editor.message(),x+16,67,w-32,0.85f,Leaf);
-        const auto& item=editor.hotbar()[editor.selectedSlot()];
-        const auto mode=editor.buildMode();
-        const bool pasting=mode==SectionBuildMode::Paste;
-        const float labelY=height-(pasting ? 164 : 129);
-        out.frame(center-280,labelY-6,560,pasting ? 74 : 39,Edge,Panel);
-        const auto title=mode==SectionBuildMode::Select ? "SELECT AREA / PICK TWO CORNERS"
-            : pasting ? std::string(editor.pasteFillGaps() ? "FILL GAPS / " : "PASTE / ")+sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
-                +" / "+std::to_string(editor.pasteRotation()*90)+" DEG"
-            : mode==SectionBuildMode::CarveRound || mode==SectionBuildMode::CarveBox
-                ? std::string(mode==SectionBuildMode::CarveRound ? "ROUND CARVE / " : "BOX CARVE / ")+std::to_string(editor.brushSize())+" BLOCKS"
-            : mode==SectionBuildMode::Brush ? std::string(editor.brushErasing() ? "CARVE " : "ADD ")+std::to_string(editor.brushSize())+" / "+item.name
-            : item.pickup ? item.name+" / STACK "+std::to_string(editor.pickupQuantity()) : item.name;
-        fittedText(out,title,center-264,labelY,528,1.4f,Gold);
-        const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
-            : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
-            : mode==SectionBuildMode::CarveRound || mode==SectionBuildMode::CarveBox ? "HOLD LEFT TO DIG / G SIZE / X NORMAL PLACEMENT"
-            : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
-            : item.pickup ? "RIGHT DROP ITEM / WALK OVER TO COLLECT IN PLAY"
-            : item.asset && isSpawnerAsset(*item.asset) ? "RIGHT PLACE / E SET ENEMIES AND REWARDS"
-            : item.asset && isChestAsset(*item.asset) ? "T ROTATE / PLACE EMPTY / E EDIT PLACED CHEST"
-            : item.asset == HubAssetKind::GardenGate ? std::string("T ROTATE / Y OPEN-CLOSED / ")+(editor.variation()%2 ? "OPEN" : "CLOSED")
-            : item.block && isStair(*item.block) ? "T ROTATE "+std::to_string(stairFacing(*item.block)*90)+" DEG / RIGHT PLACE STAIR"
-            : item.asset && buildingGridSize(*item.asset).x ? "T ROTATE / Y FINISH / "
-                +sectionDimensions(buildingGridSize(*item.asset,editor.facing()))+" BLOCK GRID"
-            : item.asset ? "T ROTATE "+std::to_string(editor.facing()*90)+" DEG / Y VARIANT "+std::to_string(editor.variation())
-            : item.marker!=SectionMarker::None ? "RIGHT CLICK A SAFE FLOOR TO PLACE MARKER" : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
-        if (pasting) {
-            std::string status;
-            if (editor.pasteFillGaps() && !editor.pasteFloorHeight()) status="AIM AT A FLOOR TOP / LEFT CLICK OR L TO LOCK HEIGHT";
-            else {
-                if (editor.pasteFillGaps()) status="LEVEL Y "+std::to_string(*editor.pasteFloorHeight())+" / ";
-                status+=editor.pastePinned() ? "PINNED" : "FOLLOW AIM";
-                status+=editor.toolPreview() ? " / "+std::to_string(editor.previewBlockChanges().size())+(editor.pasteFillGaps() ? " BLOCKS TO ADD" : " BLOCK CHANGES")
-                    : editor.pasteFillGaps() ? " / AIM TOWARD THE LOCKED FLOOR" : " / AIM AT A SURFACE";
-            }
-            fittedText(out,status,center-264,labelY+20,528,1.0f,Leaf);
-            fittedText(out,"ARROWS NUDGE / PG UP-DOWN HEIGHT / P PIN-FOLLOW",center-264,labelY+38,528,.95f,Cream);
-            fittedText(out,help,center-264,labelY+55,528,.9f,Muted);
-        } else fittedText(out,help,center-264,labelY+20,528,.9f,Muted);
-        sectionHotbar(out,hits,editor,center,height-86,false);
-        out.centered("G TOOLS / E ITEMS / F8 TEST / F10 ACCEPT / F5 SAVE / F9 LIBRARY",center,height-20,.9f,Cream);
-        if (const auto target=editor.targetedAsset(); target && (isChestAsset(target->kind) || isSpawnerAsset(target->kind))) {
-            out.frame(center-180,height*.5f+31,360,30,Gold);
-            fittedText(out,"E EDIT "+std::string(isSpawnerAsset(target->kind) ? "TRIAL SPAWNER" : chestAssetName(target->kind)),center-166,height*.5f+41,332,1,Gold);
-        }
-        out.frame(15,97,264,119,Edge);
-        fittedText(out,"WASD FLY / SPACE UP / CTRL DOWN",27,109,240,.95f,Cream);
-        fittedText(out,"SHIFT FAST / ALT SLOW / 1-9 SLOTS",27,127,240,.9f,Muted);
-        fittedText(out,"CMD/CTRL+Z UNDO / +Y REDO",27,145,240,.95f,Muted);
-        fittedText(out,"CMD/CTRL+C COPY / +V PASTE",27,163,240,.95f,Muted);
-        if (const auto selection=editor.buildSelection())
-            fittedText(out,"AREA "+sectionDimensions(selection->max-selection->min+1)+" / G EDIT",27,181,240,.95f,Leaf);
-        else fittedText(out,editor.firstCorner() ? "CORNER A SET / PICK CORNER B" : "G TOOLS / SELECT, FILL, COPY",27,181,240,.95f,Leaf);
-        fittedText(out,"64 X 48 X 64 / PROTECTED SHELL",27,199,240,.85f,Muted);
+        return;
     }
+
+    quietText(out,editor.meta().name,18,20,width-270);
+    quietText(out,editor.dirty() ? "UNSAVED / F2 RENAME" : "SAVED / F2 RENAME",18,36,width-270,Muted);
+    const auto& item=editor.hotbar()[editor.selectedSlot()];
+    const auto mode=editor.buildMode();
+    const bool pasting=mode==SectionBuildMode::Paste;
+    const bool carving=mode==SectionBuildMode::CarveRound || mode==SectionBuildMode::CarveBox;
+    const auto title=mode==SectionBuildMode::Select
+        ? editor.buildSelection() ? "SELECTION / "+sectionDimensions(editor.buildSelection()->max-editor.buildSelection()->min+1)
+            : editor.firstCorner() ? std::string("SELECT AREA / CORNER A SET") : std::string("SELECT AREA")
+        : pasting ? std::string(editor.pasteFillGaps() ? "FILL GAPS / " : "PASTE / ")
+            +sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
+        : carving ? std::string(mode==SectionBuildMode::CarveRound ? "ROUND CARVE / " : "BOX CARVE / ")
+            +std::to_string(editor.brushSize())+" BLOCKS"
+        : mode==SectionBuildMode::Brush ? std::string(editor.brushErasing() ? "ERASE " : "BRUSH ")
+            +std::to_string(editor.brushSize())+" / "+item.name
+        : item.pickup ? item.name+" / "+std::to_string(editor.pickupQuantity()) : item.name;
+    const auto help=mode==SectionBuildMode::Select ? "LEFT / RIGHT CORNERS / J-K IN AIR / G APPLY"
+        : pasting ? "RIGHT PLACE / T ROTATE / X FINISH / G OPTIONS"
+        : carving ? "HOLD LEFT TO DIG / G SIZE / X FINISH"
+        : mode==SectionBuildMode::Brush ? "LEFT ERASE / RIGHT PLACE / G SIZE"
+        : item.pickup ? "RIGHT DROP ITEM"
+        : item.asset && isSpawnerAsset(*item.asset) ? "RIGHT PLACE / E CONFIGURE"
+        : item.asset && isChestAsset(*item.asset) ? "RIGHT PLACE / T ROTATE / E SET CONTENTS"
+        : item.asset==HubAssetKind::GardenGate ? "RIGHT PLACE / T ROTATE / Y OPEN-CLOSE"
+        : item.block && isStair(*item.block) ? "RIGHT PLACE / T ROTATE"
+        : item.asset ? "RIGHT PLACE / T ROTATE / Y VARIANT"
+        : item.marker!=SectionMarker::None ? "RIGHT CLICK A FLOOR TO PLACE"
+        : "LEFT REMOVE / RIGHT PLACE / MIDDLE PICK";
+    quietCentered(out,title,center,height-125,560,Gold);
+    quietCentered(out,help,center,height-108,560,Muted);
+    if (pasting) {
+        const std::string state=editor.pasteFillGaps() && !editor.pasteFloorHeight()
+            ? "LEFT CLICK FLOOR TO LOCK HEIGHT"
+            : std::string(editor.pastePinned() ? "PINNED" : "FOLLOW AIM")+" / ARROWS NUDGE / P PIN";
+        quietCentered(out,state,center,height-145,560,Leaf);
+    }
+    sectionHotbar(out,hits,editor,center,height-86,false);
+    quietCentered(out,"E MATERIALS / G TOOLS / F8 TEST",center,height-20,420,Muted);
+    quietText(out,"H HELP",width-82,height-27,64,Muted);
+    if (const auto target=editor.targetedAsset(); target && (isChestAsset(target->kind) || isSpawnerAsset(target->kind)))
+        quietCentered(out,"E EDIT "+std::string(isSpawnerAsset(target->kind) ? "SPAWNER" : chestAssetName(target->kind)),
+                      center,height*.5f+32,360,Gold);
+    // Keep operation feedback separate from the controls, without a persistent banner.
+    auto feedback=editor.message();
+    if (const auto separator=feedback.find(" | ");separator!=std::string::npos) {
+        const bool warning=feedback.find("BLOCKED")!=std::string::npos
+            || feedback.find("UNSUPPORTED")!=std::string::npos;
+        feedback=warning ? feedback.substr(separator+3) : feedback.substr(0,separator);
+    }
+    std::replace(feedback.begin(),feedback.end(),'\n',' ');
+    const bool saveFailed=editor.dirty() && feedback.starts_with("DRAFT NOT SAVED");
+    if (editor.messageVisible() || saveFailed)
+        quietText(out,feedback,18,56,width-36,saveFailed ? Gold : Leaf);
 }
 
 void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
@@ -1057,6 +1054,7 @@ void sectionUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float
     switch (editor.screen()) {
     case SectionEditorScreen::Worlds: sectionWorldMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Library: sectionLibraryMenu(out,hits,editor,width,height); break;
+    case SectionEditorScreen::Create: sectionCreateMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Palette: sectionPaletteMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Accept: sectionAcceptMenu(out,hits,editor,width,height); break;
     case SectionEditorScreen::Rename: sectionRenameMenu(out,hits,editor,width,height); break;
@@ -1090,7 +1088,7 @@ void levelWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelContro
     constexpr float w=620,h=410;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
     sectionPanel(out,width,height,x,y,w,h,level.creator() ? "LEVEL CREATOR" : "EXPEDITIONS",
-                 level.creator() ? "CHOOSE THE WORLD FOR YOUR LEVEL" : "CHOOSE A WORLD TO EXPLORE");
+                 "CHOOSE A WORLD");
     const auto worlds=sectionWorldCatalog();
     for (int index=0;index<static_cast<int>(worlds.size());++index) {
         const float top=y+72+index*78;
@@ -1103,7 +1101,6 @@ void levelWorldMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelContro
         fittedText(out,worlds[index].description,x+95,top+42,w-133,1,Muted);
         hits.push_back({x+22,top,w-44,68,LevelUiWorldBase+index});
     }
-    fittedText(out,level.creator() ? "ACCEPTED SECTIONS BECOME AN ORDERED ADVENTURE" : "YOUR PUBLISHED LEVELS ARE READY TO PLAY HERE",x+24,y+319,w-48,1,Leaf);
     levelFeedback(out,level,x+24,y+339,w-48);
     sectionButton(out,hits,x+22,y+365,158,28,"ESC - BACK",LevelUiBack);
     sectionButton(out,hits,x+w-242,y+365,220,28,"ENTER - CHOOSE WORLD",LevelUiPlay,true);
@@ -1113,13 +1110,13 @@ void levelLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
 {
     constexpr float w=700,h=478;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
-    sectionPanel(out,width,height,x,y,w,h,level.creator() ? "LEVEL CREATOR / LIBRARY" : "CHOOSE YOUR LEVEL",
-                 sectionWorldName(level.selectedWorld())+" / "+(level.creator() ? "COMPOSE AND PUBLISH" : "PUBLISHED EXPEDITIONS"));
+    sectionPanel(out,width,height,x,y,w,h,"LEVELS",
+                 sectionWorldName(level.selectedWorld()));
     if (level.creator()) {
         sectionButton(out,hits,x+22,y+65,318,32,"+ NEW LEVEL",LevelUiNew,level.selection()<0);
-        sectionButton(out,hits,x+352,y+65,326,32,"RESUME SAVED COMPOSITION",LevelUiResume,false,level.draft().has_value());
+        sectionButton(out,hits,x+352,y+65,326,32,"RESUME DRAFT",LevelUiResume,false,level.draft().has_value());
     } else {
-        fittedText(out,"REACH EACH END MARKER TO CONTINUE TO THE NEXT SECTION",x+24,y+75,w-48,1,Leaf);
+        fittedText(out,"SELECT A LEVEL TO EXPLORE",x+24,y+75,w-48,1,Leaf);
     }
     const auto& entries=level.entries();
     for (int row=0;row<LevelLibraryPageSize;++row) {
@@ -1136,7 +1133,7 @@ void levelLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
     }
     if (entries.empty()) {
         out.centered("NO LEVELS HERE YET",width*.5f,y+211,1.6f,Cream);
-        fittedText(out,level.creator() ? "CREATE A LEVEL FROM YOUR ACCEPTED SECTIONS." : "USE F11 TO CREATE AND PUBLISH THIS WORLD'S FIRST LEVEL.",x+70,y+241,w-140,1,Muted);
+        fittedText(out,level.creator() ? "ADD YOUR ACCEPTED SECTIONS TO A NEW LEVEL." : "F11 OPENS THE LEVEL CREATOR.",x+70,y+241,w-140,1,Muted);
     }
     sectionButton(out,hits,x+22,y+388,100,26,"< PREVIOUS",LevelUiLibraryPrevious,false,level.libraryPage()>0);
     out.centered("PAGE "+std::to_string(level.libraryPage()+1)+" / "+std::to_string(std::max(1,(static_cast<int>(entries.size())+LevelLibraryPageSize-1)/LevelLibraryPageSize)),width*.5f,y+397,1,Muted);
@@ -1161,12 +1158,12 @@ void levelComposeMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
     constexpr float w=740,h=510,column=334;
     const float x=(width-w)*.5f,y=(height-h)*.5f,left=x+22,right=x+384;
     const auto& definition=level.definition();
-    sectionPanel(out,width,height,x,y,w,h,"COMPOSE A LEVEL",sectionWorldName(definition.world)+" / CONNECT EACH END TO THE NEXT START");
+    sectionPanel(out,width,height,x,y,w,h,"EDIT LEVEL",sectionWorldName(definition.world));
     out.text("LEVEL NAME",left,y+66,1,Muted);
-    out.text("WORLD POSITION / 1-999",x+486,y+66,1,Muted);
+    out.text("LEVEL NUMBER",x+486,y+66,1,Muted);
     levelField(out,hits,level,left,y+80,450,definition.name,LevelTextField::Name,LevelUiName);
     levelField(out,hits,level,x+486,y+80,232,level.numberText(),LevelTextField::Number,LevelUiNumber);
-    out.text("ACCEPTED SECTIONS / CLICK TO ADD",left,y+126,1,Leaf);
+    out.text("SECTIONS / CLICK TO ADD",left,y+126,1,Leaf);
     fittedText(out,"PLAY ORDER / "+std::to_string(definition.sections.size())+" OF "+std::to_string(LevelMaxSections),right,y+126,column,1,Gold);
     for (int row=0;row<LevelSectionPageSize;++row) {
         const int index=level.sectionPage()*LevelSectionPageSize+row;
@@ -1195,12 +1192,10 @@ void levelComposeMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
     if (level.sections().empty()) {
         fittedText(out,"NO ACCEPTED SECTIONS IN THIS WORLD",left+10,y+197,column-20,1,Cream);
         fittedText(out,"F7 OPENS THE SECTION WORKSHOP.",left+10,y+222,column-20,1,Muted);
-        fittedText(out,"BUILD, TEST, AND ACCEPT A SECTION FIRST.",left+10,y+245,column-20,1,Muted);
     }
     if (definition.sections.empty()) {
         fittedText(out,"YOUR ROUTE STARTS HERE",right+16,y+197,column-32,1.5f,Cream);
         fittedText(out,"ADD A SECTION FROM THE LEFT.",right+16,y+227,column-32,1,Muted);
-        fittedText(out,"YOU CAN USE A SECTION MORE THAN ONCE.",right+16,y+250,column-32,1,Muted);
     }
     const auto pages=[&](float columnX,int page,int count,int size,int previous,int next) {
         sectionButton(out,hits,columnX,y+388,64,25,"<",previous,false,page>0);
@@ -1216,17 +1211,17 @@ void levelComposeMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelCont
     sectionButton(out,hits,right+226,y+420,108,25,"REMOVE",LevelUiRemove,false,selected>=0);
     levelFeedback(out,level,left,y+453,w-44);
     sectionButton(out,hits,left,y+474,130,27,"ESC - LIBRARY",LevelUiBack);
-    sectionButton(out,hits,x+164,y+474,242,27,"PLAY THIS COMPOSITION",LevelUiPlay,false,!definition.sections.empty());
-    sectionButton(out,hits,x+418,y+474,300,27,"SAVE AND PUBLISH LEVEL",LevelUiPublish,true,!definition.sections.empty());
+    sectionButton(out,hits,x+164,y+474,242,27,"PLAYTEST",LevelUiPlay,false,!definition.sections.empty());
+    sectionButton(out,hits,x+418,y+474,300,27,"PUBLISH LEVEL",LevelUiPublish,true,!definition.sections.empty());
 }
 
 void levelReplaceMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelController& level,float width,float height)
 {
     constexpr float w=570,h=258;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
-    sectionPanel(out,width,height,x,y,w,h,"REPLACE THIS WORLD'S LEVEL?",sectionWorldName(level.definition().world)+" / LEVEL "+std::to_string(level.definition().number));
+    sectionPanel(out,width,height,x,y,w,h,"REPLACE LEVEL?",sectionWorldName(level.definition().world)+" / LEVEL "+std::to_string(level.definition().number));
     fittedText(out,"THAT LEVEL NUMBER IS ALREADY PUBLISHED.",x+24,y+84,w-48,1.4f,Gold);
-    fittedText(out,"REPLACING IT CHANGES THE ROUTE PLAYERS WILL FIND THERE.",x+24,y+116,w-48,1,Muted);
+    fittedText(out,"THIS WILL REPLACE ITS CURRENT ROUTE.",x+24,y+116,w-48,1,Muted);
     fittedText(out,"THE ACCEPTED SECTIONS THEMSELVES ARE KEPT.",x+24,y+139,w-48,1,Muted);
     fittedText(out,level.definition().name,x+24,y+172,w-48,1.5f,Cream);
     sectionButton(out,hits,x+22,y+h-49,246,30,"ESC - KEEP EDITING",LevelUiCancel);
@@ -1245,14 +1240,12 @@ void levelRunHud(Drawing& out,std::vector<SectionHit>& hits,const LevelControlle
         out.quad(0,0,width,height,{.025f,.016f,.009f,.78f});
         out.frame(center-244,height*.5f-56,488,112,Leaf);
         out.centered("SECTION COMPLETE",center,height*.5f-35,1.8f,Leaf);
-        out.centered("TRAVELING TO THE NEXT START",center,height*.5f-5,1.15f,Cream);
         out.centered("SECTION "+std::to_string(level.sectionIndex()+2)+" / "+std::to_string(definition.sections.size()),center,height*.5f+23,1,Muted);
     } else if (level.screen()==LevelScreen::Complete) {
         const float top=height*.5f-78;
         out.quad(0,0,width,height,{.025f,.016f,.009f,.6f});
         out.frame(center-280,top,560,167,Leaf);
         out.centered("LEVEL COMPLETE",center,top+22,2,Leaf);
-        out.centered("ALL "+std::to_string(definition.sections.size())+" SECTIONS FINISHED",center,top+54,1.3f,Cream);
         out.centered("TIME "+crossingTime(level.elapsed())+" / FALLS "+std::to_string(level.falls()),center,top+79,1,Muted);
         sectionButton(out,hits,center-257,top+119,247,30,"REPLAY LEVEL",LevelUiReplay);
         sectionButton(out,hits,center+10,top+119,247,30,"RETURN TO VILLAGE",LevelUiHub,true);
@@ -1263,9 +1256,9 @@ void levelErrorMenu(Drawing& out,std::vector<SectionHit>& hits,const LevelContro
 {
     constexpr float w=620,h=250;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
-    sectionPanel(out,width,height,x,y,w,h,"THIS SECTION COULD NOT LOAD","YOUR LEVEL DEFINITION AND ACCEPTED SECTIONS HAVE BEEN KEPT");
+    sectionPanel(out,width,height,x,y,w,h,"SECTION UNAVAILABLE","YOUR SAVED LEVEL IS SAFE");
     wrappedDescription(out,level.message(),x+24,y+89,static_cast<std::size_t>((w-48)/(6*out.fontPixel(1))));
-    fittedText(out,"RESTORE THE MISSING SECTION AND RETRY, OR RETURN TO THE HUB.",x+24,y+147,w-48,1,Muted);
+    fittedText(out,"RESTORE THE SECTION TO TRY AGAIN.",x+24,y+147,w-48,1,Muted);
     sectionButton(out,hits,x+22,y+h-49,278,30,"RETURN TO VILLAGE",LevelUiHub);
     sectionButton(out,hits,x+312,y+h-49,286,30,"RETRY LOADING",LevelUiRetry,true);
 }
@@ -1361,27 +1354,10 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
     const float panelWidth=chest ? 748.0f : 396.0f;
     constexpr float panelHeight=482;
     const float x=(width-panelWidth)*.5f,y=(height-panelHeight)*.5f;
-    const glm::vec4 leather{.34f,.25f,.17f,1}, brass{.58f,.42f,.24f,1}, lining{.22f,.16f,.11f,1};
     out.quad(0,0,width,height,{.025f,.016f,.009f,.73f});
-    packFrame(out,x+6,y+8,panelWidth,panelHeight,{0,0,0,.4f},{0,0,0,.4f},13);
-    packFrame(out,x,y,panelWidth,panelHeight,brass,{.08f,.045f,.026f,.99f},12);
-    packFrame(out,x+8,y+8,panelWidth-16,panelHeight-16,leather,Canvas,8);
-    // Leather grain and brass fasteners match the stitched field satchel.
-    out.quad(x+17,y+17,panelWidth-34,37,lining);
-    for (int i=0;i<46;++i) {
-        const float gx=x+20+float((i*139)%static_cast<int>(panelWidth-44));
-        const float gy=y+62+float((i*83)%364);
-        out.quad(gx,gy,3+(i%4)*3,1,{.40f,.28f,.15f,.35f});
-    }
-    for (const auto corner:{glm::vec2(x+12,y+12),glm::vec2(x+panelWidth-15,y+12),
-                            glm::vec2(x+12,y+panelHeight-15),glm::vec2(x+panelWidth-15,y+panelHeight-15)}) {
-        out.quad(corner.x,corner.y,3,3,brass);
-        out.quad(corner.x,corner.y,1,1,Gold);
-    }
-    out.text("FIELD SATCHEL",x+24,y+23,2,Cream);
-    fittedText(out,game.devMode() ? "PLAYTEST / LOOT RESETS WHEN YOU LEAVE"
-                                : "ORE AND EXPEDITION SUPPLIES",
-               x+24,y+44,panelWidth-94,1,Muted);
+    packFrame(out,x,y,panelWidth,panelHeight,Edge,Panel,3);
+    out.text("INVENTORY",x+24,y+23,2,Cream);
+    if (game.devMode()) fittedText(out,"PLAYTEST / LOOT RESETS ON EXIT",x+24,y+44,panelWidth-94,1,Muted);
     sectionButton(out,hits,x+panelWidth-50,y+16,28,26,"X",InventoryUiClose);
     out.text(std::to_string(inventory.occupiedSlots())+" / 20 SLOTS",x+24,y+65,1,Muted);
     sectionButton(out,hits,x+262,y+58,94,24,"S - SORT",InventoryUiSort);
@@ -1389,10 +1365,8 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         const float sx=x+24+(slot%5)*68,sy=y+92+(slot/5)*68;
         const auto& stack=inventory.slots[slot];
         const bool selected=slot==game.inventorySelection();
-        packFrame(out,sx,sy,60,60,selected ? Gold : leather,
+        packFrame(out,sx,sy,60,60,selected ? Gold : Edge,
                   selected ? Selected : Panel,4);
-        out.quad(sx+7,sy+4,44,1,selected ? brass : leather);
-        out.text(std::to_string(slot+1),sx+5,sy+5,1,{.54f,.43f,.30f,1});
         if (stack.count>0 && validItem(stack.item)) {
             oreIcon(out,stack.item,{sx+30,sy+29},.90f);
             const auto count=std::to_string(stack.count);
@@ -1405,7 +1379,7 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         }
         hits.push_back({sx,sy,60,60,InventoryUiSlotBase+slot});
     }
-    packFrame(out,x+24,y+371,332,62,leather,{.13f,.12f,.084f,1},5);
+    out.quad(x+24,y+371,332,1,Edge);
     const int selected=game.inventorySelection();
     if (selected>=0 && selected<Inventory::SlotCount && inventory.slots[selected].count>0) {
         const auto& info=itemInfo(inventory.slots[selected].item);
@@ -1414,9 +1388,7 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         wrappedDescription(out,info.description,x+35,y+400,
                            static_cast<std::size_t>(310/(6*out.fontPixel(1))));
     } else {
-        out.text("CLICK AN ITEM TO INSPECT OR MOVE IT",x+35,y+382,1,Muted);
-        out.text("THEN CLICK A SLOT TO MOVE OR SWAP",x+35,y+401,1,Cream);
-        out.text("TOOLS KEEP THEIR OWN HOTBAR",x+35,y+415,1,Muted);
+        out.text("SELECT AN ITEM, THEN A SLOT TO MOVE IT",x+35,y+390,1,Muted);
     }
     if (chest) {
         const float cx=x+396;
@@ -1432,7 +1404,7 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
             const float sx=cx+(slot%2)*153;
             const float sy=y+92+(slot/2)*(roomy ? 89 : 26);
             const float sw=145,sh=roomy ? 81 : 24;
-            packFrame(out,sx,sy,sw,sh,brass,{.20f,.145f,.081f,1},4);
+            packFrame(out,sx,sy,sw,sh,Edge,{.20f,.145f,.081f,1},4);
             oreIcon(out,stack.item,{sx+(roomy ? 45 : 14),sy+(roomy ? 34 : 12)},roomy ? 1.05f : .48f);
             fittedText(out,(roomy ? "X" : "")+std::to_string(stack.count),sx+(roomy ? 97 : 115),sy+(roomy ? 32 : 8),roomy ? 40 : 25,1,Cream);
             fittedText(out,itemInfo(stack.item).name,sx+(roomy ? 8 : 29),sy+(roomy ? 64 : 8),roomy ? sw-16 : 82,1,Muted);
@@ -1441,7 +1413,6 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         if (!hasItems) {
             out.frame(cx,y+92,298,267,Edge);
             out.centered("CHEST EMPTY",cx+149,y+194,1.5f,Gold);
-            out.centered("YOUR LOOT IS IN YOUR PACK",cx+149,y+219,1,Muted);
         }
         sectionButton(out,hits,cx,y+371,298,32,"ENTER - TAKE ALL",InventoryUiTakeAll,
                       hasItems,hasItems,1.25f);
@@ -1706,11 +1677,8 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
         drawing.quad(0,0,width,height,{.025f,.016f,.009f,.55f});
         constexpr float panelWidth = 410, panelHeight = 300;
         const float x = center-panelWidth*0.5f, y = height*0.5f-panelHeight*0.5f-28;
-        drawing.quad(x+5,y+6,panelWidth,panelHeight,{0,0,0,0.35f});
         drawing.frame(x,y,panelWidth,panelHeight,Edge);
-        drawing.quad(x+12,y+12,panelWidth-24,43,Canvas);
         drawing.text("BLACKSMITH",x+22,y+19,2,Gold);
-        drawing.text("THE VILLAGE FORGE",x+23,y+42,1,Muted);
         drawing.quad(x+20,y+61,panelWidth-40,1,Edge);
         drawing.frame(x+22,y+77,80,74,Edge,Canvas);
         pickaxeIcon(drawing,{x+61,y+115},1.75f,equipment.pickaxeTier);
@@ -1741,7 +1709,6 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
         fittedCentered(drawing,!cost ? "MAXIMUM TIER" : affordable ? "ENTER - UPGRADE" : "MORE MATERIALS NEEDED",
                        center,y+236,panelWidth-64,1.5f,affordable ? Panel : Muted);
         drawing.centered("E / ESC - CLOSE",center,y+268,1, Cream);
-        drawing.centered("STARTER GIFT: 12 COPPER",center,y+283,1,Muted);
     }
     if (game.crossingMenuOpen()) crossingPicker(drawing,game,width,height);
     render(drawing, shader_, vao_, buffer_);

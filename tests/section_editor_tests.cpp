@@ -78,6 +78,8 @@ int main()
         click(game, voxel::SectionUiWorldBase);
         check(editor.screen() == voxel::SectionEditorScreen::Library, "world choice opens that world's library");
         click(game, voxel::SectionUiLibraryNew);
+        click(game, voxel::SectionUiPresetBase + 1);
+        click(game, voxel::SectionUiCreate);
         check(game.devFlying() && editor.hasSection() && !editor.dirty(), "new section enters flight and saves its first draft");
         const auto initialDrafts = voxel::listSectionDrafts(options.sectionLibrary);
         check(initialDrafts.size() == 1 && initialDrafts.front().meta.world == voxel::SectionWorld::LushCaves,
@@ -461,6 +463,8 @@ int main()
         const auto draftCount = voxel::listSectionDrafts(options.sectionLibrary).size();
         press(game, &voxel::InputActions::devLibrary);
         click(game, voxel::SectionUiLibraryNew);
+        click(game, voxel::SectionUiPresetBase + 1);
+        click(game, voxel::SectionUiCreate);
         check(voxel::listSectionDrafts(options.sectionLibrary).size() == draftCount + 1,
               "creating another section preserves all earlier drafts");
         press(game, &voxel::InputActions::returnToHub);
@@ -480,6 +484,8 @@ int main()
         voxel::Options badOptions; badOptions.dev = true; badOptions.sectionLibrary = blocked.string();
         voxel::Game bad(badOptions);
         click(bad, voxel::SectionUiWorldBase); click(bad, voxel::SectionUiLibraryNew);
+        click(bad, voxel::SectionUiPresetBase + 1);
+        click(bad, voxel::SectionUiCreate);
         press(bad, &voxel::InputActions::returnToHub);
         check(bad.devMode() && bad.sectionEditor().hasSection() && bad.sectionEditor().dirty(),
               "a failed draft save keeps the in-memory section open for recovery");
@@ -562,6 +568,8 @@ int main()
         // collision from the previous room's platforms.
         press(modelGame, &voxel::InputActions::devLibrary);
         click(modelGame, voxel::SectionUiLibraryNew);
+        click(modelGame, voxel::SectionUiPresetBase + 1);
+        click(modelGame, voxel::SectionUiCreate);
         check(modelEditor.assetCollision()->empty(), "new sections discard previous model collision");
     } catch (const std::exception& error) {
         std::cerr << "unexpected exception: " << error.what() << '\n'; ++failures;

@@ -2,11 +2,23 @@
 
 Open the builder with **F7** or `./build/VoxelEngine --dev`. Choose a world, then create a new section or open a draft. These instructions are for the section builder; `--editor` opens the older terrain sandbox.
 
+Choose **Parkour** for an open room or **Cave exploration** for a solid volume to carve. The next screen lets you choose the world's preset or **Plain stone**, then **Create**. You can also change the layout on that screen. Arrow left/right changes layout, up/down changes preset, and Enter creates it; Escape goes back.
+
+| World | Preset | Materials |
+| --- | --- | --- |
+| Lush Caves | Root jungle | Rooted dirt, stone, moss, winding roots, and greenery |
+| Crystal Hollows | Crystal grotto | Calcite, limestone, slate, quartz, and amethyst seams |
+| Ember Depths | Ember rock | Slate, obsidian, stone, and warm clay bands |
+
+Presets become ordinary blocks and models you can edit. Cave materials run throughout the solid volume, so digging new passages reveals the same theme. Parkour scenery stays around the edges, leaving room for your route. **Plain stone** keeps the original unadorned starting layout. Choosing a preset only affects a new section; saved drafts and accepted sections keep their terrain.
+
+The builder shows a small section label, hotbar, and the current tool's hint. Routine messages fade after a few seconds. **H** opens the full controls when you need them; **G** opens build settings.
+
 Press **F2** while building, or choose **G → Rename section**, to name your section before testing it. Type the name and press **Enter** to save it with the draft; **Escape** cancels. Click the name field or use **Cmd/Ctrl+A** to replace the whole name. Renaming keeps your build and completed playtest intact. On a Mac, you may need **Fn+F2**.
 
 ## Carving a cave
 
-Choose **Cave / Carve from stone** in the world's library. The 64 × 48 × 64 building area starts filled with stone, with a small room around Start. It uses the Exploration category and dark lighting. **Open room / Parkour** still creates the empty room.
+Choose **Cave exploration**, pick a preset, then **Create**. The 64 × 48 × 64 building area starts filled with the preset's materials, with a small room around Start. It uses the Exploration category and dark lighting. The presets add no light sources to this room. **Parkour** creates the open room instead.
 
 1. Hold **left click** on a wall to dig with **Round carve**. Move and aim as you dig to make passages and chambers.
 2. Press **G** to choose a width of **1, 3, 5, or 9** blocks. **Round carve** makes rounded cuts; **Box carve** clears a cube. Both are also available in **E → Tools**.
@@ -16,7 +28,7 @@ Choose **Cave / Carve from stone** in the world's library. The 64 × 48 × 64 bu
 
 Each carve stamp can be undone with **Cmd/Ctrl+Z**. A held click repeats stamps. Carving removes models anchored inside the cut as well as blocks; it leaves Start, End, and Checkpoint in place. Check their footing if you dig underneath them. The outer shell stays protected.
 
-![Carving tools in the creative inventory](screenshots/cave-tools.png)
+![Brush sizes, carving, and lighting in Build tools](screenshots/cave-tools.png)
 
 ### Cave lighting
 

@@ -2,6 +2,7 @@
 
 #include "editing.h"
 #include "sections.h"
+#include "section_presets.h"
 #include "section_tools.h"
 #include "asset_collision.h"
 
@@ -17,7 +18,7 @@ namespace voxel {
 class Game;
 struct InputActions;
 
-enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents, SpawnerSettings, Rename };
+enum class SectionEditorScreen { Worlds, Library, Build, Palette, Tools, PasteSettings, Test, Accept, ChestContents, SpawnerSettings, Rename, Create };
 enum class SectionBuildMode { Single, Select, Brush, Paste, CarveRound, CarveBox };
 enum class SectionMarker { None, Start, Checkpoint, End };
 struct SectionPaletteItem {
@@ -62,6 +63,7 @@ inline constexpr int SectionUiChestApply = 3604, SectionUiChestCancel = 3605, Se
 inline constexpr int SectionUiPickupMinus = 3610, SectionUiPickupPlus = 3611;
 inline constexpr int SectionUiSpawnerMinusBase = 3700, SectionUiSpawnerPlusBase = 3710;
 inline constexpr int SectionUiSpawnerRewards = 3720, SectionUiSpawnerApply = 3721, SectionUiSpawnerCancel = 3722;
+inline constexpr int SectionUiPresetBase = 3800, SectionUiLayoutBase = 3810, SectionUiCreate = 3820;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
 // palette, undo records and test state; it never touches player equipment.
@@ -80,6 +82,8 @@ public:
         || screen_ == SectionEditorScreen::Rename; }
     bool hasSection() const { return hasSection_; }
     SectionWorld selectedWorld() const { return selectedWorld_; }
+    bool creationCave() const { return creationCave_; }
+    SectionPreset creationPreset() const { return creationPreset_; }
     int selection() const { return selection_; }
     int paletteTab() const { return paletteTab_; }
     int paletteSelection() const { return paletteSelection_; }
@@ -95,6 +99,7 @@ public:
     const std::vector<SectionEntry>& entries() const { return entries_; }
     const std::vector<SectionEntry>& draftEntries() const { return drafts_; }
     const std::string& message() const { return message_; }
+    bool messageVisible() const { return !message_.empty() && (message_ != shownMessage_ || messageSeconds_ > 0); }
     bool dirty() const { return dirty_; }
     bool nameSelected() const { return nameSelected_; }
     const std::string& renameText() const { return renameText_; }
@@ -144,7 +149,8 @@ private:
         std::vector<HubAsset> beforeAssets, afterAssets;
     };
     void refreshLibrary();
-    void newSection(Game& game, bool cave = false);
+    void openCreate(bool cave);
+    void newSection(Game& game);
     void openSection(Game& game, const SectionEntry& entry, bool draft);
     void selectLibrary(Game& game);
     void updateMenu(Game& game, const InputActions& actions);
@@ -185,6 +191,8 @@ private:
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
     SectionWorld selectedWorld_ = SectionWorld::LushCaves;
+    bool creationCave_ = false;
+    SectionPreset creationPreset_ = SectionPreset::WorldTheme;
     SectionMetadata meta_;
     std::vector<HubAsset> assets_;
     std::vector<SectionEntry> entries_, drafts_;
@@ -215,6 +223,8 @@ private:
     std::optional<HubAsset> preview_;
     std::deque<Edit> undo_, redo_;
     std::string message_;
+    std::string shownMessage_;
+    float messageSeconds_ = 0;
     SectionBuildMode buildMode_ = SectionBuildMode::Single;
     int brushSize_ = 3, pasteRotation_ = 0;
     bool pasteIncludesAir_ = false, toolPreviewValid_ = false, brushErasing_ = false;

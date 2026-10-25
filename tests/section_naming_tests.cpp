@@ -60,6 +60,8 @@ int main()
         check(editor.screen() == voxel::SectionEditorScreen::Worlds, "naming needs an open section");
         click(game, voxel::SectionUiWorldBase);
         click(game, voxel::SectionUiLibraryCave);
+        click(game, voxel::SectionUiPresetBase + 1);
+        click(game, voxel::SectionUiCreate);
         const auto draft = voxel::listSectionDrafts(options.sectionLibrary).front().path;
         const auto spawn = editor.meta().spawn;
         const auto finish = editor.meta().finish;
