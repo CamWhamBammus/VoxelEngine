@@ -110,9 +110,7 @@ int main(int argc, char** argv)
             }
             const auto viewCamera = game.viewCamera();
             renderer.render(game.world, viewCamera, width, height, input.wireframe(), !game.editorMode(),
-                            static_cast<float>(now), !game.editorMode()
-                                && !game.monsterPreviewActive()
-                                && (game.devMode() || game.equipment.selectedTool() == voxel::Tool::Lantern),
+                            static_cast<float>(now), game.carriedLantern(),
                             !game.rootCrossingActive() && !game.devMode() && !game.levelActive() && !game.monsterPreviewActive(),
                             game.sectionSceneAssets(), game.sectionPickupOffsets(), game.monsters(),
                             game.encounters().projectiles(),
@@ -123,7 +121,8 @@ int main(int argc, char** argv)
                             game.healthVisible() && !game.health().dead()
                                 && game.equipment.selectedTool() == voxel::Tool::Pickaxe
                                 ? std::optional<float>(game.mining().swing()) : std::nullopt,
-                            holdLantern ? std::optional<float>(lanternTime) : std::nullopt);
+                            holdLantern ? std::optional<float>(lanternTime) : std::nullopt,
+                            game.darkCave());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
