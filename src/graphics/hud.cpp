@@ -983,11 +983,14 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
         const auto title=mode==SectionBuildMode::Select ? "SELECT AREA / PICK TWO CORNERS"
             : pasting ? std::string(editor.pasteFillGaps() ? "FILL GAPS / " : "PASTE / ")+sectionDimensions(rotatedSectionSize(editor.clipboard(),editor.pasteRotation()))
                 +" / "+std::to_string(editor.pasteRotation()*90)+" DEG"
+            : mode==SectionBuildMode::CarveRound || mode==SectionBuildMode::CarveBox
+                ? std::string(mode==SectionBuildMode::CarveRound ? "ROUND CARVE / " : "BOX CARVE / ")+std::to_string(editor.brushSize())+" BLOCKS"
             : mode==SectionBuildMode::Brush ? std::string(editor.brushErasing() ? "CARVE " : "ADD ")+std::to_string(editor.brushSize())+" / "+item.name
             : item.pickup ? item.name+" / STACK "+std::to_string(editor.pickupQuantity()) : item.name;
         fittedText(out,title,center-264,labelY,528,1.4f,Gold);
         const auto help=mode==SectionBuildMode::Select ? "LEFT CORNER A / RIGHT CORNER B / J-K AIR / G APPLY"
             : pasting ? "RIGHT STAMP / T ROTATE / X CANCEL / G SETTINGS"
+            : mode==SectionBuildMode::CarveRound || mode==SectionBuildMode::CarveBox ? "HOLD LEFT TO DIG / G SIZE / X NORMAL PLACEMENT"
             : mode==SectionBuildMode::Brush ? "LEFT ERASE CUBE / RIGHT PLACE CUBE / G SIZE"
             : item.pickup ? "RIGHT DROP ITEM / WALK OVER TO COLLECT IN PLAY"
             : item.asset && isSpawnerAsset(*item.asset) ? "RIGHT PLACE / E SET ENEMIES AND REWARDS"
