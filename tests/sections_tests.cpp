@@ -60,15 +60,21 @@ void fixChecksum(std::string& bytes)
 std::string olderVersion(std::string_view bytes, std::size_t firstAsset, std::span<const voxel::HubAsset> assets,
                          std::uint32_t version)
 {
-    // Version 1 used the same metadata and voxel snapshot, but each model was
-    // exactly 24 bytes. Version 2 added chest contents; neither had pickupItem.
+    // Earlier documents have the same metadata and voxel snapshot, without the
+    // v5 lighting footer. Models gained chest, pickup, then spawner payloads.
     std::string old(bytes.substr(0, firstAsset));
     std::size_t cursor = firstAsset;
     for (const auto& asset : assets) {
-        old += bytes.substr(cursor, version == 1 ? 24 : 28 + asset.chestItems.size() * 8);
-        cursor += 36 + asset.chestItems.size() * 8;
+        const auto chestBytes = asset.chestItems.size() * 8;
+        const auto spawnerBytes = voxel::isSpawnerAsset(asset.kind) ? 12 : 0;
+        const auto currentSize = 36 + chestBytes + spawnerBytes;
+        const auto oldSize = version == 1 ? 24 : version == 2 ? 28 + chestBytes
+            : 36 + chestBytes + (version >= 4 ? spawnerBytes : 0);
+        old += bytes.substr(cursor, oldSize);
+        cursor += currentSize;
     }
-    old += bytes.substr(cursor);
+    old += bytes.substr(cursor, bytes.size() - cursor - 8);
+    old.append(4, '\0');
     integer(old, 8, version);
     fixChecksum(old);
     return old;
@@ -144,7 +150,9 @@ int main()
     }
 
     SectionMetadata meta;
+    check(meta.lighting == SectionLighting::Ambient, "new ordinary sections keep existing ambient lighting");
     meta.name = "Fern bridge";
+    meta.lighting = SectionLighting::Dark;
     meta.checkpoint = glm::vec3{12.5f, 9.0f, 0.5f};
     check(sectionMarkerSafe(world, meta.spawn) && sectionMarkerSafe(world, meta.finish)
           && sectionMarkerSafe(world, *meta.checkpoint), "default and supported markers must be safe");
@@ -174,7 +182,8 @@ int main()
     check(restored.world.sameContents(world), "section must round trip all voxels and seed");
     check(restored.meta.name == meta.name && restored.meta.world == meta.world && restored.meta.category == meta.category
           && restored.meta.spawn == meta.spawn && restored.meta.finish == meta.finish
-          && restored.meta.checkpoint == meta.checkpoint && restored.meta.tested == meta.tested,
+          && restored.meta.checkpoint == meta.checkpoint && restored.meta.tested == meta.tested
+          && restored.meta.lighting == meta.lighting,
           "section must round trip metadata and markers");
     check(restored.assets.size() == assets.size(), "section must preserve the model count");
     for (std::size_t i = 0; i < assets.size(); ++i) {
@@ -253,12 +262,17 @@ int main()
              {assetCountOffset, static_cast<std::uint32_t>(SectionMaxAssets + 1)},
              {firstAsset, 10000}, {firstAsset + 16, 4},
              {firstAsset + 4, 0x7fc00000u}, // NaN model X
-             {firstAsset + assets.size() * 36, 0xffffffffu}}) {
+             {firstAsset + assets.size() * 36, 0xffffffffu}, {originalBytes.size() - 8, 2},
+             {originalBytes.size() - 8, 0xffffffffu}}) {
         corrupt = originalBytes;
         integer(corrupt, offset, value);
         fixChecksum(corrupt);
         check(rejects(corrupt), "unsupported or unbounded document fields must be rejected before allocation");
     }
+    replacement = meta;
+    replacement.lighting = static_cast<SectionLighting>(99);
+    check(fails([&] { saveSection(world, replacement, assets, malformed, true); }),
+          "invalid in-memory lighting cannot be saved");
     replacement = meta;
     replacement.world = static_cast<SectionWorld>(999);
     check(fails([&] { saveSection(world, replacement, assets, malformed, true); }), "invalid in-memory metadata cannot be saved");
@@ -314,6 +328,7 @@ int main()
     writeBytes(oldFile, legacy);
     const auto imported = loadSection(oldFile);
     check(imported.world.sameContents(world) && imported.meta.name == meta.name
+          && imported.meta.lighting == SectionLighting::Ambient
           && imported.assets[0].kind == HubAssetKind::LootChest
           && imported.assets[1].kind == HubAssetKind::CrystalChest
           && imported.assets[2].kind == HubAssetKind::IronboundChest
@@ -340,6 +355,7 @@ int main()
     writeBytes(oldFile, versionTwo);
     const auto oldKeys = loadSection(oldFile);
     check(oldKeys.assets == chests && oldKeys.assets.back().kind == HubAssetKind::KeyPickup
+          && oldKeys.meta.lighting == SectionLighting::Ambient
           && itemPickupStack(oldKeys.assets.back()) == ItemStack{ItemId::Key, 1}
           && readBytes(oldFile) == versionTwo,
           "version two retains legacy key kind, placement, quantity and asset order without rewriting the source");
@@ -352,6 +368,18 @@ int main()
     check(rejects(corrupt), "version two rejects the newer generic pickup kind");
 
     const auto pickupBytes = readBytes(pickupDocument);
+    const auto versionThree = olderVersion(pickupBytes, firstAsset, pickups, 3);
+    writeBytes(oldFile, versionThree);
+    const auto oldPickups = loadSection(oldFile);
+    check(oldPickups.assets == pickups && oldPickups.meta.lighting == SectionLighting::Ambient
+          && oldPickups.world.sameContents(world) && readBytes(oldFile) == versionThree,
+          "version three keeps its pickups, terrain and ambient lighting without rewriting the file");
+    const auto versionFour = olderVersion(originalBytes, firstAsset, assets, 4);
+    writeBytes(oldFile, versionFour);
+    const auto oldSpawners = loadSection(oldFile);
+    check(oldSpawners.assets == assets && oldSpawners.meta.lighting == SectionLighting::Ambient
+          && oldSpawners.world.sameContents(world) && readBytes(oldFile) == versionFour,
+          "version four keeps its spawners, terrain and ambient lighting without rewriting the file");
     for (const auto& [offset, value] : std::vector<std::pair<std::size_t, std::uint32_t>>{
              {firstAsset + 28, static_cast<std::uint32_t>(ItemId::Count)},
              {firstAsset + 28, 0xffffffffu}, {firstAsset + 32, 0},

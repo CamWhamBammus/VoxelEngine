@@ -15,6 +15,7 @@ class AssetCollision;
 // These IDs are stored in .vxs files. Append entries without renumbering.
 enum class SectionWorld { LushCaves, CrystalHollows, EmberDepths };
 enum class SectionCategory { Parkour, Puzzle, Exploration, Mining, Treasure };
+enum class SectionLighting { Ambient, Dark };
 
 struct SectionWorldInfo {
     SectionWorld id;
@@ -52,6 +53,7 @@ struct SectionMetadata {
     glm::vec3 finish{0.5f, 9.0f, -24.5f};
     std::optional<glm::vec3> checkpoint;
     bool tested = false;
+    SectionLighting lighting = SectionLighting::Ambient;
 };
 
 struct SectionDocument {
@@ -71,8 +73,9 @@ void buildBlankSection(World& world);
 // A marker needs full player clearance and support under the player's footprint.
 bool sectionMarkerSafe(const World& world, glm::vec3 feet, const AssetCollision* assets = nullptr);
 
-// Version 4 .vxs documents contain metadata, models, authored chest contents,
-// ground item stacks and spawner counts, plus a voxel snapshot. Versions 1–3 remain readable
+// Version 5 .vxs documents contain metadata, models, authored chest contents,
+// ground item stacks and spawner counts, a voxel snapshot, and section lighting.
+// Versions 1–4 remain readable with their original ambient lighting,
 // without changing legacy key IDs or placement order. Version 1 chest presets
 // import once as fixed contents. Writes are atomic; loading never rewrites files.
 void saveSection(const World& world, const SectionMetadata& meta,

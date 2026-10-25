@@ -108,7 +108,7 @@ constexpr std::array Assets{
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
-constexpr std::uint32_t Version = 4;
+constexpr std::uint32_t Version = 5;
 constexpr std::size_t MaxNameLength = 64;
 constexpr std::size_t WorldBytes = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size + 40;
 constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (48 + ChestSlotCount * 8) + 256;
@@ -136,6 +136,8 @@ void validate(const SectionMetadata& meta, std::span<const HubAsset> assets)
     if (!validWorld(meta.world) || !validCategory(meta.category)) {
         throw std::runtime_error("Unknown section world or category");
     }
+    if (meta.lighting != SectionLighting::Ambient && meta.lighting != SectionLighting::Dark)
+        throw std::runtime_error("Unknown section lighting");
     if (meta.name.empty() || meta.name.size() > MaxNameLength
         || std::any_of(meta.name.begin(), meta.name.end(), [](unsigned char c) { return c < 32 || c == 127; })) {
         throw std::runtime_error("Section names must contain 1 to 64 printable characters");
@@ -244,6 +246,7 @@ std::string encode(const World& world, const SectionMetadata& meta, std::span<co
     const auto worldData = snapshot.str();
     append(bytes, static_cast<std::uint32_t>(worldData.size()));
     bytes += worldData;
+    append(bytes, static_cast<std::uint32_t>(meta.lighting));
     append(bytes, checksum(std::string_view(bytes).substr(Magic.size())));
     return bytes;
 }
@@ -341,10 +344,11 @@ ParsedSection read(const std::filesystem::path& path)
         }
         result.assets.push_back(std::move(asset));
     }
-    validate(result.meta, result.assets);
     const auto worldSize = reader.integer();
     if (worldSize != WorldBytes) throw std::runtime_error("Section voxel snapshot has invalid dimensions");
     result.worldData = reader.take(worldSize);
+    if (version >= 5) result.meta.lighting = static_cast<SectionLighting>(reader.integer());
+    validate(result.meta, result.assets);
     if (reader.cursor != bytes.size() - 4) throw std::runtime_error("Unexpected trailing data in section");
     return result;
 }

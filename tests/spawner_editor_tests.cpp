@@ -148,7 +148,7 @@ int main()
         press(game, &InputActions::redo);
         check(editor.assets() == configured, "Redo restores the complete configured spawner");
         press(game, &InputActions::save);
-        check(loadSection(draft).assets == configured, "Version four preserves enemy counts and rewards on disk");
+        check(loadSection(draft).assets == configured, "Current section documents preserve enemy counts and rewards on disk");
 
         const auto clipboard = copySectionBox(world, configured, {{5,9,14},{5,9,14}});
         const auto plan = planSectionPaste(world, configured, clipboard, {15,9,14}, 1, false, {0,15,0});
@@ -180,7 +180,9 @@ int main()
         std::vector<HubAsset> legacy{{HubAssetKind::LootChest,{12.5f,9,14.5f},0,0,{{ItemId::CopperOre,5}}},
                                    {HubAssetKind::ItemPickup,{14.5f,9,14.5f},0,0,{}, {ItemId::Key,1}}};
         saveSection(world, meta, legacy, legacyPath);
-        auto legacyBytes = bytes(legacyPath); integer(legacyBytes, 8, 3); writeChecked(legacyPath, legacyBytes);
+        auto legacyBytes = bytes(legacyPath);
+        legacyBytes.erase(legacyBytes.size() - 8, 4); // v3 has no lighting footer.
+        integer(legacyBytes, 8, 3); writeChecked(legacyPath, legacyBytes);
         check(loadSection(legacyPath).assets == legacy, "Older section files still preserve chest and pickup payloads");
         open(); click(game, SectionUiSpawnerPlusBase);
         press(game, &InputActions::devToggle);
