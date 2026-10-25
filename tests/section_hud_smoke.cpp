@@ -227,6 +227,103 @@ void verifySpawnerAuthoring(int width,int height,const std::filesystem::path& li
             "Spawner settings did not save enemies and rewards together");
 }
 
+void verifyCaveAuthoring(int width,int height,const std::filesystem::path& library,Hud& hud)
+{
+    for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+        const float dpi=size.x==640 ? 2.f : 1.f;
+        const float scale=std::min({dpi,size.x/736.f,size.y/516.f});
+        const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
+        Options options;options.dev=true;options.smokeTest=true;
+        options.sectionLibrary=(library/std::to_string(size.x)).string();
+        Game game(options);
+        const auto act=[&](int id) {InputActions a;a.active=true;a.devClick=id;game.update(a);};
+        const auto press=[&](bool InputActions::*key) {InputActions a;a.active=true;a.*key=true;game.update(a);};
+        const auto hit=[&](float px,float py) {
+            return Hud::sectionClick(game,size.x,size.y,dpi,(x+px)*scale,(y+py)*scale);
+        };
+        const auto click=[&](float px,float py,int id) {
+            const auto target=hit(px,py);
+            require(target==id,"Cave authoring target disagrees with its scaled display");
+            act(*target);
+        };
+        const auto draw=[&] {
+            glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,size.x,size.y);glDisable(GL_SCISSOR_TEST);
+            glClearColor(.13f,.17f,.15f,1);glClear(GL_COLOR_BUFFER_BIT);
+            const auto before=state();hud.drawSection(game,size.x,size.y,dpi);
+            require(state()==before,"Cave authoring HUD changed OpenGL state");
+            Pixels pixels(static_cast<std::size_t>(size.x)*size.y*4);
+            glReadPixels(0,0,size.x,size.y,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+            require(glGetError()==GL_NO_ERROR,"Cave authoring HUD generated an OpenGL error");
+            return pixels;
+        };
+        act(SectionUiWorldBase);
+        draw();
+        require(hit(181,83)==SectionUiLibraryNew,"Open-room action lost its scaled library target");
+        require(hit(519,83)==SectionUiLibraryCave,"New-cave action is missing from the world library");
+        require(!hit(350,83),"New room and cave actions overlap in the world library");
+        click(519,83,SectionUiLibraryCave);
+        auto& editor=game.sectionEditor();
+        require(editor.screen()==SectionEditorScreen::Build && editor.meta().lighting==SectionLighting::Dark
+                && editor.meta().category==SectionCategory::Exploration && editor.builderLight(),
+                "Clicking the displayed New Cave action did not open the dark Exploration template");
+        draw();
+        const auto originalSlot=editor.hotbar()[editor.selectedSlot()];
+        press(&InputActions::devPalette);
+        click(514,75,SectionUiPaletteTabBase+4);
+        draw();
+        constexpr std::array modes{SectionBuildMode::CarveRound,SectionBuildMode::CarveBox,
+            SectionBuildMode::Select,SectionBuildMode::Brush,SectionBuildMode::Single};
+        require(editor.paletteItems().size()==modes.size(),"Creative Tools palette is missing a build tool");
+        for (std::size_t item=0;item<modes.size();++item) {
+            require(editor.paletteItems()[item].tool==modes[item],"Tools card label points to the wrong build mode");
+            require(hit(74+float(item)*110,124)==SectionUiPaletteItemBase+static_cast<int>(item),
+                    "Tools card lost its original palette cell target");
+        }
+        click(184,124,SectionUiPaletteItemBase+1);
+        require(editor.screen()==SectionEditorScreen::Build && editor.buildMode()==SectionBuildMode::CarveBox
+                && editor.hotbar()[editor.selectedSlot()].name==originalSlot.name
+                && !editor.hotbar()[editor.selectedSlot()].tool,
+                "Choosing the Box Carve card did not activate it without replacing the hotbar item");
+        draw();
+        press(&InputActions::devTools);
+        const std::array<std::pair<glm::vec2,int>,4> controls{{
+            {{99,388},SectionUiCarveRound},{{261,388},SectionUiCarveBox},
+            {{427,388},SectionUiLighting},{{597,388},SectionUiBuilderLight}
+        }};
+        for (const auto& [point,id]:controls)
+            require(hit(point.x,point.y)==id,"Cave tool or lighting switch has an incorrect DPI-scaled target");
+        const auto dark=draw();
+        click(427,388,SectionUiLighting);
+        require(editor.meta().lighting==SectionLighting::Ambient && !editor.meta().tested,
+                "Section lighting control did not update the authored scene");
+        require(difference(dark,draw())>15,"Section lighting switch did not display its changed state");
+        press(&InputActions::undo);
+        require(editor.meta().lighting==SectionLighting::Dark,"Undo did not restore the cave's authored darkness");
+        const auto revision=editor.revision();
+        const auto builderOn=draw();
+        click(597,388,SectionUiBuilderLight);
+        require(!editor.builderLight() && editor.revision()==revision,
+                "Builder light changed the authored scene instead of only the working view");
+        require(difference(builderOn,draw())>15,"Builder light switch did not display its changed state");
+        click(597,388,SectionUiBuilderLight);
+        click(99,388,SectionUiCarveRound);
+        require(editor.screen()==SectionEditorScreen::Build && editor.buildMode()==SectionBuildMode::CarveRound,
+                "Round Carve control did not return directly to the build view");
+        draw();
+        press(&InputActions::devTools);
+        click(368,116,SectionUiBrushSizeBase+3);
+        require(editor.brushSize()==9 && editor.buildMode()==SectionBuildMode::CarveRound,
+                "Displayed size control replaced the selected carving tool");
+        draw();
+        click(261,388,SectionUiCarveBox);
+        require(editor.buildMode()==SectionBuildMode::CarveBox,"Box Carve control did not retain the chosen size");
+        press(&InputActions::devCancel);
+        require(editor.buildMode()==SectionBuildMode::Single && !editor.toolPreview(),
+                "Cancelling a carve tool left its outline or mode active");
+        draw();
+    }
+}
+
 }
 
 void verifySectionHud(int width,int height)
@@ -558,10 +655,10 @@ void verifySectionHud(int width,int height)
             const float dpi=size.x==640 ? 2.0f : 1.0f;
             const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
             const float x=(size.x/scale-700)*.5f,y=(size.y/scale-478)*.5f;
-            constexpr std::array tabIds{0,1,3,2};
-            for (int tab=0;tab<4;++tab)
-                require(logicalHit(x+85+tab*134,y+75,size.x,size.y,dpi)==SectionUiPaletteTabBase+tabIds[tab],
-                        "One of the four creative tabs has an incorrect DPI-scaled click target");
+            constexpr std::array tabIds{0,1,3,2,4};
+            for (int tab=0;tab<5;++tab)
+                require(logicalHit(x+74+tab*110,y+75,size.x,size.y,dpi)==SectionUiPaletteTabBase+tabIds[tab],
+                        "One of the five creative tabs has an incorrect DPI-scaled click target");
             require(logicalHit(x+630,y+75,size.x,size.y,dpi)==SectionUiBack,
                     "Creative Items tab overlaps the Close target");
             for (int item=0;item<ItemCount;++item)
@@ -617,8 +714,9 @@ void verifySectionHud(int width,int height)
         require(state()==before,"Minimized section HUD changed OpenGL state");
         verifyChestAuthoring(width,height,temporary/"chest-workshop",hud);
         verifySpawnerAuthoring(width,height,temporary/"spawner-workshop",hud);
+        verifyCaveAuthoring(width,height,temporary/"cave-workshop",hud);
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout << "Section HUD passed: world library, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
+    std::cout << "Section HUD passed: world library, cave creation, carving and lighting controls, five palette tabs, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
 }
 }
