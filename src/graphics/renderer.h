@@ -35,7 +35,8 @@ public:
                 std::span<const EncounterHit> hits = {},
                 std::optional<float> heldPickaxeSwing = {},
                 std::optional<float> heldLanternTime = {}, bool darkCave = false,
-                std::optional<HeldCompassState> heldCompass = {});
+                std::optional<HeldCompassState> heldCompass = {},
+                std::span<const EncounterActivation> activations = {});
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -53,6 +54,7 @@ private:
     std::array<GpuMesh, World::ChunkCount> assets_;
     std::array<GpuMesh, ItemCount> pickups_; // Local meshes; animated with per-draw transforms.
     std::array<std::vector<std::unique_ptr<GpuMesh>>,3> monsters_; // Uploaded once per joint.
+    GpuMesh activationRing_, activationBeam_;
     GpuMesh spellBolt_; // Shared by glowing wizard bolts and their short trails.
     std::array<GpuMesh,3> hitChips_; // Cached bone chips, amethyst shards, slime droplets.
     GpuMesh heldSword_;

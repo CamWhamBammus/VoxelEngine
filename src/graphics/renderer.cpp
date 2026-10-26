@@ -138,6 +138,7 @@ uniform int cameraInWater;
 uniform int decorative;
 uniform int firstPerson;
 uniform float monsterHit;
+uniform float activationGlow;
 uniform int impactChip;
 uniform float timeSeconds;
 uniform int carriedLantern;
@@ -178,6 +179,11 @@ float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) 
 )glsl" + waterShader + R"glsl(
 
 void main() {
+    if (decorative == 5) {
+        float haze = smoothstep(35.0, 100.0, length(cameraPosition-worldPosition)) * .6;
+        fragmentColor = vec4(surfaceColor * activationGlow * (1.0-haze), clamp(activationGlow,0.0,1.0)*(1.0-haze));
+        return;
+    }
     if (decorative == 4) {
         // Spell cores use authored cyan/violet colors and bloom, with ordinary
         // scene depth so a wall or a creature can hide the projectile.
@@ -374,7 +380,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::span<const EncounterHit> hits,
                            std::optional<float> heldPickaxeSwing,
                            std::optional<float> heldLanternTime, bool darkCave,
-                           std::optional<HeldCompassState> heldCompass)
+                           std::optional<HeldCompassState> heldCompass,
+                           std::span<const EncounterActivation> activations)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -772,6 +779,46 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         shader_.setMat4("model",glm::mat4(1));
         shader_.setInt("decorative",0);
     }
+    // Cached closed rings and thin rising beams mark the next encounter. Only
+    // transforms change each frame; terrain and permanent lights stay cached.
+    for (const auto& activation : activations) {
+        if (!std::isfinite(activation.age) || activation.age<0 || activation.age>=EncounterActivation::Lifetime
+            || !std::isfinite(activation.position.x) || !std::isfinite(activation.position.y)
+            || !std::isfinite(activation.position.z)) continue;
+        if (!frustum.intersects(activation.position-glm::vec3(2),activation.position+glm::vec3(2,4,2))) continue;
+        if (!activationRing_.indexCount()) {
+            MeshData ring,beam;
+            const HubAsset origin{};
+            AssetBuilder ringModel(ring,origin),beamModel(beam,origin);
+            for (int i=0; i<32; ++i) {
+                const float a=i*6.2831853f/32,b=(i+1)*6.2831853f/32;
+                ringModel.beam({std::cos(a),0,std::sin(a)},{std::cos(b),0,std::sin(b)},.035f,
+                               Block::Crystal,{.25f,.86f,1});
+            }
+            beamModel.box({-.035f,0,-.035f},{.035f,1,.035f},Block::Crystal,{.52f,.95f,1});
+            activationRing_.upload(ring); activationBeam_.upload(beam);
+        }
+        const float progress=activation.age/EncounterActivation::Lifetime;
+        const float fade=1-glm::smoothstep(.45f,1.0f,progress);
+        if (fade<.01f) continue;
+        shader_.setInt("decorative",5);
+        shader_.setFloat("activationGlow",fade*2.1f);
+        for (int ring=0; ring<2; ++ring) {
+            const float radius=.55f+progress*(ring ? .65f : 1.3f);
+            const auto position=activation.position+glm::vec3(0,ring ? 1.06f+progress*.45f : .12f,0);
+            shader_.setMat4("model",glm::scale(glm::translate(glm::mat4(1),position),glm::vec3(radius,fade,radius)));
+            activationRing_.draw(); drawnTriangles_+=activationRing_.indexCount()/3;
+        }
+        for (int beam=0; beam<6; ++beam) {
+            const float angle=beam*6.2831853f/6+progress*.45f;
+            const auto position=activation.position+glm::vec3(std::cos(angle)*.47f,.25f+progress*1.6f,std::sin(angle)*.47f);
+            shader_.setMat4("model",glm::scale(glm::translate(glm::mat4(1),position),glm::vec3(fade,.55f*fade,fade)));
+            activationBeam_.draw(); drawnTriangles_+=activationBeam_.indexCount()/3;
+        }
+    }
+    shader_.setFloat("activationGlow",0);
+    shader_.setInt("decorative",0);
+    shader_.setMat4("model",glm::mat4(1));
     if (!visibleWater.empty()) {
         if (underground && !wireframe) {
             postProcess_.captureScene();

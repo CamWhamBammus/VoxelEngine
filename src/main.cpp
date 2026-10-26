@@ -1,4 +1,5 @@
 #include "game.h"
+#include "audio.h"
 #include "input.h"
 #include "graphics/window.h"
 #include "graphics/renderer.h"
@@ -39,6 +40,7 @@ int main(int argc, char** argv)
         voxel::WorldRenderer renderer;
         voxel::Overlay selection;
         voxel::Hud hud;
+        voxel::EncounterAudio audio;
         std::cout << game.status << "\nH: controls | Q: quit\n";
 
         double previousTime = glfwGetTime();
@@ -97,6 +99,7 @@ int main(int argc, char** argv)
                         actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight);
             }
             game.update(actions, deltaSeconds);
+            audio.update(game.encounters(),game.camera.position(),game.camera.forward());
             const bool holdLantern = game.healthVisible() && !game.health().dead()
                 && game.equipment.selectedTool() == voxel::Tool::Lantern;
             const bool holdCompass = game.healthVisible() && !game.health().dead()
@@ -128,7 +131,7 @@ int main(int argc, char** argv)
                                 && game.equipment.selectedTool() == voxel::Tool::Pickaxe
                                 ? std::optional<float>(game.mining().swing()) : std::nullopt,
                             holdLantern ? std::optional<float>(carriedToolTime) : std::nullopt,
-                            game.darkCave(), heldCompass);
+                            game.darkCave(), heldCompass, game.encounters().activations());
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {
