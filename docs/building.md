@@ -45,7 +45,7 @@ You can switch any section between **Light: Dark** and **Light: Ambient**. That 
 | WASD / mouse | Fly / look |
 | Space / Ctrl | Fly up / down |
 | Shift / Alt (Option) | Faster / slower flight |
-| E | Open the creative inventory, or edit the chest you're aiming at |
+| E | Open the creative inventory, or edit the chest or spawner you're aiming at |
 | F2 | Name or rename the current section |
 | 1–9 / mouse wheel | Select a hotbar slot |
 | Left / right click | Remove / place |
@@ -156,11 +156,23 @@ Choose **Trial spawner** from the Assets tab and place it on a floor. Leave seve
 
 ![Choosing enemy counts and reward items for a Trial spawner](screenshots/spawner-settings.png)
 
-In play, approaching within eight blocks with a clear view activates the spawner. Enemies appear gradually, with at most eight alive at once. The sword is tool **4**; aim and left click to swing. Skeletons slash at close range, slimes leap, and wizards throw slow spells. Solid walls and scenery block attacks.
+In play, approaching within eight blocks with a clear view activates a standalone spawner or the first spawner in a chain. Enemies appear gradually, with at most eight alive at once. The sword is tool **4**; aim and left click to swing. Skeletons slash at close range, slimes leap, and wizards throw slow spells. Solid walls and scenery block attacks.
 
 Defeating the encounter makes the spawner go dark and toss its rewards from the top. Walk over the drops to collect them. A section's End stays locked until every spawner is cleared. Avoid putting spawners behind unreachable walls or in spaces too small for enemies to appear.
 
 Completed spawners stay cleared in published levels. Their uncollected rewards remain available, including if your bag was full. Death or **R** resets unfinished fights. Each fresh **F8** test starts with fresh encounters and temporary rewards, without changing your real progress.
+
+### Chain spawners
+
+1. Place the spawners you want to connect. Aim at the first and choose **E → Link next**.
+2. Fly over to the next spawner and **left click** it. The settings reopen; click **Save** to apply the link along with any enemy or reward changes.
+3. Repeat from that spawner to extend the chain. Numbered arrows show the order while building and disappear during play.
+
+**X / Escape** cancels target selection and returns to the settings. **Cancel** discards the whole settings edit. To remove a connection, choose **Unlink**, then **Save**. Undo restores the previous configuration.
+
+Only the first fight starts by proximity. Once a fight is cleared and its progress saved, the next spawner starts after two seconds, even if you are farther away. Each spawner releases its own rewards; leave earlier rewards empty if you want a single payout at the end. After dying, pressing **R**, or returning to the section, approach the first unfinished spawner to continue. Completed fights stay cleared.
+
+A chain stays in one section. Each spawner can follow only one other spawner, and loops are blocked. Copying a whole chain creates an independent copy; links outside the copied selection are dropped. Deleting a spawner disconnects the previous one rather than skipping to the fight after it. Test the route with **F8**, especially when fights are in different rooms.
 
 ## Test and accept
 

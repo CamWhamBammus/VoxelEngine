@@ -870,7 +870,7 @@ void SectionEditor::openSpawnerSettings(Game& game, std::size_t index)
     pickingSpawnerLink_ = false;
     screen_ = SectionEditorScreen::SpawnerSettings;
     preview_.reset(); game.target.reset();
-    message_ = "SET ENEMY COUNTS AND REWARDS | ACTIVATES WHEN A PLAYER WALKS NEARBY";
+    message_ = "SET ENEMIES, REWARDS AND NEXT SPAWNER";
 }
 
 void SectionEditor::closeSpawnerSettings()

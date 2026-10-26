@@ -57,9 +57,9 @@ The HUD keeps your tools and health at the bottom. Mining, chest, and interactio
 
 You have 100 health. Enemy hits give you a short shove and view jolt, with a red edge pulse showing where the hit came from. Long falls deal damage and trigger the pulse without a sideways shove; landing in water cushions the fall. If you die, you return at full health to the checkpoint you reached, or the current section's Start. Your inventory and collected loot stay as they were. Health carries over when you move to the next section, but checkpoints belong to their own section.
 
-Trial spawners wake when you approach. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hits knock enemies back, briefly flash their bodies, and scatter bone chips, magic shards, or slime droplets. A hit also reveals the enemy's health bar and interrupts its attack. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
+Trial spawners wake when you approach. Linked spawners run in order: clearing one starts the next after two seconds, with rewards set separately for each fight. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hits knock enemies back, briefly flash their bodies, and scatter bone chips, magic shards, or slime droplets. A hit also reveals the enemy's health bar and interrupts its attack. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
 
-Completed spawners stay cleared, even after closing the game. Uncollected rewards wait beside them on your next visit. Dying or pressing **R** resets unfinished encounters, while cleared spawners and collected loot stay as they were.
+Completed spawners stay cleared, even after closing the game. Uncollected rewards wait beside them on your next visit. Dying or pressing **R** resets unfinished encounters, while cleared spawners and collected loot stay as they were. After a reset or another visit, approach the first unfinished spawner to resume its chain.
 
 ![Fighting a skeleton with the sword in an authored trial chamber](docs/screenshots/combat.png)
 
@@ -132,7 +132,7 @@ Dark caves rely on lamps, glowing materials, or your equipped lantern. The build
 
 ![A carved passage with hanging lamps and darkness beyond their reach](docs/screenshots/cave-exploration.png)
 
-The [building guide](docs/building.md) covers these tools, chest contents, item drops, and how the building pieces fit together.
+To chain fights, place Trial spawners, aim at the first, and choose **E → Link next**. Click the next spawner, then **Save**. Repeat for later fights; numbered arrows show their order while building. **Unlink** removes a connection, and **X / Escape** cancels target selection. Chains stay within one section. The [building guide](docs/building.md#chain-spawners) covers chaining, building tools, and loot.
 
 ![Fences, gates, and wall frames assembled in a test room](docs/screenshots/building-pieces.png)
 
@@ -167,7 +167,7 @@ The main loop in [src/main.cpp](src/main.cpp) reads input, updates the game, and
 | Creature rigs and animation | [monsters.cpp](src/monsters.cpp), [monster_preview.cpp](src/monster_preview.cpp), [monster_skeleton.cpp](src/graphics/monster_skeleton.cpp) |
 | Movement and collision | [player.cpp](src/player.cpp), [asset_collision.cpp](src/asset_collision.cpp) |
 | Health and respawning | [health.cpp](src/health.cpp), [game_health.cpp](src/game_health.cpp) |
-| Spawners and combat | [encounters.cpp](src/encounters.cpp), [game_combat.cpp](src/game_combat.cpp), [spawner_loot.cpp](src/spawner_loot.cpp) |
+| Spawners and combat | [encounters.cpp](src/encounters.cpp), [spawner_chains.cpp](src/spawner_chains.cpp), [game_combat.cpp](src/game_combat.cpp), [spawner_loot.cpp](src/spawner_loot.cpp) |
 | Pickaxe and mining | [mining.cpp](src/mining.cpp), [ores.cpp](src/ores.cpp), [game_mining.cpp](src/game_mining.cpp), [mining_loot.cpp](src/mining_loot.cpp) |
 | Village layout and buildings | [scene.cpp](src/scene.cpp), [hub_buildings.cpp](src/hub_buildings.cpp) |
 | Blocks and chunk meshes | [world.h](src/world.h), [mesh.cpp](src/mesh.cpp) |
