@@ -20,7 +20,7 @@ On Ubuntu:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y build-essential cmake libglfw3-dev libglew-dev libglm-dev libgl1-mesa-dev
+sudo apt-get install -y build-essential cmake libglfw3-dev libglew-dev libglm-dev libopenal-dev libgl1-mesa-dev
 ```
 
 Then, from the repo folder:
@@ -32,6 +32,8 @@ cmake --build build --parallel
 ```
 
 After pulling changes, run the build command again. `./build/VoxelEngine --help` lists the launch options.
+
+Encounter starts have a positional chime when OpenAL is available. macOS includes it; the Ubuntu command above installs it. The game also builds and runs without audio.
 
 ## Playing
 
@@ -57,7 +59,7 @@ The HUD keeps your tools and health at the bottom. Mining, chest, and interactio
 
 You have 100 health. Enemy hits give you a short shove and view jolt, with a red edge pulse showing where the hit came from. Long falls deal damage and trigger the pulse without a sideways shove; landing in water cushions the fall. If you die, you return at full health to the checkpoint you reached, or the current section's Start. Your inventory and collected loot stay as they were. Health carries over when you move to the next section, but checkpoints belong to their own section.
 
-Trial spawners wake when you approach. Linked spawners run in order: clearing one starts the next after two seconds, with rewards set separately for each fight. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hits knock enemies back, briefly flash their bodies, and scatter bone chips, magic shards, or slime droplets. A hit also reveals the enemy's health bar and interrupts its attack. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
+Standalone spawners and the first fight in a chain wake when you approach. Linked spawners run in order: clearing one starts the next after two seconds, with rewards set separately for each fight. Skeletons chase and slash, slimes pounce, and wizards fire slow spells you can dodge. Select the sword with **4**, aim at a nearby enemy, and left click to attack. Hits knock enemies back, briefly flash their bodies, and scatter bone chips, magic shards, or slime droplets. A hit also reveals the enemy's health bar and interrupts its attack. Defeat every enemy from a spawner to release its rewards; clear every spawner in the section to open the exit.
 
 Completed spawners stay cleared, even after closing the game. Uncollected rewards wait beside them on your next visit. Dying or pressing **R** resets unfinished encounters, while cleared spawners and collected loot stay as they were. After a reset or another visit, approach the first unfinished spawner to resume its chain.
 

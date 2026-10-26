@@ -21,7 +21,7 @@ jobs:
       - name: Install build and graphics dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libglfw3-dev libglew-dev libglm-dev libgl1-mesa-dev libgl1-mesa-dri xvfb xauth
+          sudo apt-get install -y build-essential cmake libglfw3-dev libglew-dev libglm-dev libopenal-dev libgl1-mesa-dev libgl1-mesa-dri xvfb xauth
 
       - name: Configure viewer and tests
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
