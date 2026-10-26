@@ -15,6 +15,7 @@
 #include "root_crossing_hud_smoke.h"
 #include "section_hud_smoke.h"
 #include "palette_preview_smoke.h"
+#include "spawner_chain_graphics_smoke.h"
 #include "level_hud_smoke.h"
 #include "lush_material_smoke.h"
 #include "graphics/hud.h"
@@ -1494,6 +1495,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyRootCrossingHud(width, height);
     verifyRootCrossingRendering(width, height);
     verifyPalettePreviews();
+    verifySpawnerChainGraphics(width, height);
     verifySectionHud(width, height);
     verifySectionAssets(width, height);
     verifyDroppedItems(width, height);

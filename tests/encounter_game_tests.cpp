@@ -1,5 +1,6 @@
 #include "game.h"
 #include "input.h"
+#include "spawner_chains.h"
 
 #include <algorithm>
 #include <cmath>
@@ -284,6 +285,68 @@ void auditChecks(const Options& options, const LevelDefinition& level, const Wor
 }
 }
 
+void chainedProgressChecks(const std::filesystem::path& root)
+{
+    World room;buildBlankSection(room);
+    SectionMetadata meta;meta.name="Linked trial chambers";meta.tested=true;
+    std::vector<HubAsset> assets{
+        {HubAssetKind::TrialSpawner,{-10.5f,9,.5f},0,0,{{ItemId::Ruby,2}}},
+        {HubAssetKind::TrialSpawner,{.5f,9,.5f}},
+        {HubAssetKind::TrialSpawner,{12.5f,9,.5f},0,0,{{ItemId::GoldOre,3}}}};
+    for(auto& asset:assets)asset.spawner.counts={1,0,0};
+    require(linkSpawners(assets,0,1).empty() && linkSpawners(assets,1,2).empty(),"game fixture has three linked fights");
+    const auto library=root/"chain-sections";
+    const auto path=acceptSection(room,meta,assets,library);
+    const auto authored=read(path);
+    LevelDefinition level;level.name="Chain progression";
+    level.sections={path.lexically_relative(library)};
+    Options options;options.sectionLibrary=library.string();
+    options.levelLibrary=(root/"chain-levels").string();options.progressPath=(root/"chain-progress.vxp").string();
+    Game game(options);require(game.levelController().start(game,level),"linked published level starts");
+    // An unavailable profile must block both reward exposure and the handoff.
+    std::filesystem::create_directory(options.progressPath);
+    position(game,{-6.5f,9,.5f});tick(game,8);
+    for(int i=0;i<80 && game.encounters().pendingCompletions().empty();++i) {
+        if(game.monsters().empty())tick(game);else attackTarget(game,3);
+    }
+    require(game.encounters().pendingCompletions().size()==1,"first fight remains pending when its durable save fails");
+    const auto serial=game.encounters().activationSerial();tick(game,40);
+    require(game.encounters().remaining()==3 && game.monsters().empty() && pickups(game)==0
+            && game.encounters().activationSerial()==serial,"save failure cannot release rewards or the next fight");
+    require(game.damagePlayer(100),"death can interrupt a pending completion");respawn(game);
+    std::filesystem::remove(options.progressPath);
+    tick(game,30);
+    require(game.encounters().remaining()==2 && pickups(game)==1 && game.monsters().empty()
+            && game.encounters().activationSerial()==serial,
+            "successful retry after death keeps the successor waiting for a safe proximity restart");
+
+    Game restored(options);require(restored.levelController().start(restored,level),"partly cleared chain reloads");
+    position(restored,{16.5f,9,.5f});tick(restored,10);
+    require(!restored.encounters().active() && restored.monsters().empty(),"approaching the last fight cannot bypass the unfinished middle");
+    position(restored,{4.5f,9,.5f});tick(restored,8);
+    require(restored.monsters().size()==1,"the first unfinished fight rearms on approach after reloading");
+    for(int i=0;i<80 && restored.encounters().remaining()==2;++i) {
+        if(restored.monsters().empty())tick(restored);else attackTarget(restored,3);
+    }
+    require(restored.encounters().remaining()==1 && restored.encounters().active(),"clearing the middle queues the final fight");
+    const auto before=restored.encounters().activationSerial();
+    press(restored,&InputActions::inventory);tick(restored,40);
+    require(restored.inventoryOpen() && restored.encounters().activationSerial()==before,
+            "opening inventory pauses a queued handoff");
+    press(restored,&InputActions::closeMenu);
+    position(restored,{-25.5f,9,20.5f});tick(restored,30);
+    require(restored.encounters().activationSerial()==before+1 && restored.monsters().size()==1,
+            "resuming completes the delayed handoff even outside activation radius");
+    defeat(restored);
+    require(restored.encounters().remaining()==0 && pickups(restored)==2,
+            "the chain releases only its authored rewards, including an empty middle reward");
+    Game complete(options);require(complete.levelController().start(complete,level),"fully cleared chain reloads");
+    tick(complete,30);
+    require(complete.encounters().remaining()==0 && complete.monsters().empty() && pickups(complete)==2,
+            "all three permanent clears and unclaimed rewards survive another load");
+    require(read(path)==authored,"chained play never rewrites the authored section");
+}
+
 int main()
 {
     using namespace voxel;
@@ -421,6 +484,7 @@ int main()
                 "leaving F8 restores equipment and never modifies real progress or accepted sections");
         playerHitChecks(options,level,first);
         auditChecks(options,level,room,first,spawner,root);
+        chainedProgressChecks(root);
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; result = 1; }
     std::filesystem::remove_all(root);
     return result;

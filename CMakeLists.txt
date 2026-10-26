@@ -88,9 +88,11 @@ if(VOXEL_BUILD_APP)
     find_package(OpenGL REQUIRED)
     find_package(glfw3 REQUIRED)
     find_package(GLEW REQUIRED)
+    find_package(OpenAL QUIET)
     add_executable(VoxelEngine
         src/main.cpp
         src/input.cpp
+        src/audio.cpp
         src/graphics/window.cpp
         src/graphics/opengl.cpp
         src/graphics/post_process.cpp
@@ -114,11 +116,17 @@ if(VOXEL_BUILD_APP)
         tests/root_crossing_hud_smoke.cpp
         tests/section_hud_smoke.cpp
         tests/palette_preview_smoke.cpp
+        tests/spawner_chain_graphics_smoke.cpp
         tests/level_hud_smoke.cpp
         tests/lush_material_smoke.cpp
     )
     target_include_directories(VoxelEngine PRIVATE tests)
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
+    if(OPENAL_FOUND)
+        target_include_directories(VoxelEngine PRIVATE ${OPENAL_INCLUDE_DIR})
+        target_link_libraries(VoxelEngine PRIVATE ${OPENAL_LIBRARY})
+        target_compile_definitions(VoxelEngine PRIVATE VOXEL_HAVE_OPENAL)
+    endif()
     voxel_warnings(VoxelEngine)
 endif()
 
