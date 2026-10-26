@@ -4,6 +4,8 @@
 #include "monsters.h"
 #include "player.h"
 
+#include <optional>
+
 namespace voxel {
 
 struct MobHealthBar {
@@ -28,6 +30,15 @@ struct EncounterHit {
     MonsterKind kind = MonsterKind::Skeleton;
     float age = 0;
     bool lethal = false;
+};
+
+// Short world-space feedback for an actual encounter start. The serial lets
+// audio observe new starts even after an expired pulse leaves this list.
+struct EncounterActivation {
+    static constexpr float Lifetime = 1.4f;
+    glm::vec3 position{0};
+    float age = 0;
+    bool chained = false;
 };
 
 // One walking section owns one session. Authored placements stay unchanged;
@@ -62,6 +73,8 @@ public:
     std::span<const MobHealthBar> healthBars() const { return bars_; }
     std::span<const EncounterProjectile> projectiles() const { return projectiles_; }
     std::span<const EncounterHit> hits() const { return hits_; }
+    std::span<const EncounterActivation> activations() const { return activations_; }
+    std::uint64_t activationSerial() const { return activationSerial_; }
     std::span<const std::size_t> pendingCompletions() const { return completions_; }
 
 private:
@@ -76,6 +89,9 @@ private:
         bool active = false;
         bool complete = false;
         bool cleared = false;
+        std::optional<std::size_t> predecessor{};
+        std::optional<std::size_t> next{};
+        bool proximityReady = true;
     };
     struct Mob {
         Player body;
@@ -98,6 +114,8 @@ private:
     int updateMob(Mob& mob, const World& world, const Player& player, float seconds);
     void refreshViews();
     void checkCompletions();
+    void prepareProximityStarts();
+    void activate(Spawner& spawner, bool chained);
 
     std::shared_ptr<const AssetCollision> collision_;
     std::vector<Spawner> spawners_;
@@ -106,6 +124,8 @@ private:
     std::vector<MobHealthBar> bars_;
     std::vector<EncounterProjectile> projectiles_;
     std::vector<EncounterHit> hits_;
+    std::vector<EncounterActivation> activations_;
+    std::uint64_t activationSerial_ = 0;
     std::vector<std::size_t> completions_;
     float swordCooldown_ = 0;
     float hurtCooldown_ = 0;

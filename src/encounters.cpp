@@ -1,6 +1,7 @@
 #include "encounters.h"
 #include "block_shapes.h"
 #include "editing.h"
+#include "spawner_chains.h"
 
 #include <algorithm>
 #include <cmath>
@@ -148,15 +149,56 @@ void EncounterSession::begin(std::span<const HubAsset> assets,
         spawner.cleared = std::find(cleared.begin(), cleared.end(), index) != cleared.end();
         spawners_.push_back(spawner);
     }
+    // Serialized IDs are independent of placement order. Invalid external
+    // data falls back to standalone encounters rather than trapping an exit.
+    if (validateSpawnerChains(assets).empty()) {
+        for (std::size_t index = 0; index < spawners_.size(); ++index) {
+            const auto nextAsset = spawnerById(assets, assets[spawners_[index].assetIndex].spawner.next);
+            if (!nextAsset) continue;
+            const auto next = std::find_if(spawners_.begin(), spawners_.end(), [&](const Spawner& candidate) {
+                return candidate.assetIndex == *nextAsset;
+            });
+            if (next == spawners_.end()) continue;
+            const auto nextIndex = static_cast<std::size_t>(next - spawners_.begin());
+            spawners_[index].next = nextIndex;
+            next->predecessor = index;
+        }
+    }
+    prepareProximityStarts();
 }
 
 void EncounterSession::clear()
 {
     collision_.reset();
     spawners_.clear(); mobs_.clear(); monsters_.clear(); bars_.clear();
-    projectiles_.clear(); hits_.clear(); completions_.clear();
+    projectiles_.clear(); hits_.clear(); completions_.clear(); activations_.clear();
     swordCooldown_ = hurtCooldown_ = 0;
     playerHitDirection_ = glm::vec3(0);
+}
+
+void EncounterSession::prepareProximityStarts()
+{
+    for (auto& spawner : spawners_) spawner.proximityReady = false;
+    for (std::size_t root = 0; root < spawners_.size(); ++root) {
+        if (spawners_[root].predecessor) continue;
+        auto index = std::optional(root);
+        for (std::size_t visited = 0; index && visited < spawners_.size(); ++visited) {
+            auto& spawner = spawners_[*index];
+            if (!spawner.cleared) {
+                spawner.proximityReady = !spawner.complete;
+                break;
+            }
+            index = spawner.next;
+        }
+    }
+}
+
+void EncounterSession::activate(Spawner& spawner, bool chained)
+{
+    spawner.active = true;
+    spawner.proximityReady = false;
+    activations_.push_back({spawner.position, 0, chained});
+    ++activationSerial_;
 }
 
 bool EncounterSession::active() const
@@ -185,7 +227,7 @@ void EncounterSession::markCleared(std::size_t assetIndex)
 
 void EncounterSession::resetUnfinished()
 {
-    mobs_.clear(); monsters_.clear(); bars_.clear(); projectiles_.clear(); hits_.clear();
+    mobs_.clear(); monsters_.clear(); bars_.clear(); projectiles_.clear(); hits_.clear(); activations_.clear();
     swordCooldown_ = hurtCooldown_ = 0;
     playerHitDirection_ = glm::vec3(0);
     for (auto& spawner : spawners_) {
@@ -195,6 +237,7 @@ void EncounterSession::resetUnfinished()
         spawner.nextKind = spawner.spawnAttempt = 0;
         spawner.active = false;
     }
+    prepareProximityStarts();
 }
 
 bool EncounterSession::spawnMob(const World& world, const Player& player, std::size_t spawnerIndex)
@@ -461,12 +504,17 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
     hurtCooldown_ = std::max(0.0f, hurtCooldown_ - seconds);
     for (auto& hit : hits_) hit.age += seconds;
     std::erase_if(hits_, [](const EncounterHit& hit) { return hit.age >= EncounterHit::Lifetime; });
+    for (auto& activation : activations_) activation.age += seconds;
+    std::erase_if(activations_, [](const EncounterActivation& activation) {
+        return activation.age >= EncounterActivation::Lifetime;
+    });
     for (std::size_t index = 0; index < spawners_.size(); ++index) {
         auto& spawner = spawners_[index];
         if (spawner.cleared || spawner.complete) continue;
-        if (!spawner.active && glm::length(player.feetPosition() - spawner.position) <= ActivationRadius
+        if (!spawner.active && spawner.proximityReady
+            && glm::length(player.feetPosition() - spawner.position) <= ActivationRadius
             && visible(world, collision_.get(), player.eyePosition(),
-                       spawner.position + glm::vec3(0, 1.0f, 0), spawner.assetIndex)) spawner.active = true;
+                       spawner.position + glm::vec3(0, 1.0f, 0), spawner.assetIndex)) activate(spawner, false);
         if (!spawner.active) continue;
         spawner.spawnDelay = std::max(0.0f, spawner.spawnDelay - seconds);
         if (spawner.spawnDelay == 0 && mobs_.size() < MaxAlive) {
