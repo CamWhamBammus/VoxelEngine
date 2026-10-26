@@ -953,11 +953,27 @@ void sectionChestMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEd
     sectionButton(out,hits,x+466,y+441,212,27,rewards ? "ENTER - DONE" : "ENTER - SAVE CONTENTS",SectionUiChestApply,true);
 }
 
+std::string spawnerLabel(const SectionEditor& editor, std::size_t index)
+{
+    int number=0;
+    for (std::size_t i=0; i<editor.assets().size() && i<=index; ++i)
+        number+=isSpawnerAsset(editor.assets()[i].kind);
+    return "SPAWNER "+std::to_string(number);
+}
+
 void sectionSpawnerMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionEditor& editor,float width,float height)
 {
-    constexpr float w=610,h=440;
+    constexpr float w=610,h=496;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
-    sectionPanel(out,width,height,x,y,w,h,"TRIAL SPAWNER","ACTIVATES WITHIN 8 BLOCKS");
+    std::string title="TRIAL SPAWNER",trigger="ACTIVATES WITHIN 8 BLOCKS";
+    if (const auto index=editor.editingSpawnerIndex(); index && *index<editor.assets().size()) {
+        title=spawnerLabel(editor,*index);
+        const auto id=editor.assets()[*index].spawner.id;
+        for (std::size_t i=0; id && i<editor.assets().size(); ++i)
+            if (isSpawnerAsset(editor.assets()[i].kind) && editor.assets()[i].spawner.next==id)
+                trigger="STARTS AFTER "+spawnerLabel(editor,i);
+    }
+    sectionPanel(out,width,height,x,y,w,h,title,trigger);
     const auto& counts=editor.spawnerCounts();
     constexpr std::array<std::string_view,3> labels{"SKELETON","WIZARD","SLIME"};
     constexpr std::array<std::string_view,3> details{"CHASES AND SLASHES","CASTS DODGEABLE BOLTS","HOPS TOWARD THE PLAYER"};
@@ -979,10 +995,13 @@ void sectionSpawnerMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     sectionButton(out,hits,x+22,y+318,w-44,35,
         "EDIT REWARDS / "+std::to_string(editor.spawnerRewards().size())
             +(editor.spawnerRewards().size()==1 ? " ITEM STACK" : " ITEM STACKS"),SectionUiSpawnerRewards);
-    fittedText(out,"CLEARS PERMANENTLY ON COMPLETION",x+24,y+365,w-48,1,Muted);
-    sectionFeedback(out,editor,x+24,y+384,w-48);
-    sectionButton(out,hits,x+22,y+405,172,27,"ESC - CANCEL",SectionUiSpawnerCancel);
-    sectionButton(out,hits,x+w-273,y+405,251,27,"ENTER - SAVE SPAWNER",SectionUiSpawnerApply,true,total>0);
+    const auto next=editor.spawnerNext();
+    fittedText(out,next ? "THEN "+spawnerLabel(editor,*next)+" / 2 SECOND PAUSE" : "NO NEXT SPAWNER",x+24,y+368,w-48,1,Muted);
+    sectionButton(out,hits,x+22,y+389,w-158,31,next ? "CHANGE NEXT SPAWNER" : "LINK NEXT SPAWNER",SectionUiSpawnerLink);
+    sectionButton(out,hits,x+w-127,y+389,105,31,"UNLINK",SectionUiSpawnerUnlink,false,next.has_value());
+    sectionFeedback(out,editor,x+24,y+437,w-48);
+    sectionButton(out,hits,x+22,y+461,172,27,"ESC - CANCEL",SectionUiSpawnerCancel);
+    sectionButton(out,hits,x+w-273,y+461,251,27,"ENTER - SAVE SPAWNER",SectionUiSpawnerApply,true,total>0);
 }
 
 void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float width,float height)
@@ -1002,6 +1021,12 @@ void sectionBuildHud(Drawing& out,std::vector<SectionHit>& hits,const Game& game
 
     quietText(out,editor.meta().name,18,20,width-270);
     quietText(out,editor.dirty() ? "UNSAVED / F2 RENAME" : "SAVED / F2 RENAME",18,36,width-270,Muted);
+    if (const auto source=editor.linkingSpawner()) {
+        quietCentered(out,"LINK "+spawnerLabel(editor,*source)+" TO NEXT",center,height-68,560,Gold);
+        quietCentered(out,"CLICK ANOTHER SPAWNER / ESC CANCEL",center,height-46,560,Muted);
+        if (editor.messageVisible()) quietText(out,editor.message(),18,56,width-36,Leaf);
+        return;
+    }
     const auto& item=editor.hotbar()[editor.selectedSlot()];
     const auto mode=editor.buildMode();
     const bool pasting=mode==SectionBuildMode::Paste;
