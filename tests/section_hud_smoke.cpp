@@ -267,8 +267,8 @@ void verifyPresetChooser(int width,int height,const std::filesystem::path& libra
             if (!previousWorld.empty())
                 require(difference(previousWorld,themed)>100,"World preset cards did not change with the selected world");
             previousWorld=themed;
-            const std::array<std::pair<glm::vec2,int>,6> controls{{
-                {{163,86},SectionUiLayoutBase},{{457,86},SectionUiLayoutBase+1},
+            const std::array<std::pair<glm::vec2,int>,7> controls{{
+                {{114,86},SectionUiLayoutBase},{{310,86},SectionUiLayoutBase+1},{{506,86},SectionUiLayoutBase+2},
                 {{163,201},SectionUiPresetBase},{{457,201},SectionUiPresetBase+1},
                 {{97,323},SectionUiBack},{{488,323},SectionUiCreate}
             }};
@@ -279,12 +279,16 @@ void verifyPresetChooser(int width,int height,const std::filesystem::path& libra
             require(editor.creationPreset()==SectionPreset::PlainStone && editor.creationCave(),
                     "Selecting plain stone changed the chosen room layout");
             require(difference(themed,draw())>100,"Preset selection did not visibly update");
-            click(163,86,SectionUiLayoutBase);
-            require(!editor.creationCave() && editor.creationPreset()==SectionPreset::PlainStone,
+            click(506,86,SectionUiLayoutBase+2);
+            require(editor.creationLayout()==SectionLayout::Arena && editor.creationPreset()==SectionPreset::PlainStone,
+                    "Choosing arena discarded the selected material preset");
+            draw();
+            click(114,86,SectionUiLayoutBase);
+            require(editor.creationLayout()==SectionLayout::Parkour && editor.creationPreset()==SectionPreset::PlainStone,
                     "Choosing parkour discarded the selected material preset");
             draw();
             click(163,201,SectionUiPresetBase);
-            click(457,86,SectionUiLayoutBase+1);
+            click(310,86,SectionUiLayoutBase+1);
             require(editor.creationCave() && editor.creationPreset()==SectionPreset::WorldTheme,
                     "Themed cave layout could not be selected again");
             draw();
@@ -292,6 +296,12 @@ void verifyPresetChooser(int width,int height,const std::filesystem::path& libra
             require(editor.screen()==SectionEditorScreen::Library && !editor.hasSection()
                     && listSectionDrafts(options.sectionLibrary).empty(),
                     "Cancelling the chooser created a draft or left its world library");
+            act(SectionUiLibraryArena);
+            require(editor.screen()==SectionEditorScreen::Create && editor.creationLayout()==SectionLayout::Arena
+                    && editor.creationPreset()==SectionPreset::WorldTheme,
+                    "Every world's arena library entry must default to its themed preset");
+            draw();
+            click(97,323,SectionUiBack);
             act(SectionUiBack);
             require(editor.screen()==SectionEditorScreen::Worlds,"Preset fixture cannot return to world selection");
         }
@@ -342,10 +352,11 @@ void verifyCaveAuthoring(int width,int height,const std::filesystem::path& libra
         };
         act(SectionUiWorldBase);
         draw();
-        require(hit(181,83)==SectionUiLibraryNew,"Open-room action lost its scaled library target");
-        require(hit(519,83)==SectionUiLibraryCave,"New-cave action is missing from the world library");
-        require(!hit(350,83),"New room and cave actions overlap in the world library");
-        click(519,83,SectionUiLibraryCave);
+        require(hit(127,83)==SectionUiLibraryNew,"Open-room action lost its scaled library target");
+        require(hit(350,83)==SectionUiLibraryCave,"New-cave action is missing from the world library");
+        require(hit(573,83)==SectionUiLibraryArena,"New-arena action is missing from the world library");
+        require(!hit(238,83) && !hit(461,83),"New-section actions overlap in the world library");
+        click(350,83,SectionUiLibraryCave);
         auto& editor=game.sectionEditor();
         require(editor.screen()==SectionEditorScreen::Create && editor.creationCave(),
                 "New Cave did not open its preset chooser");
@@ -874,6 +885,28 @@ void verifySectionHud(int width,int height)
         act(SectionUiAccept);
         require(game.sectionEditor().screen()==SectionEditorScreen::Accept,"Acceptance dialog did not open");
         const auto accept=draw(width,height);
+        for (const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
+            const float dpi=size.x==640 ? 2.f : 1.f;
+            const float scale=std::min({dpi,size.x/736.f,size.y/516.f});
+            const float x=(size.x/scale-620)*.5f,y=(size.y/scale-454)*.5f;
+            draw(size.x,size.y,dpi);
+            for (std::size_t category=0;category<sectionCategoryCatalog().size();++category) {
+                const float top=y+163+31*static_cast<float>(category);
+                require(logicalHit(x+310,top+13,size.x,size.y,dpi)==SectionUiCategoryBase+static_cast<int>(category),
+                        "A section category is missing or overlaps the acceptance footer");
+                require(!logicalHit(x+310,top+29,size.x,size.y,dpi),
+                        "Adjacent acceptance categories have overlapping click targets");
+            }
+            require(logicalHit(x+109,y+418,size.x,size.y,dpi)==SectionUiBack
+                    && logicalHit(x+471,y+418,size.x,size.y,dpi)==SectionUiConfirm,
+                    "Six section categories displaced the acceptance actions");
+            const auto arenaTarget=logicalHit(x+310,y+331,size.x,size.y,dpi);
+            require(arenaTarget==SectionUiCategoryBase+static_cast<int>(SectionCategory::Arena),
+                    "Arena category cannot be selected at small or high-DPI sizes");
+            act(*arenaTarget);
+            require(game.sectionEditor().meta().category==SectionCategory::Arena,
+                    "Selecting the displayed Arena row did not change the category");
+        }
         act(SectionUiCategoryBase+1);
         InputActions name; name.active=true; name.devText=" HUD"; game.update(name);
         require(difference(accept,draw(width,height))>100,"Acceptance dialog did not update category and name");
@@ -891,6 +924,6 @@ void verifySectionHud(int width,int height)
         verifySectionNaming(width,height,temporary/"section-naming",hud);
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout << "Section HUD passed: world library, themed and plain presets, cave creation, carving and lighting controls, five palette tabs, section naming before testing, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, acceptance and GL state\n";
+    std::cout << "Section HUD passed: world library, parkour/cave/arena chooser, themed and plain presets, cave creation, carving and lighting controls, five palette tabs, section naming before testing, build tools, volume, rotated and exact Fill Gaps previews, paste settings, all asset icons, palette pages, scaled pointer targets, playtest, six acceptance categories and GL state\n";
 }
 }
