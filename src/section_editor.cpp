@@ -119,9 +119,9 @@ void SectionEditor::refreshLibrary()
     std::erase_if(drafts_, [&](const SectionEntry& entry) { return entry.meta.world != selectedWorld_; });
     selection_ = 0;
 }
-void SectionEditor::openCreate(bool cave)
+void SectionEditor::openCreate(SectionLayout layout)
 {
-    creationCave_ = cave;
+    creationLayout_ = layout;
     creationPreset_ = SectionPreset::WorldTheme;
     screen_ = SectionEditorScreen::Create;
     message_.clear();
@@ -129,8 +129,9 @@ void SectionEditor::openCreate(bool cave)
 void SectionEditor::newSection(Game& game)
 {
     if (hasSection_ && dirty_ && !saveDraft(game)) return;
-    const bool cave = creationCave_;
-    buildSectionPreset(game.world, assets_, selectedWorld_, cave, creationPreset_);
+    const bool cave = creationLayout_ == SectionLayout::Cave;
+    const bool arena = creationLayout_ == SectionLayout::Arena;
+    buildSectionPreset(game.world, assets_, selectedWorld_, creationLayout_, creationPreset_);
     meta_ = {};
     meta_.world = selectedWorld_;
     if (cave) {
@@ -139,6 +140,10 @@ void SectionEditor::newSection(Game& game)
         meta_.lighting = SectionLighting::Dark;
         meta_.spawn = SectionCaveSpawn;
         meta_.finish = SectionCaveFinish;
+    } else if (arena) {
+        meta_.name = "Untitled arena";
+        meta_.category = SectionCategory::Arena;
+        meta_.lighting = SectionLighting::Dark;
     }
     ++assetRevision_;
     draftPath_.clear();
@@ -157,7 +162,8 @@ void SectionEditor::newSection(Game& game)
     builderLight_ = true;
     if (cave) buildMode_ = SectionBuildMode::CarveRound;
     saveDraft(game);
-    if (!dirty_) message_ = cave ? "Cave ready | Hold left click to carve" : "Parkour room ready";
+    if (!dirty_) message_ = cave ? "Cave ready | Hold left click to carve"
+        : arena ? "Arena ready | E configure spawners | F8 test" : "Parkour room ready";
 }
 void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draft)
 {
@@ -189,7 +195,7 @@ void SectionEditor::openSection(Game& game, const SectionEntry& entry, bool draf
 }
 void SectionEditor::selectLibrary(Game& game)
 {
-    if (selection_ == 0) openCreate(false);
+    if (selection_ == 0) openCreate(SectionLayout::Parkour);
     else if (selection_ <= static_cast<int>(drafts_.size())) openSection(game, drafts_[selection_ - 1], true);
     else {
         const int index = selection_ - 1 - static_cast<int>(drafts_.size());
@@ -359,12 +365,13 @@ void SectionEditor::updateMenu(Game& game, const InputActions& actions)
     if (click == SectionUiSave) { saveDraft(game); return; }
     if (screen_ == SectionEditorScreen::Create) {
         if (back) { screen_ = SectionEditorScreen::Library; return; }
-        if (click == SectionUiLayoutBase || click == SectionUiLayoutBase + 1)
-            creationCave_ = click == SectionUiLayoutBase + 1;
+        if (click >= SectionUiLayoutBase && click <= SectionUiLayoutBase + 2)
+            creationLayout_ = static_cast<SectionLayout>(click - SectionUiLayoutBase);
         if (click == SectionUiPresetBase || click == SectionUiPresetBase + 1)
             creationPreset_ = click == SectionUiPresetBase ? SectionPreset::WorldTheme : SectionPreset::PlainStone;
         // Left/right chooses the layout; up/down chooses its material preset.
-        if (actions.devMenuStep.x) creationCave_ = !creationCave_;
+        if (actions.devMenuStep.x)
+            creationLayout_ = static_cast<SectionLayout>(wrap(static_cast<int>(creationLayout_) + actions.devMenuStep.x, 3));
         if (actions.devMenuStep.y) creationPreset_ = creationPreset_ == SectionPreset::WorldTheme
             ? SectionPreset::PlainStone : SectionPreset::WorldTheme;
         if (confirm || click == SectionUiCreate) newSection(game);
@@ -385,7 +392,8 @@ void SectionEditor::updateMenu(Game& game, const InputActions& actions)
     }
     if (screen_ == SectionEditorScreen::Library) {
         if (back) { screen_ = SectionEditorScreen::Worlds; selection_ = static_cast<int>(selectedWorld_); return; }
-        if (click == SectionUiLibraryCave) { openCreate(true); return; }
+        if (click == SectionUiLibraryCave) { openCreate(SectionLayout::Cave); return; }
+        if (click == SectionUiLibraryArena) { openCreate(SectionLayout::Arena); return; }
         const int count = 1 + static_cast<int>(drafts_.size() + entries_.size());
         const int step = actions.devMenuStep.x + actions.devMenuStep.y;
         if (step) selection_ = wrap(selection_ + step, count);

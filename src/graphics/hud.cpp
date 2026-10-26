@@ -616,8 +616,9 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     constexpr float w=700,h=470;
     const float x=(width-w)*0.5f,y=(height-h)*0.5f;
     sectionPanel(out,width,height,x,y,w,h,"YOUR SECTIONS",sectionWorldName(editor.selectedWorld()));
-    sectionButton(out,hits,x+22,y+65,318,37,"+ PARKOUR",SectionUiLibraryNew,editor.selection()==0);
-    sectionButton(out,hits,x+360,y+65,318,37,"+ CAVE EXPLORATION",SectionUiLibraryCave);
+    sectionButton(out,hits,x+22,y+65,210,37,"+ PARKOUR",SectionUiLibraryNew,editor.selection()==0);
+    sectionButton(out,hits,x+245,y+65,210,37,"+ CAVE EXPLORATION",SectionUiLibraryCave);
+    sectionButton(out,hits,x+468,y+65,210,37,"+ ARENA",SectionUiLibraryArena);
     const auto& drafts=editor.draftEntries();
     const auto& entries=editor.entries();
     const int count=static_cast<int>(drafts.size()+entries.size());
@@ -638,7 +639,7 @@ void sectionLibraryMenu(Drawing& out,std::vector<SectionHit>& hits,const Section
     }
     if (!count) {
         out.centered("NO SECTIONS YET",width*0.5f,y+190,1.5f,Cream);
-        out.centered("CHOOSE PARKOUR OR CAVE ABOVE TO START.",width*0.5f,y+218,1,Muted);
+        out.centered("CHOOSE A SECTION TYPE ABOVE TO START.",width*0.5f,y+218,1,Muted);
     }
     sectionButton(out,hits,x+22,y+358,100,26,"< PREVIOUS",SectionUiLibraryPrevious,false,page>0);
     out.centered(std::to_string(count)+" SAVED / PAGE "+std::to_string(page+1)+" OF "+std::to_string(std::max(1,(count+5)/6)),width*0.5f,y+367,1,Muted);
@@ -654,8 +655,10 @@ void sectionCreateMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
     constexpr float w=620,h=360;
     const float x=(width-w)*.5f,y=(height-h)*.5f;
     sectionPanel(out,width,height,x,y,w,h,"NEW SECTION",sectionWorldName(editor.selectedWorld()));
-    sectionButton(out,hits,x+22,y+70,282,32,"PARKOUR / OPEN ROOM",SectionUiLayoutBase,!editor.creationCave());
-    sectionButton(out,hits,x+316,y+70,282,32,"CAVE / CARVE YOUR ROUTE",SectionUiLayoutBase+1,editor.creationCave());
+    const std::array<std::string_view,3> layouts{"PARKOUR","CAVE EXPLORATION","ARENA"};
+    for (int index=0;index<static_cast<int>(layouts.size());++index)
+        sectionButton(out,hits,x+22+index*196,y+70,184,32,layouts[index],SectionUiLayoutBase+index,
+                      static_cast<int>(editor.creationLayout())==index);
     out.text("STARTING PRESET",x+23,y+116,1,Muted);
     std::array<Block,3> materials{Block::RootedDirt,Block::MossStone,Block::RootWood};
     if (editor.selectedWorld()==SectionWorld::CrystalHollows)
@@ -675,7 +678,8 @@ void sectionCreateMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
         hits.push_back({left,y+135,282,132,SectionUiPresetBase+index});
     }
     if (!editor.message().empty()) sectionFeedback(out,editor,x+23,y+285,w-46);
-    else fittedText(out,editor.creationCave() ? "SMALL START ROOM / DARK UNTIL YOU ADD LIGHTS"
+    else fittedText(out,editor.creationLayout()==SectionLayout::Cave ? "SMALL START ROOM / DARK UNTIL YOU ADD LIGHTS"
+                      : editor.creationLayout()==SectionLayout::Arena ? "COVER, HIGH GROUND AND LINKED WAVES / FULLY EDITABLE"
                                             : "OPEN SPACE / READY FOR YOUR OWN ROUTE",
                     x+23,y+285,w-46,1,Muted);
     sectionButton(out,hits,x+22,y+308,150,30,"ESC - BACK",SectionUiBack);
@@ -874,13 +878,13 @@ void sectionAcceptMenu(Drawing& out,std::vector<SectionHit>& hits,const SectionE
     const auto categories=sectionCategoryCatalog();
     for (int index=0;index<static_cast<int>(categories.size());++index) {
         const auto& category=categories[index];
-        const float top=y+163+index*37;
+        const float top=y+163+index*31;
         const bool selected=editor.meta().category==category.id;
-        out.frame(x+22,top,w-44,31,selected ? Gold : Edge,selected ? Selected : Panel);
-        out.text(selected ? ">" : "-",x+33,top+10,1.2f,selected ? Gold : Muted);
-        fittedText(out,category.name,x+51,top+10,142,1.1f,selected ? Gold : Cream);
-        fittedText(out,category.description,x+210,top+11,w-246,0.9f,Muted);
-        hits.push_back({x+22,top,w-44,31,SectionUiCategoryBase+index});
+        out.frame(x+22,top,w-44,27,selected ? Gold : Edge,selected ? Selected : Panel);
+        out.text(selected ? ">" : "-",x+33,top+8,1.2f,selected ? Gold : Muted);
+        fittedText(out,category.name,x+51,top+8,142,1.1f,selected ? Gold : Cream);
+        fittedText(out,category.description,x+210,top+9,w-246,0.9f,Muted);
+        hits.push_back({x+22,top,w-44,27,SectionUiCategoryBase+index});
     }
     out.text(editor.meta().tested ? "PLAYTEST PASSED / READY TO ADD" : "COMPLETE A PLAYTEST BEFORE ACCEPTING",x+24,y+357,1,editor.meta().tested ? Leaf : Gold);
     sectionFeedback(out,editor,x+24,y+377,w-48);

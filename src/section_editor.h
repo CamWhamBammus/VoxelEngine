@@ -32,7 +32,7 @@ struct SectionPaletteItem {
 
 // The HUD and controller share these IDs, so mouse and keyboard use the same actions.
 inline constexpr int SectionUiWorldBase = 100;
-inline constexpr int SectionUiLibraryNew = 200, SectionUiLibraryCave = 201;
+inline constexpr int SectionUiLibraryNew = 200, SectionUiLibraryCave = 201, SectionUiLibraryArena = 202;
 inline constexpr int SectionUiLibraryDraftBase = 300;
 inline constexpr int SectionUiLibraryEntryBase = 1000;
 inline constexpr int SectionUiPaletteTabBase = 2000;
@@ -83,7 +83,8 @@ public:
         || screen_ == SectionEditorScreen::Rename; }
     bool hasSection() const { return hasSection_; }
     SectionWorld selectedWorld() const { return selectedWorld_; }
-    bool creationCave() const { return creationCave_; }
+    SectionLayout creationLayout() const { return creationLayout_; }
+    bool creationCave() const { return creationLayout_ == SectionLayout::Cave; }
     SectionPreset creationPreset() const { return creationPreset_; }
     int selection() const { return selection_; }
     int paletteTab() const { return paletteTab_; }
@@ -153,7 +154,7 @@ private:
         std::vector<HubAsset> beforeAssets, afterAssets;
     };
     void refreshLibrary();
-    void openCreate(bool cave);
+    void openCreate(SectionLayout layout);
     void newSection(Game& game);
     void openSection(Game& game, const SectionEntry& entry, bool draft);
     void selectLibrary(Game& game);
@@ -196,7 +197,7 @@ private:
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
     SectionWorld selectedWorld_ = SectionWorld::LushCaves;
-    bool creationCave_ = false;
+    SectionLayout creationLayout_ = SectionLayout::Parkour;
     SectionPreset creationPreset_ = SectionPreset::WorldTheme;
     SectionMetadata meta_;
     std::vector<HubAsset> assets_;
