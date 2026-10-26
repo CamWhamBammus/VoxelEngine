@@ -3,6 +3,7 @@
 #include "player.h"
 #include "editing.h"
 #include "save.h"
+#include "spawner_chains.h"
 
 #include <algorithm>
 #include <array>
@@ -124,10 +125,10 @@ constexpr std::array Assets{
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
-constexpr std::uint32_t Version = 5;
+constexpr std::uint32_t Version = 6;
 constexpr std::size_t MaxNameLength = 64;
 constexpr std::size_t WorldBytes = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size + 40;
-constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (48 + ChestSlotCount * 8) + 256;
+constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (56 + ChestSlotCount * 8) + 256;
 
 bool validWorld(SectionWorld id)
 {
@@ -174,6 +175,8 @@ void validate(const SectionMetadata& meta, std::span<const HubAsset> assets)
         if (isSpawnerAsset(asset.kind) ? !validSpawnerSettings(asset.spawner) : asset.spawner != SpawnerSettings{})
             throw std::runtime_error("Spawners need 1 or more enemies, with 0 to 20 of each kind");
     }
+    if (const auto error = validateSpawnerChains(assets); !error.empty())
+        throw std::runtime_error(error);
 }
 
 std::uint32_t checksum(std::string_view data)
@@ -254,8 +257,11 @@ std::string encode(const World& world, const SectionMetadata& meta, std::span<co
         }
         append(bytes, static_cast<std::uint32_t>(asset.pickupItem.item));
         append(bytes, static_cast<std::uint32_t>(asset.pickupItem.count));
-        if (isSpawnerAsset(asset.kind))
+        if (isSpawnerAsset(asset.kind)) {
             for (const int count : asset.spawner.counts) append(bytes, static_cast<std::uint32_t>(count));
+            append(bytes, asset.spawner.id);
+            append(bytes, asset.spawner.next);
+        }
     }
     std::ostringstream snapshot(std::ios::binary);
     encodeWorld(world, snapshot);
@@ -356,6 +362,10 @@ ParsedSection read(const std::filesystem::path& path)
                 const auto value = reader.integer();
                 if (value > SpawnerMobLimit) throw std::runtime_error("Spawner enemy count exceeds 20");
                 count = static_cast<int>(value);
+            }
+            if (version >= 6) {
+                asset.spawner.id = reader.integer();
+                asset.spawner.next = reader.integer();
             }
         }
         result.assets.push_back(std::move(asset));
