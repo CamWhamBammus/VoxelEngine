@@ -107,7 +107,7 @@ Start the section builder with **F7**, or launch it directly:
 ./build/VoxelEngine --dev
 ```
 
-1. Choose a world, then **Parkour** for an open room or **Cave exploration** for a filled cave with a small starting chamber. Pick a preset and click **Create**. Both have a 64 × 48 × 64 building area inside a protected shell.
+1. Choose a world, then **Parkour** for an open room, **Cave exploration** for a filled cave to carve, or **Arena** for a ready-to-edit fighting space. Pick a preset and click **Create**. All three use a 64 × 48 × 64 building area inside a protected shell.
 2. Press **E** to choose blocks, models, items, and markers. Left click removes, right click places, and middle click picks what you're looking at. **T** rotates pieces; **Y** changes model finishes or gate pose.
 3. Place one **Start** and one **End** marker. You can add a checkpoint too.
 4. Press **F8** to walk through the room. Reach the End, then press **F8** to return to building.
@@ -135,6 +135,10 @@ Dark caves rely on lamps, glowing materials, or your equipped lantern. The build
 ![A carved passage with hanging lamps and darkness beyond their reach](docs/screenshots/cave-exploration.png)
 
 To chain fights, place Trial spawners, aim at the first, and choose **E → Link next**. Click the next spawner, then **Save**. Repeat for later fights; numbered arrows show their order while building. **Unlink** removes a connection, and **X / Escape** cancels target selection. Chains stay within one section. The [building guide](docs/building.md#chain-spawners) covers chaining, building tools, and loot.
+
+**Arena** starts with three linked waves, cover, raised side platforms with stairs, and placed lights. Each spawner pays out its own loot when cleared. Aim at one and press **E** to change enemies, links, or **Edit rewards**; give the last fight better loot if you want. Clear every spawner to unlock End. **F8** tests it, and an accepted arena can be added to a level alongside your other sections.
+
+![The first slime wave in the Root jungle starter arena](docs/screenshots/arena-combat.png)
 
 ![Fences, gates, and wall frames assembled in a test room](docs/screenshots/building-pieces.png)
 

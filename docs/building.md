@@ -2,7 +2,7 @@
 
 Open the builder with **F7** or `./build/VoxelEngine --dev`. Choose a world, then create a new section or open a draft. These instructions are for the section builder; `--editor` opens the older terrain sandbox.
 
-Choose **Parkour** for an open room or **Cave exploration** for a solid volume to carve. The next screen lets you choose the world's preset or **Plain stone**, then **Create**. You can also change the layout on that screen. Arrow left/right changes layout, up/down changes preset, and Enter creates it; Escape goes back.
+Choose **Parkour** for an open room, **Cave exploration** for a solid volume to carve, or **Arena** for a fighting space with linked waves. The next screen lets you choose the world's preset or **Plain stone**, then **Create**. You can also change the layout on that screen. Arrow left/right changes layout, up/down changes preset, and Enter creates it; Escape goes back.
 
 | World | Preset | Materials |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ Choose **Parkour** for an open room or **Cave exploration** for a solid volume t
 | Crystal Hollows | Crystal grotto | Calcite, limestone, slate, quartz, and amethyst seams |
 | Ember Depths | Ember rock | Slate, obsidian, stone, and warm clay bands |
 
-Presets become ordinary blocks and models you can edit. Cave materials run throughout the solid volume, so digging new passages reveals the same theme. Parkour scenery stays around the edges, leaving room for your route. **Plain stone** keeps the original unadorned starting layout. Choosing a preset only affects a new section; saved drafts and accepted sections keep their terrain.
+Presets become ordinary blocks and models you can edit. Cave materials run throughout the solid volume, so digging new passages reveals the same theme. Parkour scenery stays around the edges, leaving room for your route. **Plain stone** removes the world dressing; an arena still keeps its cover, platforms, lights, and spawners. Choosing a preset only affects a new section; saved drafts and accepted sections keep their terrain.
 
 The builder shows a small section label, hotbar, and the current tool's hint. Routine messages fade after a few seconds. **H** opens the full controls when you need them; **G** opens build settings.
 
@@ -37,6 +37,19 @@ Each carve stamp can be undone with **Cmd/Ctrl+Z**. A held click repeats stamps.
 **Build light: On** is temporary help for editing. Switch it off to preview your lighting while building. It never carries into **F8** tests or published levels. During play, select the lantern with **2** for personal light; select another tool to put it away.
 
 You can switch any section between **Light: Dark** and **Light: Ambient**. That setting is saved with the section and follows it into assembled levels. Existing sections keep their original ambient lighting. Changing the setting requires another playtest before accepting.
+
+## Building an arena
+
+Choose **Arena**, pick the world theme or **Plain stone**, then **Create**. The starter has an open combat floor, low cover, raised side platforms with stairs at both ends, and three linked trial spawners. The Root jungle version adds roots, greenery, and contained ponds around the edges. The other worlds use their own materials and scenery.
+
+1. Move, remove, or add cover, platforms, lights, and scenery with the ordinary building tools. Leave clear floor around spawners for enemies to appear, and enough room to move between fights.
+2. Aim at each spawner and press **E**. Set its enemy counts and **Edit rewards**, then save. Every spawner drops its own configured loot as soon as that fight is cleared; the last fight can have a bigger reward. The starter begins with slimes, introduces skeletons, then adds a wizard.
+3. Use **Link next** to change the order or extend the chain. The first wave starts when approached; following waves start after the previous fight is cleared.
+4. Press **F8** to play with your sword. End remains locked until every spawner is cleared. Finish the test, then use **F10** to accept the section under **Arena** and **F11** to add it to a level.
+
+Arenas start with ambient lighting and placed lamps so enemies and cover stay visible during fights. For a darker arena, choose **G → Light: Dark**, then turn **Build light** off to preview your placed lights. Their combat, checkpoints, loot, and permanent clears follow the same rules as other authored sections. A fresh F8 test resets the encounters and restores your original inventory when you return to building.
+
+![The editable Root jungle arena, with numbered spawner links, side platforms, and hanging lamps](screenshots/arena.png)
 
 ## Moving and placing things
 
