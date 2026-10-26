@@ -1,8 +1,10 @@
 #include "section_presets.h"
 #include "ores.h"
+#include "spawner_chains.h"
 
 #include <array>
 #include <cmath>
+#include <stdexcept>
 
 namespace voxel {
 namespace {
@@ -115,6 +117,113 @@ void dressParkour(World& world, std::vector<HubAsset>& assets, SectionWorld them
     }
 }
 
+void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme, bool themed)
+{
+    const bool lush = themed && theme == SectionWorld::LushCaves;
+    const bool crystal = themed && theme == SectionWorld::CrystalHollows;
+    const Block masonry = lush ? Block::MossStone : crystal ? Block::Limestone
+        : themed ? Block::Slate : Block::Stone;
+    const Block trim = lush ? Block::MossBrick : crystal ? Block::Calcite
+        : themed ? Block::Obsidian : Block::Brick;
+    const Block paving = lush ? Block::Path : crystal ? Block::Limestone
+        : themed ? Block::Slate : Block::Stone;
+    const Block post = lush ? Block::RootWood : masonry;
+    const auto fill = [&](glm::ivec3 low, glm::ivec3 high, Block block) {
+        for (int y = low.y; y <= high.y; ++y)
+            for (int z = low.z; z <= high.z; ++z)
+                for (int x = low.x; x <= high.x; ++x) world.set({x,y,z}, block);
+    };
+
+    // A broad octagonal court makes the fighting space readable. The shell's
+    // floor remains solid; all cover, galleries and scenery above it is editable.
+    for (int z = -28; z <= 28; ++z) for (int x = -26; x <= 26; ++x) {
+        if (std::abs(x) + std::abs(z) > 46) continue;
+        const bool edge = std::abs(x) == 26 || std::abs(z) == 28
+            || std::abs(x) + std::abs(z) == 46;
+        world.set({x,8,z}, edge ? trim : paving);
+    }
+    // Two side galleries have a staircase at either end, so taking the high
+    // ground never requires a jump or leaves a player cornered on a platform.
+    for (const int side : {-1, 1}) {
+        const int first = side < 0 ? -25 : 19;
+        fill({first,9,-12}, {first+5,10,12}, masonry);
+        for (int x = first; x <= first+5; ++x)
+            for (const int end : {-1, 1}) {
+                world.set({x,9,end*14}, stairBlock(masonry, end > 0 ? 0 : 2));
+                world.set({x,9,end*13}, masonry);
+                world.set({x,10,end*13}, stairBlock(masonry, end > 0 ? 0 : 2));
+            }
+        // Keep lamps outside the six-block-wide gallery route.
+        for (const int z : {-21,0,21}) {
+            const int x = side*16;
+            fill({x,9,z}, {x,11,z}, post);
+            assets.push_back({HubAssetKind::LanternCap, {float(x)+.5f,12,float(z)+.5f}});
+        }
+    }
+    // Staggered cover breaks sightlines without closing the central dodge lanes
+    // or any spawner's landing ring. These are ordinary removable blocks.
+    for (const auto corner : {glm::ivec3{-16,9,-4}, {15,9,7}, {15,9,-15}}) {
+        fill(corner, corner+glm::ivec3(2,0,2), masonry);
+        world.set(corner, trim);
+        world.set(corner+glm::ivec3(2,0,2), trim);
+    }
+    // Recessed lights illuminate the fight floor even under dark section
+    // lighting. They sit flush below the player's feet, never in a dodge lane.
+    for (const int z : {-24,-12,0,12,24})
+        for (const int x : {-2,2}) world.set({x,8,z}, Block::Lantern);
+
+    if (lush) {
+        for (const int side : {-1,1}) {
+            const int x = side < 0 ? -30 : 26;
+            for (const int z : {-26,20}) {
+                // Water rests on the unbroken floor and is enclosed on every
+                // side. These small ponds cannot spill into the combat routes.
+                fill({x,9,z}, {x+3,9,z+5}, Block::MossStone);
+                fill({x+1,9,z+1}, {x+2,9,z+4}, Block::Water);
+                assets.push_back({HubAssetKind::CaveLotus, {float(x)+1.5f,10,float(z)+2.5f}});
+            }
+            for (const int z : {-17,0,17}) {
+                const float rootX = side*29.f;
+                fill({int(rootX),9,z}, {int(rootX),16,z}, Block::RootWood);
+                assets.push_back({HubAssetKind::RootFan, {rootX+.5f,12,float(z)+.5f}, side > 0 ? 3 : 1});
+                assets.push_back({HubAssetKind::JungleMonstera, {side*27.5f,9,float(z)+3}, 0, unsigned(z+41)});
+                assets.push_back({HubAssetKind::FiddleheadFerns, {side*27.5f,9,float(z)-3}, 0, unsigned(z+61)});
+                for (int dx = -1; dx <= 1; ++dx)
+                    for (int dz = -2; dz <= 2; ++dz)
+                        world.set({int(rootX)+dx,16,z+dz}, Block::Leaves);
+            }
+            assets.push_back({HubAssetKind::MossyLog, {side*23.f,9,25}, 1});
+        }
+    } else if (themed) {
+        for (const int side : {-1,1}) for (const int z : {-24,-8,8,24}) {
+            const int x = side < 0 ? -30 : 28;
+            fill({x,9,z}, {x+1,10,z+1}, trim);
+            if (crystal)
+                assets.push_back({HubAssetKind::CrystalBeacon, {float(x)+.5f,11,float(z)+.5f}});
+            else {
+                world.set({x,11,z}, Block::AmberCrystal);
+                assets.push_back({HubAssetKind::LanternCap, {float(x)+1.5f,11,float(z)+1.5f}});
+            }
+        }
+    }
+
+    const std::size_t first = assets.size();
+    const auto wave = [&](glm::vec3 position, std::array<int,3> counts, std::vector<ItemStack> loot) {
+        HubAsset spawner{HubAssetKind::TrialSpawner, position};
+        spawner.spawner.counts = counts;
+        spawner.chestItems = std::move(loot);
+        assets.push_back(std::move(spawner));
+    };
+    wave({-6.5f,9,15.5f}, {0,0,2}, {{ItemId::CopperOre,3}});
+    wave({8.5f,9,1.5f}, {2,0,1}, {{ItemId::IronOre,3}});
+    wave({-6.5f,9,-12.5f}, {2,1,1}, {{ItemId::Jade,2}, {ItemId::GoldOre,2}});
+    // Use the same identity allocator as authored links, so these are ordinary
+    // editable spawners with independent counts, loot and links from the outset.
+    for (std::size_t i = first; i < first+2; ++i)
+        if (const auto error = linkSpawners(assets, i, i+1); !error.empty())
+            throw std::logic_error(error);
+}
+
 } // namespace
 
 std::string_view sectionPresetName(SectionWorld world, SectionPreset preset)
@@ -140,12 +249,16 @@ std::string_view sectionPresetDescription(SectionWorld world, SectionPreset pres
 }
 
 void buildSectionPreset(World& world, std::vector<HubAsset>& assets,
-                        SectionWorld theme, bool cave, SectionPreset preset)
+                        SectionWorld theme, SectionLayout layout, SectionPreset preset)
 {
     assets.clear();
+    const bool cave = layout == SectionLayout::Cave;
     if (cave) buildCaveSection(world);
     else buildBlankSection(world);
-    if (preset == SectionPreset::PlainStone) return;
+    if (preset == SectionPreset::PlainStone) {
+        if (layout == SectionLayout::Arena) buildArena(world, assets, theme, false);
+        return;
+    }
 
     const float phase = float(world.seed() % 1009) * .00623f;
     for (int y = SectionInteriorMin.y - 1; y <= SectionInteriorMax.y; ++y)
@@ -164,7 +277,8 @@ void buildSectionPreset(World& world, std::vector<HubAsset>& assets,
                     material = theme == SectionWorld::CrystalHollows ? Block::Calcite : Block::Slate;
                 world.set(cell, material);
             }
-    if (cave) dressCave(world, assets, theme);
+    if (layout == SectionLayout::Arena) buildArena(world, assets, theme, true);
+    else if (cave) dressCave(world, assets, theme);
     else dressParkour(world, assets, theme);
 }
 

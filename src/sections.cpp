@@ -32,6 +32,7 @@ constexpr std::array Categories{
     SectionCategoryInfo{SectionCategory::Exploration, "Exploration", "Branching paths and hidden discoveries", "exploration"},
     SectionCategoryInfo{SectionCategory::Mining, "Mining", "Ore chambers and future gathering routes", "mining"},
     SectionCategoryInfo{SectionCategory::Treasure, "Treasure", "Final chambers and reward locations", "treasure"},
+    SectionCategoryInfo{SectionCategory::Arena, "Arena", "Linked monster waves, cover and combat", "arena"},
 };
 constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::LanternCap, "Lantern", "Lights"},

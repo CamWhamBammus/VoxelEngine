@@ -14,7 +14,7 @@ class AssetCollision;
 
 // These IDs are stored in .vxs files. Append entries without renumbering.
 enum class SectionWorld { LushCaves, CrystalHollows, EmberDepths };
-enum class SectionCategory { Parkour, Puzzle, Exploration, Mining, Treasure };
+enum class SectionCategory { Parkour, Puzzle, Exploration, Mining, Treasure, Arena };
 enum class SectionLighting { Ambient, Dark };
 
 struct SectionWorldInfo {

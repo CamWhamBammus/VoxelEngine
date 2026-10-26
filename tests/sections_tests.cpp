@@ -90,7 +90,7 @@ int main()
     };
     TemporaryDirectory temp;
     check(sectionWorldCatalog().size() == 3, "three world collections must be available");
-    check(sectionCategoryCatalog().size() == 5, "five section categories must be available");
+    check(sectionCategoryCatalog().size() == 6, "six section categories must be available");
     check(sectionAssetCatalog().size() == HubAssetCount, "every scenery, building, and loot asset must be exposed");
     check(static_cast<int>(HubAssetKind::HangingPlanter) == 53
           && static_cast<int>(HubAssetKind::LootChest) == 54

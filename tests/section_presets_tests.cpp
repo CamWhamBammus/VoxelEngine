@@ -60,7 +60,7 @@ int main()
             World world(213);
             world.set({80,80,80}, Block::Crystal);
             std::vector<HubAsset> assets{{HubAssetKind::LootChest, {0,9,0}}};
-            buildSectionPreset(world, assets, info.id, cave, SectionPreset::WorldTheme);
+            buildSectionPreset(world, assets, info.id, cave ? SectionLayout::Cave : SectionLayout::Parkour, SectionPreset::WorldTheme);
             check(world.seed() == 213 && world.get({80,80,80}) == Block::Air,
                   "presets clear the previous scene and preserve the document seed");
             bool layoutSafe = true, dark = true, shellProtected = true, specimensSupported = true;
@@ -143,7 +143,7 @@ int main()
 
             World repeated(213);
             std::vector<HubAsset> repeatedAssets;
-            buildSectionPreset(repeated, repeatedAssets, info.id, cave, SectionPreset::WorldTheme);
+            buildSectionPreset(repeated, repeatedAssets, info.id, cave ? SectionLayout::Cave : SectionLayout::Parkour, SectionPreset::WorldTheme);
             check(world.sameContents(repeated) && assets == repeatedAssets,
                   "rebuilding the same preset is deterministic");
 
@@ -171,7 +171,7 @@ int main()
         if (cave) buildCaveSection(original);
         else buildBlankSection(original);
         std::vector<HubAsset> assets{{HubAssetKind::Fern, {1,9,1}}};
-        buildSectionPreset(plain, assets, SectionWorld::LushCaves, cave, SectionPreset::PlainStone);
+        buildSectionPreset(plain, assets, SectionWorld::LushCaves, cave ? SectionLayout::Cave : SectionLayout::Parkour, SectionPreset::PlainStone);
         check(original.sameContents(plain) && assets.empty(),
               "plain stone exactly preserves the earlier builders and adds no scenery");
     }
