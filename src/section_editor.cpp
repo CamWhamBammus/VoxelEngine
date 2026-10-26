@@ -221,6 +221,8 @@ void SectionEditor::invalidateTest()
 }
 void SectionEditor::changed(Edit edit)
 {
+    // Removing a model also removes incoming links, in the same undo action.
+    pruneSpawnerLinks(assets_);
     if (edit.beforeAssets != assets_) ++assetRevision_;
     if (!edit.nameOnly) invalidateTest();
     edit.afterMeta = meta_; edit.afterAssets = assets_;

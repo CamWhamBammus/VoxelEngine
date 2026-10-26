@@ -1,4 +1,5 @@
 #include "section_tools.h"
+#include "spawner_chains.h"
 
 #include <algorithm>
 #include <cmath>
@@ -111,9 +112,10 @@ bool validClipboard(const SectionClipboard& clipboard)
         return false;
     if (!clipboard.blocks.empty() && clipboard.blocks.size() != volume(clipboard.size)) return false;
     if (!std::all_of(clipboard.blocks.begin(), clipboard.blocks.end(), isValidBlock)) return false;
-    return std::all_of(clipboard.assets.begin(), clipboard.assets.end(), [&](const HubAsset& asset) {
-        return validAsset(asset) && inside(asset.position, glm::vec3(0), glm::vec3(clipboard.size));
-    });
+    return validateSpawnerChains(clipboard.assets).empty()
+        && std::all_of(clipboard.assets.begin(), clipboard.assets.end(), [&](const HubAsset& asset) {
+            return validAsset(asset) && inside(asset.position, glm::vec3(0), glm::vec3(clipboard.size));
+        });
 }
 } // namespace
 
@@ -150,6 +152,8 @@ SectionClipboard copySectionBox(const World& world, std::span<const HubAsset> as
         asset.position -= glm::vec3(box.min);
         result.assets.push_back(asset);
     }
+    // A copied encounter can only keep links whose destination was also selected.
+    pruneSpawnerLinks(result.assets);
     return result;
 }
 
@@ -183,8 +187,10 @@ SectionEditPlan planSectionFill(const World& world, std::span<const HubAsset> as
                     return failed(assets, "MOVE OUT OF THE BLOCKS YOU ARE BUILDING");
                 plan.blocks.push_back({position, before, after});
             }
-    if (mode == SectionFillMode::Erase)
+    if (mode == SectionFillMode::Erase) {
         std::erase_if(plan.assets, [&](const HubAsset& asset) { return anchoredIn(asset, box); });
+        pruneSpawnerLinks(plan.assets);
+    }
     return plan;
 }
 
@@ -218,6 +224,7 @@ SectionEditPlan planSectionCarve(const World& world, std::span<const HubAsset> a
         // Bounds validate the floating-point anchor before converting to a cell.
         return anchoredIn(asset, bounds) && carved(glm::ivec3(glm::floor(asset.position)));
     });
+    pruneSpawnerLinks(plan.assets);
     return plan;
 }
 
@@ -253,6 +260,10 @@ SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> a
                 plan.blocks.push_back({position, before, after});
             }
     if (emptyOnly) return plan;
+    // Prune before assigning fresh copied IDs so removed destinations cannot
+    // accidentally reconnect to a newly pasted encounter with a reused ID.
+    pruneSpawnerLinks(plan.assets);
+    std::vector<HubAsset> inserted;
     for (auto asset : clipboard.assets) {
         asset.position = glm::vec3(origin) + rotateOrigin(asset.position, clipboard.size, rotation);
         asset.facing = (asset.facing + rotation) % 4;
@@ -261,12 +272,17 @@ SectionEditPlan planSectionPaste(const World& world, std::span<const HubAsset> a
         if (!inside(asset.position, glm::vec3(SectionInteriorMin), glm::vec3(SectionInteriorMax)))
             return failed(assets, "A COPIED MODEL ANCHOR WOULD LEAVE THE ROOM");
         if (!meshInsideRoom(asset)) return failed(assets, "A COPIED MODEL WOULD EXTEND OUTSIDE THE ROOM");
-        if (std::any_of(plan.assets.begin(), plan.assets.end(), [&](const HubAsset& present) {
-            return samePlacement(asset, present);
-        })) continue;
-        if (plan.assets.size() >= SectionMaxAssets) return failed(assets, "PASTE WOULD EXCEED THE ASSET LIMIT");
-        plan.assets.push_back(asset);
+        const auto duplicate = [&](const HubAsset& present) { return samePlacement(asset, present); };
+        if (std::any_of(plan.assets.begin(), plan.assets.end(), duplicate)
+            || std::any_of(inserted.begin(), inserted.end(), duplicate)) continue;
+        if (plan.assets.size() + inserted.size() >= SectionMaxAssets)
+            return failed(assets, "PASTE WOULD EXCEED THE ASSET LIMIT");
+        inserted.push_back(asset);
     }
+    // Remap only models actually inserted. A skipped destination must not link
+    // a copied source to an existing encounter that happens to occupy its cell.
+    remapCopiedSpawners(inserted, plan.assets);
+    plan.assets.insert(plan.assets.end(), inserted.begin(), inserted.end());
     return plan;
 }
 
