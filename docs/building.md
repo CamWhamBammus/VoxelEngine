@@ -154,7 +154,7 @@ Choose **Trial spawner** from the Assets tab and place it on a floor. Leave seve
 2. Open **Rewards** and choose the item stacks it should release, just as you would for a chest.
 3. Save the rewards, then save the spawner settings. Cancel discards the draft settings; undo restores the previous configuration.
 
-![Choosing enemy counts and reward items for a Trial spawner](screenshots/spawner-settings.png)
+![Configuring a linked Trial spawner, with enemies, rewards, and its next encounter](screenshots/spawner-settings.png)
 
 In play, approaching within eight blocks with a clear view activates a standalone spawner or the first spawner in a chain. Enemies appear gradually, with at most eight alive at once. The sword is tool **4**; aim and left click to swing. Skeletons slash at close range, slimes leap, and wizards throw slow spells. Solid walls and scenery block attacks.
 
