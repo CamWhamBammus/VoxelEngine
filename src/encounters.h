@@ -95,6 +95,7 @@ private:
         bool proximityReady = true;
         // Negative while dormant; scheduled only after a durable clear.
         float handoffSeconds = -1.0f;
+        bool handoffInterrupted = false;
     };
     struct Mob {
         Player body;

@@ -125,21 +125,31 @@ void retriesAndReentry(const World& world)
     require(session.pendingCompletions().size() == 1 && session.activationSerial() == 1,
             "dying with an unsaved completion preserves it without respawning or advancing");
     session.markCleared(3);
-    tick(session, world, player, 8);
-    session.resetUnfinished();
     tick(session, world, player, 30);
-    require(!session.active() && session.monsters().empty() && session.activationSerial() == 1,
-            "death during a handoff cancels the remote start while preserving cleared progress");
-    position(player, world, {18.5f, 9, 6.5f});
-    tick(session, world, player, 30);
-    require(session.activationSerial() == 1, "the tail remains locked after a retry");
+    require(!session.active() && session.activationSerial() == 1 && session.remaining() == 2,
+            "a late successful save after death exposes the successor by proximity rather than starting it remotely");
     position(player, world, {.5f, 9, 6.5f});
     tick(session, world, player, 5);
     require(session.monsters().size() == 1 && session.activationSerial() == 2
                 && !session.activations().front().chained,
+            "the successor of an interrupted pending completion starts when the player returns");
+    defeat(session, world, player);
+    session.markCleared(0);
+    tick(session, world, player, 8);
+    session.resetUnfinished();
+    tick(session, world, player, 30);
+    require(!session.active() && session.monsters().empty() && session.activationSerial() == 2,
+            "death during a handoff cancels the remote start while preserving cleared progress");
+    position(player, world, {-18.5f, 9, 6.5f});
+    tick(session, world, player, 30);
+    require(session.activationSerial() == 2, "the cleared root remains quiet after a retry");
+    position(player, world, {18.5f, 9, 6.5f});
+    tick(session, world, player, 5);
+    require(session.monsters().size() == 1 && session.activationSerial() == 3
+                && !session.activations().front().chained,
             "the first unfinished spawner resumes safely by proximity after death");
     session.resetUnfinished();
-    require(session.monsters().empty() && session.activations().empty() && session.remaining() == 2,
+    require(session.monsters().empty() && session.activations().empty() && session.remaining() == 1,
             "death during a linked fight removes transient enemies and cues without undoing clears");
     tick(session, world, player, 5);
     require(session.monsters().size() == 1 && session.healthBars().front().current == 40,

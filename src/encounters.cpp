@@ -229,8 +229,10 @@ void EncounterSession::markCleared(std::size_t assetIndex)
             auto& successor = spawners_[*next];
             if (!successor.cleared) {
                 if (!successor.complete && !successor.active) {
-                    successor.proximityReady = false;
-                    successor.handoffSeconds = ChainDelay;
+                    // A late save after death must not start an unseen fight
+                    // while the player is walking back from their checkpoint.
+                    successor.proximityReady = spawner.handoffInterrupted;
+                    successor.handoffSeconds = spawner.handoffInterrupted ? -1.0f : ChainDelay;
                 }
                 break;
             }
@@ -247,6 +249,7 @@ void EncounterSession::resetUnfinished()
     playerHitDirection_ = glm::vec3(0);
     for (auto& spawner : spawners_) {
         spawner.handoffSeconds = -1;
+        if (spawner.complete && !spawner.cleared) spawner.handoffInterrupted = true;
         if (spawner.cleared || spawner.complete) continue;
         spawner.toSpawn = spawner.counts;
         spawner.spawnDelay = .45f;
