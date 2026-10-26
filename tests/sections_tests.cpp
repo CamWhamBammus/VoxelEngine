@@ -67,7 +67,7 @@ std::string olderVersion(std::string_view bytes, std::size_t firstAsset, std::sp
     for (const auto& asset : assets) {
         const auto chestBytes = asset.chestItems.size() * 8;
         const auto spawnerBytes = voxel::isSpawnerAsset(asset.kind) ? 12 : 0;
-        const auto currentSize = 36 + chestBytes + spawnerBytes;
+        const auto currentSize = 36 + chestBytes + spawnerBytes + (spawnerBytes ? 8 : 0);
         const auto oldSize = version == 1 ? 24 : version == 2 ? 28 + chestBytes
             : 36 + chestBytes + (version >= 4 ? spawnerBytes : 0);
         old += bytes.substr(cursor, oldSize);
