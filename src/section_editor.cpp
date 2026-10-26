@@ -143,7 +143,6 @@ void SectionEditor::newSection(Game& game)
     } else if (arena) {
         meta_.name = "Untitled arena";
         meta_.category = SectionCategory::Arena;
-        meta_.lighting = SectionLighting::Dark;
     }
     ++assetRevision_;
     draftPath_.clear();

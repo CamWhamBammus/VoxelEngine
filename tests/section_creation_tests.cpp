@@ -64,7 +64,7 @@ int main()
             check(editor.screen() == SectionEditorScreen::Build && editor.hasSection() && !editor.dirty()
                   && editor.meta().world == world.id, "create enters the builder and saves to the selected world");
             check(editor.meta().category == (cave ? SectionCategory::Exploration : arena ? SectionCategory::Arena : SectionCategory::Parkour)
-                  && editor.meta().lighting == (cave || arena ? SectionLighting::Dark : SectionLighting::Ambient),
+                  && editor.meta().lighting == (cave ? SectionLighting::Dark : SectionLighting::Ambient),
                   "presets retain the chosen layout category and lighting");
             check(sectionMarkerSafe(game.world, editor.meta().spawn, editor.assetCollision().get())
                   && sectionMarkerSafe(game.world, editor.meta().finish, editor.assetCollision().get()),
@@ -103,7 +103,7 @@ int main()
                 }
             }
             press(game, &InputActions::devTest);
-            check(editor.screen() == SectionEditorScreen::Test && game.darkCave() == (cave || arena),
+            check(editor.screen() == SectionEditorScreen::Test && game.darkCave() == cave,
                   "every layout can enter a real test and dark sections ignore builder assistance");
             press(game, &InputActions::devTest);
             press(game, &InputActions::devLibrary);
@@ -153,10 +153,17 @@ int main()
         click(keyboard, SectionUiPresetBase + 1);
         click(keyboard, SectionUiCreate);
         check(keyboard.sectionEditor().meta().category == SectionCategory::Arena
+              && keyboard.sectionEditor().meta().lighting == SectionLighting::Ambient
               && keyboard.sectionEditor().buildMode() == SectionBuildMode::Single
               && std::count_if(keyboard.sectionEditor().assets().begin(), keyboard.sectionEditor().assets().end(),
                   [](const HubAsset& asset) { return isSpawnerAsset(asset.kind); }) > 1,
               "plain-stone arena still contains editable cover and multiple linked spawners");
+        press(keyboard, &InputActions::devTools);
+        click(keyboard, SectionUiLighting);
+        press(keyboard, &InputActions::closeMenu);
+        press(keyboard, &InputActions::devTest);
+        check(keyboard.sectionEditor().screen() == SectionEditorScreen::Test && keyboard.darkCave(),
+              "authors can still choose dark lighting for an arena through build options");
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n'; ++failures;
     }

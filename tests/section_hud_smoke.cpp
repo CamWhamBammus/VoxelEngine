@@ -318,6 +318,11 @@ void verifyPresetChooser(int width,int height,const std::filesystem::path& libra
         require(listSectionDrafts(options.sectionLibrary).size()==1,
                 "Confirming a preset must save exactly one new draft");
         draw();
+        act(SectionUiLibrary);act(SectionUiLibraryArena);act(SectionUiCreate);
+        require(editor.screen()==SectionEditorScreen::Build && editor.meta().category==SectionCategory::Arena
+                && editor.meta().lighting==SectionLighting::Ambient,
+                "New arena should use ambient lighting so cover and enemies remain readable");
+        draw();
     }
 }
 
