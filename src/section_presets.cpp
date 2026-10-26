@@ -127,6 +127,7 @@ void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme,
         : themed ? Block::Obsidian : Block::Brick;
     const Block paving = lush ? Block::Path : crystal ? Block::Limestone
         : themed ? Block::Slate : Block::Stone;
+    const Block floorTrim = oreInfo(trim) ? Block::Clay : trim;
     const Block post = lush ? Block::RootWood : Block::Timber;
     const auto fill = [&](glm::ivec3 low, glm::ivec3 high, Block block) {
         for (int y = low.y; y <= high.y; ++y)
@@ -149,7 +150,7 @@ void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme,
         if (std::abs(x) + std::abs(z) > 46) continue;
         const bool edge = std::abs(x) == 26 || std::abs(z) == 28
             || std::abs(x) + std::abs(z) == 46;
-        world.set({x,8,z}, edge ? trim : paving);
+        world.set({x,8,z}, edge ? floorTrim : paving);
     }
     // Two side galleries have a staircase at either end, so taking the high
     // ground never requires a jump or leaves a player cornered on a platform.
