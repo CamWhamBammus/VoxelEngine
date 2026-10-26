@@ -197,6 +197,7 @@ void EncounterSession::activate(Spawner& spawner, bool chained)
 {
     spawner.active = true;
     spawner.proximityReady = false;
+    spawner.handoffSeconds = -1;
     activations_.push_back({spawner.position, 0, chained});
     ++activationSerial_;
 }
@@ -204,7 +205,7 @@ void EncounterSession::activate(Spawner& spawner, bool chained)
 bool EncounterSession::active() const
 {
     return std::any_of(spawners_.begin(), spawners_.end(), [](const Spawner& spawner) {
-        return spawner.active && !spawner.complete && !spawner.cleared;
+        return (spawner.active || spawner.handoffSeconds >= 0) && !spawner.complete && !spawner.cleared;
     });
 }
 
@@ -218,9 +219,23 @@ std::size_t EncounterSession::remaining() const
 void EncounterSession::markCleared(std::size_t assetIndex)
 {
     for (auto& spawner : spawners_) {
-        if (spawner.assetIndex != assetIndex || !spawner.complete) continue;
+        if (spawner.assetIndex != assetIndex || !spawner.complete || spawner.cleared) continue;
         spawner.cleared = true;
         std::erase(completions_, assetIndex);
+        // Only the caller's successful save releases the next encounter. A
+        // pending completion may wait indefinitely without advancing a chain.
+        auto next = spawner.next;
+        for (std::size_t visited = 0; next && visited < spawners_.size(); ++visited) {
+            auto& successor = spawners_[*next];
+            if (!successor.cleared) {
+                if (!successor.complete && !successor.active) {
+                    successor.proximityReady = false;
+                    successor.handoffSeconds = ChainDelay;
+                }
+                break;
+            }
+            next = successor.next;
+        }
         return;
     }
 }
@@ -231,6 +246,7 @@ void EncounterSession::resetUnfinished()
     swordCooldown_ = hurtCooldown_ = 0;
     playerHitDirection_ = glm::vec3(0);
     for (auto& spawner : spawners_) {
+        spawner.handoffSeconds = -1;
         if (spawner.cleared || spawner.complete) continue;
         spawner.toSpawn = spawner.counts;
         spawner.spawnDelay = .45f;
@@ -511,6 +527,15 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
     for (std::size_t index = 0; index < spawners_.size(); ++index) {
         auto& spawner = spawners_[index];
         if (spawner.cleared || spawner.complete) continue;
+        if (!spawner.active && spawner.handoffSeconds >= 0) {
+            spawner.handoffSeconds = std::max(0.0f, spawner.handoffSeconds - seconds);
+            if (spawner.handoffSeconds <= .00001f) {
+                activate(spawner, true);
+                // Keep the regular spawn preparation after the two-second
+                // handoff; this frame's time was already spent waiting.
+                continue;
+            }
+        }
         if (!spawner.active && spawner.proximityReady
             && glm::length(player.feetPosition() - spawner.position) <= ActivationRadius
             && visible(world, collision_.get(), player.eyePosition(),

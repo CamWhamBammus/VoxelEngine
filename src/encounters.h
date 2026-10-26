@@ -51,6 +51,7 @@ public:
     static constexpr int SwordDamage = 25;
     static constexpr float SwordReach = 3.0f;
     static constexpr float SwordCooldown = .45f;
+    static constexpr float ChainDelay = 2.0f;
 
     void begin(std::span<const HubAsset> assets,
                std::shared_ptr<const AssetCollision> collision,
@@ -92,6 +93,8 @@ private:
         std::optional<std::size_t> predecessor{};
         std::optional<std::size_t> next{};
         bool proximityReady = true;
+        // Negative while dormant; scheduled only after a durable clear.
+        float handoffSeconds = -1.0f;
     };
     struct Mob {
         Player body;
