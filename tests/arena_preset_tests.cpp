@@ -76,7 +76,9 @@ int main()
                         const auto block = world.get(cell);
                         materials.insert(block);
                         if (!sectionInterior(cell))
-                            safeShell &= isSolid(block) && !oreInfo(block);
+                            safeShell &= isSolid(block) && !oreInfo(block) && block != Block::Lantern
+                                && block != Block::Crystal && block != Block::AmberCrystal
+                                && block != Block::GlowLeaves && block != Block::GlowMoss;
                         stairs += isStair(block);
                         if (block == Block::Water) {
                             ++water;
@@ -85,7 +87,7 @@ int main()
                                 waterSupported &= world.get(cell+neighbor) != Block::Air;
                         }
                     }
-            check(safeShell, "Arena keeps its entire protected shell solid and non-mineable");
+            check(safeShell, "Arena keeps its protected shell solid, non-mineable and free of permanent lights");
             check(stairs == 48, "Both raised galleries have six-wide actual stairs at both ends");
             check(waterSupported, "All decorative water has a solid bottom and contained sides");
             if (preset == SectionPreset::WorldTheme && theme.id == SectionWorld::LushCaves)

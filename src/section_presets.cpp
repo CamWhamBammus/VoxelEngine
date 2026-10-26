@@ -127,12 +127,21 @@ void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme,
         : themed ? Block::Obsidian : Block::Brick;
     const Block paving = lush ? Block::Path : crystal ? Block::Limestone
         : themed ? Block::Slate : Block::Stone;
-    const Block post = lush ? Block::RootWood : masonry;
+    const Block post = lush ? Block::RootWood : Block::Timber;
     const auto fill = [&](glm::ivec3 low, glm::ivec3 high, Block block) {
         for (int y = low.y; y <= high.y; ++y)
             for (int z = low.z; z <= high.z; ++z)
                 for (int x = low.x; x <= high.x; ++x) world.set({x,y,z}, block);
     };
+
+    // The blank canvas has permanent work lights in its protected walls. An
+    // arena instead uses editable lamps, so the author controls every light.
+    for (int along = -24; along <= 24; along += 12) for (const int y : {12,28,44}) {
+        world.set({-33,y,along}, masonry);
+        world.set({32,y,along}, masonry);
+        world.set({along,y,-33}, masonry);
+        world.set({along,y,32}, masonry);
+    }
 
     // A broad octagonal court makes the fighting space readable. The shell's
     // floor remains solid; all cover, galleries and scenery above it is editable.
@@ -153,12 +162,6 @@ void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme,
                 world.set({x,9,end*13}, masonry);
                 world.set({x,10,end*13}, stairBlock(masonry, end > 0 ? 0 : 2));
             }
-        // Keep lamps outside the six-block-wide gallery route.
-        for (const int z : {-21,0,21}) {
-            const int x = side*16;
-            fill({x,9,z}, {x,11,z}, post);
-            assets.push_back({HubAssetKind::LanternCap, {float(x)+.5f,12,float(z)+.5f}});
-        }
     }
     // Staggered cover breaks sightlines without closing the central dodge lanes
     // or any spawner's landing ring. These are ordinary removable blocks.
@@ -167,10 +170,15 @@ void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme,
         world.set(corner, trim);
         world.set(corner+glm::ivec3(2,0,2), trim);
     }
-    // Recessed lights illuminate the fight floor even under dark section
-    // lighting. They sit flush below the player's feet, never in a dodge lane.
-    for (const int z : {-24,-12,0,12,24})
-        for (const int x : {-2,2}) world.set({x,8,z}, Block::Lantern);
+    // Hanging lamps attach to supported beams above the tallest enemy. Their
+    // columns stand outside the spawn rings and the broad central dodge lanes.
+    // Every light and its support can be moved or removed in the builder.
+    for (const int z : {-24,-12,0,12,24}) {
+        for (const int x : {-16,16}) fill({x,9,z}, {x,14,z}, post);
+        fill({-16,15,z}, {16,15,z}, post);
+        for (const int x : {-9,0,9})
+            assets.push_back({HubAssetKind::HangingLamp, {float(x)+.5f,13.45f,float(z)+.5f}});
+    }
 
     if (lush) {
         for (const int side : {-1,1}) {
@@ -202,7 +210,8 @@ void buildArena(World& world, std::vector<HubAsset>& assets, SectionWorld theme,
                 assets.push_back({HubAssetKind::CrystalBeacon, {float(x)+.5f,11,float(z)+.5f}});
             else {
                 world.set({x,11,z}, Block::AmberCrystal);
-                assets.push_back({HubAssetKind::LanternCap, {float(x)+1.5f,11,float(z)+1.5f}});
+                world.set({x+1,11,z+1}, Block::Lantern);
+                assets.push_back({HubAssetKind::LanternCap, {float(x)+1.5f,11.5f,float(z)+1.5f}});
             }
         }
     }
