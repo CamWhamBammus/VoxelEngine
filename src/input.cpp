@@ -324,7 +324,8 @@ void Input::updateDev(Camera& camera, float deltaSeconds, const Buttons& buttons
         hotbarScroll_.reset();
         removeRepeat_ = placeRepeat_ = 0;
     } else {
-        if (pressed(buttons.releaseMouse, previous.releaseMouse)) capture(false);
+        actions_.closeMenu = pressed(buttons.releaseMouse, previous.releaseMouse);
+        if (actions_.closeMenu) capture(false);
         if (pressed(buttons.toggleMouse, previous.toggleMouse)) capture(!captured_);
         if (pressed(buttons.help, previous.help)) help_ = !help_;
         actions_.undo = shortcuts.undo;

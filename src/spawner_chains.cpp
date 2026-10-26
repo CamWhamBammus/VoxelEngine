@@ -106,10 +106,10 @@ void remapCopiedSpawners(std::vector<HubAsset>& copies, std::span<const HubAsset
     auto used = identities(destination);
     std::map<std::uint32_t, std::uint32_t> remap;
     for (auto& asset : copies) {
-        if (!isSpawnerAsset(asset.kind)) continue;
+        if (!isSpawnerAsset(asset.kind) || !asset.spawner.id) continue;
         const auto old = asset.spawner.id;
         asset.spawner.id = allocateId(used);
-        if (old) remap.emplace(old, asset.spawner.id);
+        remap.emplace(old, asset.spawner.id);
     }
     for (auto& asset : copies)
         if (isSpawnerAsset(asset.kind) && asset.spawner.next)
