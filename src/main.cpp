@@ -139,9 +139,12 @@ int main(int argc, char** argv)
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
                                       game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
                                       viewCamera, width, height, static_cast<float>(now));
-            if (game.devFlying() && !game.devMenuOpen())
+            if (game.devFlying() && !game.devMenuOpen()) {
                 selection.drawBuildTools(game.sectionEditor(), viewCamera, width, height,
                                          static_cast<float>(now));
+                selection.drawSpawnerLinks(game.sectionEditor(), viewCamera, width, height,
+                                           static_cast<float>(now));
+            }
             if (game.levelActive() && !game.levelMenuOpen())
                 selection.drawSection(game.levelController().meta(), {}, {}, viewCamera, width, height,
                                       static_cast<float>(now));

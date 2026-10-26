@@ -9,6 +9,7 @@
 #include "block_shapes.h"
 #include "sections.h"
 #include "section_editor.h"
+#include "spawner_chains.h"
 #include "graphics/asset_builder.h"
 #include "graphics/held_sword.h"
 #include "graphics/held_pickaxe.h"
@@ -944,6 +945,16 @@ MeshData markerLabel(std::string_view word)
     for (std::size_t i = 0; i < word.size(); ++i) {
         std::array<unsigned,7> rows{};
         switch (word[i]) {
+        case '0': rows={14,17,19,21,25,17,14}; break;
+        case '1': rows={4,12,4,4,4,4,14}; break;
+        case '2': rows={14,17,1,2,4,8,31}; break;
+        case '3': rows={30,1,1,14,1,1,30}; break;
+        case '4': rows={2,6,10,18,31,2,2}; break;
+        case '5': rows={31,16,16,30,1,1,30}; break;
+        case '6': rows={14,16,16,30,17,17,14}; break;
+        case '7': rows={31,1,2,4,8,8,8}; break;
+        case '8': rows={14,17,17,14,17,17,14}; break;
+        case '9': rows={14,17,17,15,1,1,14}; break;
         case 'S': rows={15,16,16,14,1,1,30}; break;
         case 'T': rows={31,4,4,4,4,4,4}; break;
         case 'A': rows={14,17,17,31,17,17,17}; break;
@@ -998,6 +1009,7 @@ Overlay::Overlay() : shader_(overlayVertexShader, overlayFragmentShader)
     markerCube_.upload(buildMesh(cube));
     startLabel_.upload(markerLabel("START"));
     endLabel_.upload(markerLabel("END"));
+    for (int i=0; i<10; ++i) numberLabels_[i].upload(markerLabel(std::to_string(i)));
     glBindVertexArray(static_cast<GLuint>(previousVao));
     glBindBuffer(GL_ARRAY_BUFFER, static_cast<GLuint>(previousBuffer));
 }
@@ -1264,6 +1276,103 @@ void Overlay::drawBuildTools(const SectionEditor& editor, const Camera& camera, 
     if (cullFace) glEnable(GL_CULL_FACE);
     glDepthMask(depthMask);
     glPolygonMode(GL_FRONT_AND_BACK, polygon[0]);
+}
+
+void Overlay::drawSpawnerLinks(const SectionEditor& editor, const Camera& camera, int width, int height,
+                               float timeSeconds)
+{
+    if (width<=0 || height<=0 || editor.screen()!=SectionEditorScreen::Build) return;
+    std::vector<HubAsset> spawners;
+    for (const auto& asset : editor.assets()) if (isSpawnerAsset(asset.kind)) spawners.push_back(asset);
+    if (spawners.empty()) return;
+    if (spawners!=linkedSpawners_) {
+        MeshData mesh;
+        const HubAsset origin{};
+        AssetBuilder model(mesh,origin);
+        for (const auto& source : spawners) {
+            const auto next=spawnerById(spawners,source.spawner.next);
+            if (!next) continue;
+            const auto start=source.position+glm::vec3(0,1.6f,0);
+            const auto finish=spawners[*next].position+glm::vec3(0,1.6f,0);
+            const auto delta=finish-start;
+            if (glm::length(delta)<.1f) continue;
+            const auto point=[&](float t) { return start+delta*t+glm::vec3(0,std::sin(t*3.14159265f)*.8f,0); };
+            // Short solid dashes remain legible over plants and uneven ground.
+            for (int part=0; part<12; ++part)
+                model.beam(point(part/12.0f),point((part+.72f)/12.0f),.025f,Block::Crystal,glm::vec3(1));
+            const auto tip=point(.94f),direction=glm::normalize(tip-point(.86f));
+            const auto side=glm::normalize(glm::cross(direction,std::abs(direction.y)>.95f
+                ? glm::vec3(1,0,0) : glm::vec3(0,1,0)));
+            for (float sign : {-1.0f,1.0f})
+                model.beam(tip,tip-direction*.36f+side*(sign*.2f),.045f,Block::Crystal,glm::vec3(1));
+        }
+        spawnerLinks_.upload(mesh);
+        linkedSpawners_=std::move(spawners);
+    }
+    const auto picking=editor.linkingSpawner();
+    if (!picking && !spawnerLinks_.indexCount()) return;
+    const GLboolean depthTest=glIsEnabled(GL_DEPTH_TEST),cullFace=glIsEnabled(GL_CULL_FACE);
+    GLboolean depthMask=GL_TRUE;
+    GLint program=0,vao=0,buffer=0;
+    std::array<GLint,2> polygon{};
+    glGetBooleanv(GL_DEPTH_WRITEMASK,&depthMask);
+    glGetIntegerv(GL_CURRENT_PROGRAM,&program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING,&vao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&buffer);
+    glGetIntegerv(GL_POLYGON_MODE,polygon.data());
+    glEnable(GL_DEPTH_TEST); glDisable(GL_CULL_FACE); glDepthMask(GL_FALSE);
+    glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+    shader_.use();
+    const auto projection=camera.projectionMatrix(float(width)/height)*camera.viewMatrix();
+    shader_.setMat4("transform",projection);
+    shader_.setVec3("color",{.78f,.65f,.30f});
+    spawnerLinks_.draw();
+    const auto box=[&](const HubAsset& asset,glm::vec3 color) {
+        shader_.setMat4("transform",projection*glm::scale(glm::translate(glm::mat4(1),
+            asset.position+glm::vec3(-.54f,-.02f,-.54f)),glm::vec3(1.08f,1.08f,1.08f)));
+        shader_.setVec3("color",color);
+        glBindVertexArray(vao_); glDrawArrays(GL_LINES,0,24);
+    };
+    const auto& assets=editor.assets();
+    const auto hovered=editor.targetedAsset();
+    int ordinal=0;
+    for (std::size_t i=0; i<assets.size(); ++i) {
+        const auto& asset=assets[i];
+        if (!isSpawnerAsset(asset.kind)) continue;
+        ++ordinal;
+        const bool incoming=asset.spawner.id && std::any_of(assets.begin(),assets.end(),[&](const HubAsset& other) {
+            return isSpawnerAsset(other.kind) && other.spawner.next==asset.spawner.id;
+        });
+        if (!picking && !incoming && !asset.spawner.next) continue;
+        glm::vec3 color(.98f,.81f,.39f);
+        if (picking && *picking==i) {
+            color={.25f,.85f,1};
+            box(asset,color*(.85f+.15f*std::sin(timeSeconds*4)));
+        } else if (picking && hovered && *hovered==asset) {
+            auto candidate=assets;
+            const bool valid=linkSpawners(candidate,*picking,i).empty();
+            color=valid ? glm::vec3(.4f,1,.57f) : glm::vec3(1,.35f,.24f);
+            box(asset,color);
+        }
+        const auto text=std::to_string(ordinal);
+        const auto position=asset.position+glm::vec3(0,1.78f,0);
+        const auto offset=camera.position()-position;
+        const auto facing=glm::rotate(glm::mat4(1),std::atan2(offset.x,offset.z),glm::vec3(0,1,0));
+        for (std::size_t digit=0; digit<text.size(); ++digit) {
+            const float shift=(float(digit)-(float(text.size())-1)*.5f)*.30f;
+            shader_.setMat4("transform",projection*glm::translate(glm::mat4(1),position)*facing
+                *glm::translate(glm::mat4(1),{shift,0,0}));
+            shader_.setVec3("color",color);
+            numberLabels_[text[digit]-'0'].draw();
+        }
+    }
+    glBindVertexArray(static_cast<GLuint>(vao));
+    glBindBuffer(GL_ARRAY_BUFFER,static_cast<GLuint>(buffer));
+    glUseProgram(static_cast<GLuint>(program));
+    if (!depthTest) glDisable(GL_DEPTH_TEST);
+    if (cullFace) glEnable(GL_CULL_FACE);
+    glDepthMask(depthMask);
+    glPolygonMode(GL_FRONT_AND_BACK,polygon[0]);
 }
 
 } // namespace voxel

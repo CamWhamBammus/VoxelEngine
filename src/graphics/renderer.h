@@ -91,6 +91,8 @@ public:
                      float timeSeconds = 0);
     void drawBuildTools(const SectionEditor& editor, const Camera& camera, int width, int height,
                        float timeSeconds = 0);
+    void drawSpawnerLinks(const SectionEditor& editor, const Camera& camera, int width, int height,
+                          float timeSeconds = 0);
 
 private:
     Shader shader_;
@@ -98,6 +100,9 @@ private:
     GLuint buffer_ = 0;
     GpuMesh previewMesh_;
     GpuMesh markerCube_, startLabel_, endLabel_;
+    GpuMesh spawnerLinks_;
+    std::array<GpuMesh,10> numberLabels_;
+    std::vector<HubAsset> linkedSpawners_;
     std::optional<HubAsset> previewAsset_;
     std::array<GpuMesh, ItemCount> pickupMeshes_;
     GpuMesh clipboardMesh_, pasteChangesMesh_;
