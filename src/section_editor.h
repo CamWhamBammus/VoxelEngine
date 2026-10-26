@@ -63,6 +63,7 @@ inline constexpr int SectionUiChestApply = 3604, SectionUiChestCancel = 3605, Se
 inline constexpr int SectionUiPickupMinus = 3610, SectionUiPickupPlus = 3611;
 inline constexpr int SectionUiSpawnerMinusBase = 3700, SectionUiSpawnerPlusBase = 3710;
 inline constexpr int SectionUiSpawnerRewards = 3720, SectionUiSpawnerApply = 3721, SectionUiSpawnerCancel = 3722;
+inline constexpr int SectionUiSpawnerLink = 3723, SectionUiSpawnerUnlink = 3724;
 inline constexpr int SectionUiPresetBase = 3800, SectionUiLayoutBase = 3810, SectionUiCreate = 3820;
 
 // One editable section lives in Game::world. This owns the authoring metadata,
@@ -138,6 +139,9 @@ public:
     HubAssetKind editingChestKind() const;
     const std::array<int, 3>& spawnerCounts() const { return spawnerCounts_; }
     const std::vector<ItemStack>& spawnerRewards() const { return spawnerRewards_; }
+    std::optional<std::size_t> editingSpawnerIndex() const { return editingSpawner_; }
+    std::optional<std::size_t> linkingSpawner() const { return pickingSpawnerLink_ ? editingSpawner_ : std::nullopt; }
+    std::optional<std::size_t> spawnerNext() const { return spawnerNext_; }
 
 private:
     struct Edit {
@@ -187,6 +191,7 @@ private:
     void openSpawnerSettings(Game& game, std::size_t index);
     void updateSpawnerSettings(Game& game, const InputActions& actions);
     void closeSpawnerSettings();
+    void updateSpawnerLink(Game& game, const InputActions& actions);
 
     std::filesystem::path libraryRoot_, draftPath_, acceptedPath_;
     SectionEditorScreen screen_ = SectionEditorScreen::Worlds;
@@ -248,7 +253,8 @@ private:
     int chestSelection_ = 0;
     std::string chestQuantityText_ = "1";
     bool chestQuantitySelected_ = true;
-    std::optional<std::size_t> editingSpawner_;
+    std::optional<std::size_t> editingSpawner_, spawnerNext_;
+    bool pickingSpawnerLink_ = false;
     std::array<int, 3> spawnerCounts_{2, 1, 1};
     std::vector<ItemStack> spawnerRewards_;
 };

@@ -1,6 +1,7 @@
 #include "section_editor.h"
 #include "game.h"
 #include "input.h"
+#include "spawner_chains.h"
 
 #include <algorithm>
 #include <cmath>
@@ -280,6 +281,11 @@ void SectionEditor::update(Game& game, const InputActions& actions, float deltaS
         }
         if (screen_ == SectionEditorScreen::SpawnerSettings) {
             updateSpawnerSettings(game, actions);
+            game.status = message_;
+            return;
+        }
+        if (pickingSpawnerLink_) {
+            updateSpawnerLink(game, actions);
             game.status = message_;
             return;
         }
@@ -858,6 +864,8 @@ void SectionEditor::openSpawnerSettings(Game& game, std::size_t index)
     editingSpawner_ = index;
     spawnerCounts_ = assets_[index].spawner.counts;
     spawnerRewards_ = assets_[index].chestItems;
+    spawnerNext_ = spawnerById(assets_, assets_[index].spawner.next);
+    pickingSpawnerLink_ = false;
     screen_ = SectionEditorScreen::SpawnerSettings;
     preview_.reset(); game.target.reset();
     message_ = "SET ENEMY COUNTS AND REWARDS | ACTIVATES WHEN A PLAYER WALKS NEARBY";
@@ -867,6 +875,8 @@ void SectionEditor::closeSpawnerSettings()
 {
     closeChestContents();
     editingSpawner_.reset();
+    spawnerNext_.reset();
+    pickingSpawnerLink_ = false;
     spawnerCounts_ = SpawnerSettings{}.counts;
     spawnerRewards_.clear();
     if (screen_ == SectionEditorScreen::SpawnerSettings) screen_ = SectionEditorScreen::Build;
@@ -877,7 +887,7 @@ void SectionEditor::updateSpawnerSettings(Game& game, const InputActions& action
     const int click = actions.devClick.value_or(-1);
     if (actions.closeMenu || click == SectionUiSpawnerCancel || click == SectionUiBack) {
         closeSpawnerSettings();
-        message_ = "SPAWNER EDIT CANCELLED | ORIGINAL ENEMIES AND REWARDS KEPT";
+        message_ = "SPAWNER EDIT CANCELLED";
         refreshTarget(game);
         return;
     }
@@ -898,28 +908,88 @@ void SectionEditor::updateSpawnerSettings(Game& game, const InputActions& action
         if (click == SectionUiSpawnerPlusBase + kind)
             spawnerCounts_[kind] = std::min(SpawnerMobLimit, spawnerCounts_[kind] + step);
     }
+    if (click == SectionUiSpawnerLink) {
+        pickingSpawnerLink_ = true;
+        screen_ = SectionEditorScreen::Build;
+        preview_.reset(); toolPreview_.reset(); game.target.reset();
+        message_ = "CLICK THE NEXT SPAWNER | X / ESC CANCEL";
+        return;
+    }
+    if (click == SectionUiSpawnerUnlink) {
+        spawnerNext_.reset();
+        message_ = "NEXT SPAWNER REMOVED | SAVE TO APPLY";
+        return;
+    }
     if (click == SectionUiSpawnerRewards) {
         openChestContents(game, *editingSpawner_);
         return;
     }
     if (actions.upgrade || click == SectionUiSpawnerApply || click == SectionUiConfirm) {
-        const SpawnerSettings settings{spawnerCounts_};
+        auto settings = assets_[*editingSpawner_].spawner;
+        settings.counts = spawnerCounts_;
         if (!validSpawnerSettings(settings)) {
             message_ = "ADD AT LEAST ONE ENEMY BEFORE SAVING THE SPAWNER";
             return;
         }
-        auto& asset = assets_[*editingSpawner_];
-        if (asset.spawner != settings || asset.chestItems != spawnerRewards_) {
+        auto staged = assets_;
+        auto& asset = staged[*editingSpawner_];
+        asset.spawner = settings;
+        asset.chestItems = spawnerRewards_;
+        if (spawnerNext_ != spawnerById(assets_, assets_[*editingSpawner_].spawner.next)) {
+            const auto error = linkSpawners(staged, *editingSpawner_, spawnerNext_);
+            if (!error.empty()) { message_ = error; return; }
+        }
+        if (staged != assets_) {
             Edit edit;
             edit.beforeMeta = meta_; edit.beforeAssets = assets_;
-            asset.spawner = settings;
-            asset.chestItems = spawnerRewards_;
+            assets_ = std::move(staged);
             changed(std::move(edit));
             message_ = "SPAWNER SAVED | CTRL/CMD+Z UNDO | F8 TEST ENCOUNTER";
         } else message_ = "SPAWNER UNCHANGED";
         closeSpawnerSettings();
         refreshTarget(game);
     }
+}
+
+
+void SectionEditor::updateSpawnerLink(Game& game, const InputActions& actions)
+{
+    if (!editingSpawner_ || *editingSpawner_ >= assets_.size()
+        || !isSpawnerAsset(assets_[*editingSpawner_].kind)) {
+        closeSpawnerSettings();
+        message_ = "SPAWNER NO LONGER EXISTS";
+        return;
+    }
+    if (actions.closeMenu || actions.devCancel) {
+        pickingSpawnerLink_ = false;
+        screen_ = SectionEditorScreen::SpawnerSettings;
+        preview_.reset(); game.target.reset();
+        message_ = "LINK SELECTION CANCELLED";
+        return;
+    }
+    game.camera.setPosition(glm::clamp(game.camera.position(), glm::vec3(SectionInteriorMin) + glm::vec3(.2f),
+                                       glm::vec3(SectionInteriorMax) - glm::vec3(.2f)));
+    refreshTarget(game);
+    preview_.reset(); toolPreview_.reset();
+    if (actions.save || actions.devTest || actions.devAccept || actions.devLibrary || actions.undo || actions.redo
+        || actions.devRename || actions.devTools || actions.devCopy || actions.devPaste) {
+        message_ = "CHOOSE THE NEXT SPAWNER OR PRESS X TO CANCEL";
+        return;
+    }
+    // Repeated creative mouse actions must never remove or place a model while linking.
+    if (!actions.removePressed && !actions.placePressed) return;
+    if (!targetAsset_ || !isSpawnerAsset(assets_[*targetAsset_].kind)) {
+        message_ = "CLICK A TRIAL SPAWNER | X / ESC CANCEL";
+        return;
+    }
+    auto candidate = assets_;
+    const auto error = linkSpawners(candidate, *editingSpawner_, targetAsset_);
+    if (!error.empty()) { message_ = error; return; }
+    spawnerNext_ = targetAsset_;
+    pickingSpawnerLink_ = false;
+    screen_ = SectionEditorScreen::SpawnerSettings;
+    game.target.reset();
+    message_ = "NEXT SPAWNER CHOSEN | SAVE TO APPLY";
 }
 
 std::optional<SectionBox> SectionEditor::buildSelection() const
