@@ -196,7 +196,7 @@ void verifySpawnerAuthoring(int width,int height,const std::filesystem::path& li
     for(const auto size:{glm::ivec2(width,height),glm::ivec2(640,360)}) {
         const float dpi=size.x==640 ? 2 : 1;
         const float scale=std::min({dpi,size.x/736.0f,size.y/516.0f});
-        const float x=(size.x/scale-610)*.5f,y=(size.y/scale-440)*.5f;
+        const float x=(size.x/scale-610)*.5f,y=(size.y/scale-496)*.5f;
         const auto hit=[&](float px,float py) {
             return Hud::sectionClick(game,size.x,size.y,dpi,(x+px)*scale,(y+py)*scale);
         };
@@ -206,8 +206,8 @@ void verifySpawnerAuthoring(int width,int height,const std::filesystem::path& li
             require(hit(551,109+kind*66)==SectionUiSpawnerPlusBase+kind,
                     "Spawner plus target disagrees with its scaled display");
         }
-        require(hit(305,335)==SectionUiSpawnerRewards && hit(100,418)==SectionUiSpawnerCancel
-                && hit(460,418)==SectionUiSpawnerApply,"Spawner settings targets moved at high DPI");
+        require(hit(305,335)==SectionUiSpawnerRewards && hit(100,474)==SectionUiSpawnerCancel
+                && hit(460,474)==SectionUiSpawnerApply,"Spawner settings targets moved at high DPI");
         draw(size.x,size.y,dpi);
     }
     act(SectionUiSpawnerPlusBase+1);
