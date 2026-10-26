@@ -43,6 +43,10 @@ inline constexpr int SpawnerMobLimit = 20;
 struct SpawnerSettings {
     // Skeleton, wizard, slime. The order matches MonsterKind.
     std::array<int, 3> counts{2, 1, 1};
+    // Section-local identity keeps links stable when scenery is removed or moved.
+    // Zero means unassigned/no successor. Only linked spawners need an identity.
+    std::uint32_t id = 0;
+    std::uint32_t next = 0;
     bool operator==(const SpawnerSettings&) const = default;
 };
 bool validSpawnerSettings(const SpawnerSettings& settings);

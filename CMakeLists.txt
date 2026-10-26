@@ -25,6 +25,7 @@ add_library(VoxelCore
     src/health.cpp
     src/monsters.cpp
     src/encounters.cpp
+    src/spawner_chains.cpp
     src/monster_preview.cpp
     src/graphics/monster_skeleton.cpp
     src/graphics/monster_wizard.cpp
