@@ -112,6 +112,120 @@ struct CallerTextures {
     }
 };
 
+glm::vec3 averageColor(const Pixels& pixels)
+{
+    glm::vec3 total(0);
+    for (std::size_t i = 0; i < pixels.size(); i += 4)
+        total += glm::vec3(pixels[i], pixels[i + 1], pixels[i + 2]);
+    return total / float(pixels.size() / 4);
+}
+
+double brightness(const Pixels& pixels)
+{
+    return glm::dot(averageColor(pixels), glm::vec3(.2126f, .7152f, .0722f));
+}
+
+double illuminatedFraction(const Pixels& pixels)
+{
+    std::size_t lit = 0;
+    for (std::size_t i = 0; i < pixels.size(); i += 4)
+        lit += .2126 * pixels[i] + .7152 * pixels[i + 1] + .0722 * pixels[i + 2] > 8;
+    return double(lit) / (pixels.size() / 4);
+}
+
+void verifySubmergedLights(int width, int height)
+{
+    World pool;
+    // The deep bed and far wall lie outside the lamp's radius. The center
+    // probe therefore measures light in the water, not a lit floor seen
+    // through it. Both source models remain well to the left of the probe.
+    for (int y = 18; y <= 50; ++y) for (int z = -18; z <= 18; ++z)
+        for (int x = -12; x <= 12; ++x) {
+            const bool boundary = x == -12 || x == 12 || z == -18 || z == 18 || y == 18 || y == 50;
+            pool.set({x,y,z}, boundary ? Block::Stone : y <= 35 ? Block::Water : Block::Air);
+        }
+    const glm::ivec3 source{-4,33,0};
+    const auto camera = lookAt({.5f,41.f,7.5f}, {.5f,36.f,.5f});
+    WorldRenderer renderer;
+    CallerTextures textures;
+    const auto sample = [&](WorldRenderer& view, const Camera& eye,
+                            std::span<const HubAsset> assets = {}) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glEnable(GL_DEPTH_TEST); glDepthMask(GL_TRUE); glDepthRange(0,1);
+        glDisable(GL_SCISSOR_TEST); glDisable(GL_BLEND);
+        view.render(pool, eye, width, height, false, true, 0, false, false,
+                    assets, {}, {}, {}, {}, {}, {}, {}, true);
+        textures.check();
+        const int patchWidth = width / 6, patchHeight = height / 6;
+        Pixels pixels(static_cast<std::size_t>(patchWidth) * patchHeight * 4);
+        glReadPixels((width - patchWidth) / 2, (height - patchHeight) / 2,
+                     patchWidth, patchHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        require(glGetError() == GL_NO_ERROR, "submerged-light fixture generated an OpenGL error");
+        return pixels;
+    };
+    const auto dark = sample(renderer, camera);
+    require(brightness(dark) <= 1, "water glows in a cave with no light source");
+
+    pool.set(source, Block::Lantern);
+    const auto warm = sample(renderer, camera);
+    const double warmBrightness = brightness(warm);
+    require(warmBrightness > 8 && illuminatedFraction(warm) > .65,
+            "submerged lantern lights only its panes, not the surrounding water (water brightness "
+            + std::to_string(warmBrightness) + ")");
+
+    pool.set(source, Block::Crystal);
+    const auto cool = sample(renderer, camera);
+    const auto warmColor = averageColor(warm), coolColor = averageColor(cool);
+    require(brightness(cool) > 8 && illuminatedFraction(cool) > .65,
+            "submerged crystal does not illuminate a broad water patch");
+    require(coolColor.b - coolColor.r > warmColor.b - warmColor.r + 5,
+            "water ignores the color of its submerged light source");
+
+    pool.set(source, Block::Water);
+    const std::array<HubAsset,1> lamp{{{HubAssetKind::LanternCap, {-3.5f,33.3f,.5f}}}};
+    const auto placed = sample(renderer, camera, lamp);
+    require(brightness(placed) > 8 && illuminatedFraction(placed) > .65,
+            "a placed underwater lantern asset cannot light the water");
+    require(brightness(sample(renderer, camera)) <= 1,
+            "removing a submerged lamp leaves stale water illumination");
+
+    pool.set(source, Block::Lantern);
+    require(difference(warm, sample(renderer, camera)) < .15,
+            "switching from an asset lamp back to a block lamp retained old light data");
+    // This partition ends at the waterline and lies outside the camera probe.
+    // It blocks the submerged source, without hiding the sampled water face.
+    for (int y = 19; y <= 35; ++y) for (int z = -17; z < 18; ++z)
+        pool.set({-2,y,z}, Block::Stone);
+    const double shadowed = brightness(sample(renderer, camera));
+    require(shadowed < std::max(2.0, warmBrightness * .12),
+            "submerged light leaks through a solid partition (water brightness "
+            + std::to_string(shadowed) + ")");
+    for (int y = 19; y <= 35; ++y) for (int z = -17; z < 18; ++z)
+        pool.set({-2,y,z}, Block::Water);
+    require(difference(warm, sample(renderer, camera)) < .15,
+            "removing an underwater partition did not restore the light");
+
+    const auto rebuilds = renderer.sceneRebuildCount();
+    const auto nearby = lookAt({.65f,41.1f,7.65f}, {.5f,36.f,.5f});
+    const auto farther = lookAt({.5f,44.f,11.7f}, {.5f,36.f,.5f});
+    require(brightness(sample(renderer, nearby)) > warmBrightness * .6,
+            "a small camera movement switches off submerged lighting");
+    const auto distant = sample(renderer, farther);
+    require(brightness(distant) > warmBrightness * .6,
+            "water illumination disappears when backing away from the pool");
+    require(renderer.sceneRebuildCount() == rebuilds,
+            "moving around submerged lighting rebuilt static scenery");
+    require(difference(warm, sample(renderer, camera)) < .15,
+            "returning to the pool view retained camera-dependent light data");
+    WorldRenderer fresh;
+    require(difference(distant, sample(fresh, farther)) < .15,
+            "cached submerged lighting differs from a fresh renderer");
+    std::cout << "Submerged water lights passed: broad warm/cool pools " << warmBrightness
+              << '/' << brightness(cool) << ", asset lamp " << brightness(placed)
+              << ", shadow " << shadowed
+              << "; darkness, source edits, stone occlusion, distance and cache stability\n";
+}
+
 } // namespace
 
 void verifyWaterRendering(int width, int height)
@@ -236,6 +350,7 @@ void verifyWaterRendering(int width, int height)
               << ", depth " << depthChange << ", underwater near/deep " << nearChange << '/' << deepChange
               << ", swimmer bed haze " << submergedChange
               << "; immediate water exit, opaque occlusion, fixed time, resize, world/renderer switches and texture bindings\n";
+    verifySubmergedLights(width, height);
 }
 
 } // namespace voxel

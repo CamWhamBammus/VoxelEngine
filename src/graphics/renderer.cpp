@@ -249,8 +249,10 @@ void main() {
             vec4 source = lightData(i, 0);
             vec3 offset = source.xyz - lightPosition;
             float distanceSquared = dot(offset, offset);
+            bool behindSurface = dot(surfaceNormal, offset) <= 0.0;
+            bool backlitWater = materialId == 16 && behindSurface;
             if (distanceSquared >= source.w * source.w
-                || (firstPerson != 2 && dot(surfaceNormal, offset) <= 0.0)) continue;
+                || (firstPerson != 2 && materialId != 16 && behindSurface)) continue;
             vec3 lightColor = lightData(i, 1).rgb;
             float distanceToLight = sqrt(distanceSquared);
             float falloff = max(1.0 - distanceToLight / source.w, 0.0);
@@ -260,11 +262,17 @@ void main() {
             // back. A small diffuse wrap keeps its markings readable in a lit
             // room. It still requires a visible source and emits no light.
             if (firstPerson == 2) facing = .22 + .78 * facing;
+            // Water scatters light arriving from below its surface. Keep the
+            // same range and shadow rays, so submerged lamps cannot light
+            // through solid banks or illuminate an otherwise unlit cave.
+            if (backlitWater) facing = .2 + .8 * max(-dot(normal, direction), 0.0);
             if (facing <= 0.0) continue;
             float strength = falloff * falloff
                 * lightVisibility(start, source.xyz, direction, falloff * falloff * facing);
             if (strength <= 0.0) continue;
             pointLight += lightColor * strength * 1.65 * facing;
+            // Light transmitted through water is not a reflected glint.
+            if (backlitWater) continue;
             vec3 halfDirection = direction + viewDirection;
             halfDirection /= max(length(halfDirection), 0.001);
             float shine = pow(max(dot(normal, halfDirection), 0.0), mix(64.0, 8.0, surface.roughness));
