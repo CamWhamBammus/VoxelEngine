@@ -12,8 +12,10 @@ bool Game::updateCombat(const InputActions& actions, float seconds)
         || !std::isfinite(seconds) || seconds <= 0) return health_.dead();
     updateMining(actions, seconds);
     const bool swing = equipment.selectedTool() == Tool::Sword && actions.attack;
-    const int damage = encounters_.update(world,player,camera.forward(),swing,seconds);
-    damagePlayer(damage, encounters_.playerHitDirection());
+    const int damage = encounters_.update(world,player,camera.forward(),swing,seconds,swordDamage(equipment));
+    // Armor protects against monsters. Falling and the section's kill plane
+    // stay in checkPlayerDamage, so upgrading cannot bypass parkour hazards.
+    damagePlayer(armoredDamage(equipment, damage), encounters_.playerHitDirection());
     if (playerKnockbackRemaining_ > 0 && !health_.dead()) {
         const float before = playerKnockbackRemaining_ / PlayerKnockbackDuration;
         playerKnockbackRemaining_ = std::max(0.0f, playerKnockbackRemaining_ - std::min(seconds, .1f));

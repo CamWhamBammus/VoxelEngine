@@ -244,8 +244,7 @@ void pickaxeIcon(Drawing& out, glm::vec2 center, float scale, int tier)
     out.bar(p(-10,12),p(5,-8),1.0f*scale,{0.81f,0.59f,0.29f,1});
     constexpr std::array<glm::vec2,8> head{{{-14,-6},{-9,-13},{5,-14},{15,-7},
                                          {18,2},{10,-5},{3,-8},{-7,-8}}};
-    const auto color = tier <= 1 ? glm::vec4(0.47f,0.59f,0.65f,1)
-        : tier == 2 ? glm::vec4(0.84f,0.49f,0.25f,1) : glm::vec4(0.66f,0.83f,0.88f,1);
+    const glm::vec4 color(glm::mix(gearMaterial(tier).color,glm::vec3(1),.12f),1);
     for (std::size_t i=1; i+1<head.size(); ++i)
         out.triangle(center+head[0]*scale,center+head[i]*scale,center+head[i+1]*scale,color);
     out.triangle(p(-9,-13),p(5,-14),p(3,-10),Cream);
@@ -293,7 +292,7 @@ void compassIcon(Drawing& out, glm::vec2 center, float scale, glm::vec2 directio
 
 // The same bevelled blade, brass guard and wrapped grip appear in the pocket
 // and in hand. Keeping its silhouette consistent makes slot four recognizable.
-void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0)
+void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0,int tier=1)
 {
     const float c=std::cos(angle),s=std::sin(angle);
     const auto p=[&](float x,float y) {return center+glm::vec2(c*x-s*y,s*x+c*y)*scale;};
@@ -301,8 +300,9 @@ void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0)
         out.triangle(p(a.x,a.y),p(b.x,b.y),p(c.x,c.y),color);
         out.triangle(p(a.x,a.y),p(c.x,c.y),p(d.x,d.y),color);
     };
-    constexpr glm::vec4 steel{.58f,.72f,.77f,1},shadow{.25f,.37f,.43f,1};
-    constexpr glm::vec4 edge{.87f,.95f,.92f,1},brass{.73f,.44f,.17f,1};
+    const auto metal=glm::mix(gearMaterial(tier).color,glm::vec3(1),.12f);
+    const glm::vec4 steel(metal,1),shadow(metal*.60f,1),edge(glm::mix(metal,glm::vec3(1),.45f),1);
+    constexpr glm::vec4 brass{.73f,.44f,.17f,1};
     face({-6,1},{-6,-39},{0,-50},{0,1},steel);
     face({0,1},{0,-50},{6,-39},{6,1},shadow);
     face({-6,-39},{0,-50},{-3,-38},{-3,1},edge);
@@ -317,6 +317,58 @@ void swordIcon(Drawing& out,glm::vec2 center,float scale,float angle=0)
     out.triangle(p(-4,23),p(4,23),p(0,26),Gold);
     out.triangle(p(0,-1),p(3,2),p(0,5),{.18f,.72f,.70f,1});
     out.triangle(p(0,-1),p(0,5),p(-3,2),{.51f,.92f,.81f,1});
+}
+
+// Armor silhouettes remain recognizable even when a slot is empty or a dark
+// material is equipped. Facets use the same material palette as held tools.
+void armorIcon(Drawing& out,GearSlot slot,glm::vec2 center,float scale,int tier)
+{
+    const auto metal=tier>0 ? glm::mix(gearMaterial(tier).color,glm::vec3(1),.12f)
+                           : glm::vec3(.26f,.26f,.23f);
+    const glm::vec4 face(metal,1),shade(metal*.58f,1),edge(glm::mix(metal,glm::vec3(1),tier>0 ? .36f : .08f),1);
+    const auto p=[&](float x,float y) { return center+glm::vec2(x,y)*scale; };
+    const auto box=[&](float x,float y,float w,float h,glm::vec4 color) {
+        out.quad(center.x+x*scale,center.y+y*scale,w*scale,h*scale,color);
+    };
+    if (slot==GearSlot::Helmet) {
+        out.triangle(p(-15,-4),p(-9,-15),p(9,-15),face);
+        out.triangle(p(-15,-4),p(9,-15),p(15,-4),face);
+        box(-15,-4,30,16,face);
+        box(3,-12,8,22,shade);
+        box(-11,-3,22,10,Panel);
+        box(-15,-5,30,3,edge);
+        box(-4,-3,8,18,edge);
+        box(-15,7,5,7,shade);box(10,7,5,7,shade);
+    } else if (slot==GearSlot::Chestplate) {
+        out.triangle(p(-18,-10),p(-8,-15),p(-8,0),edge);
+        out.triangle(p(18,-10),p(8,-15),p(8,0),shade);
+        box(-12,-11,24,25,face);
+        out.triangle(p(-12,14),p(12,14),p(0,19),shade);
+        box(-16,-11,6,12,face);box(10,-11,6,12,shade);
+        box(-5,-13,10,5,Panel);
+        box(0,-6,10,16,shade);
+        box(-10,-6,20,2,edge);
+        box(-10,9,20,3,edge);
+    } else if (slot==GearSlot::Leggings) {
+        box(-13,-15,26,8,face);
+        box(-13,-7,11,25,face);box(2,-7,11,25,shade);
+        box(-13,-15,26,3,edge);
+        box(-12,3,10,5,edge);box(3,3,10,5,face);
+        box(-5,-14,10,4,Gold);
+    } else if (slot==GearSlot::Boots) {
+        box(-13,-15,10,23,face);box(3,-15,10,23,shade);
+        box(-18,6,15,10,face);box(3,6,15,10,face);
+        box(-18,13,15,4,shade);box(3,13,15,4,shade);
+        box(-13,-15,10,4,edge);box(3,-15,10,4,edge);
+        box(-18,6,15,3,edge);box(3,6,15,3,edge);
+    }
+}
+
+void gearIcon(Drawing& out,GearSlot slot,glm::vec2 center,float scale,int tier)
+{
+    if (slot==GearSlot::Pickaxe) pickaxeIcon(out,center,scale,tier);
+    else if (slot==GearSlot::Sword) swordIcon(out,center+glm::vec2(0,9*scale),scale*.52f,.28f,tier);
+    else armorIcon(out,slot,center,scale,tier);
 }
 
 glm::vec2 compassNeedle(const Game& game)
@@ -340,11 +392,7 @@ void toolBelt(Drawing& out,const Equipment& equipment,float center,float top,glm
         case Tool::Pickaxe: pickaxeIcon(out,icon,.75f,equipment.pickaxeTier); break;
         case Tool::Lantern: lanternIcon(out,icon,.75f); break;
         case Tool::Compass: compassIcon(out,icon,.75f,needle); break;
-        case Tool::Sword: swordIcon(out,icon+glm::vec2(-1,4),.39f,.40f); break;
-        }
-        if(slot==0) {
-            for (int tier=0;tier<3;++tier)
-                out.quad(x+31+tier*4,top+39,2,3,tier<equipment.pickaxeTier ? Gold : Edge);
+        case Tool::Sword: swordIcon(out,icon+glm::vec2(-1,4),.39f,.40f,equipment.swordTier); break;
         }
         if(active) out.quad(x+5,top+45,slotWidth-10,2,Gold);
     }
@@ -1315,10 +1363,10 @@ void levelUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,float w
     }
 }
 
-SectionCanvas inventoryCanvas(int width, int height, float contentScale)
+SectionCanvas inventoryCanvas(int width, int height, float contentScale, bool chest = false)
 {
     if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
-    const float scale=std::min({std::clamp(contentScale,0.5f,4.0f),width/784.0f,height/530.0f});
+    const float scale=std::min({std::clamp(contentScale,0.5f,4.0f),width/(chest ? 976.0f : 784.0f),height/530.0f});
     return {scale,width/scale,height/scale};
 }
 
@@ -1387,7 +1435,7 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
 {
     const auto& inventory=game.equipment.inventory;
     const bool chest=game.chestOpen();
-    const float panelWidth=chest ? 748.0f : 396.0f;
+    const float panelWidth=chest ? 940.0f : 588.0f;
     constexpr float panelHeight=482;
     const float x=(width-panelWidth)*.5f,y=(height-panelHeight)*.5f;
     out.quad(0,0,width,height,{.025f,.016f,.009f,.73f});
@@ -1415,6 +1463,20 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         }
         hits.push_back({sx,sy,60,60,InventoryUiSlotBase+slot});
     }
+    out.text("EQUIPPED",x+388,y+65,1,Muted);
+    for (int index=0;index<4;++index) {
+        const auto slot=static_cast<GearSlot>(static_cast<int>(GearSlot::Helmet)+index);
+        const int tier=gearTier(game.equipment,slot);
+        const float ay=y+92+index*68;
+        packFrame(out,x+388,ay,40,60,Edge,Panel,3);
+        armorIcon(out,slot,{x+408,ay+30},.85f,tier);
+        fittedText(out,gearSlotName(slot),x+440,ay+16,112,1,Cream);
+        fittedText(out,tier>0 ? gearMaterial(tier).name : "EMPTY",x+440,ay+35,112,1,
+                   tier>0 ? glm::vec4(glm::mix(gearMaterial(tier).color,glm::vec3(1),.35f),1) : Muted);
+    }
+    out.quad(x+376,y+65,1,365,Edge);
+    fittedText(out,std::to_string(armorProtection(game.equipment))+"% PROTECTION",x+388,y+382,164,1,Leaf);
+    fittedText(out,"UPGRADE AT ARMORY",x+388,y+405,164,1,Muted);
     out.quad(x+24,y+371,332,1,Edge);
     const int selected=game.inventorySelection();
     if (selected>=0 && selected<Inventory::SlotCount && inventory.slots[selected].count>0) {
@@ -1427,7 +1489,7 @@ void inventoryUi(Drawing& out,std::vector<SectionHit>& hits,const Game& game,flo
         out.text("SELECT AN ITEM, THEN A SLOT TO MOVE IT",x+35,y+390,1,Muted);
     }
     if (chest) {
-        const float cx=x+396;
+        const float cx=x+588;
         out.quad(cx-20,y+65,1,368,Edge);
         fittedText(out,game.chestName(),cx,y+65,302,1.25f,Gold);
         const auto& contents=game.chestContents();
@@ -1668,8 +1730,8 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (game.editorMode() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
     if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
     // Preserve the layout on small windows, then apply the display's DPI scale.
-    const float minWidth=game.crossingMenuOpen() ? 620.0f : game.levelActive() ? 776.0f : 460.0f;
-    const float minHeight=game.crossingMenuOpen() ? 470.0f : game.levelActive() ? 550.0f : 440.0f;
+    const float minWidth=(game.smithOpen() || game.armoryOpen()) ? 520.0f : game.crossingMenuOpen() ? 620.0f : game.levelActive() ? 776.0f : 460.0f;
+    const float minHeight=(game.smithOpen() || game.armoryOpen()) ? 500.0f : game.crossingMenuOpen() ? 470.0f : game.levelActive() ? 550.0f : 440.0f;
     const float scale = std::min({std::clamp(contentScale,0.5f,4.0f),
                                  framebufferWidth / minWidth, framebufferHeight / minHeight});
     const float width = framebufferWidth / scale, height = framebufferHeight / scale;
@@ -1698,45 +1760,77 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     if (game.nearBlacksmith() && !game.menuOpen()) {
         quietCentered(drawing,"E  BLACKSMITH",center,height*.5f+30,180,Gold);
     }
+    if (game.nearArmory() && !game.menuOpen()) {
+        quietCentered(drawing,"E  ARMORY",center,height*.5f+30,180,Gold);
+    }
     if (game.nearExpeditionGate() && !game.menuOpen()) {
         quietCentered(drawing,"E  EXPEDITIONS",center,height*.5f+30,220,Leaf);
     }
-    if (game.smithOpen()) {
-        drawing.quad(0,0,width,height,{.025f,.016f,.009f,.55f});
-        constexpr float panelWidth = 410, panelHeight = 300;
-        const float x = center-panelWidth*0.5f, y = height*0.5f-panelHeight*0.5f-28;
+    if (game.smithOpen() || game.armoryOpen()) {
+        const bool armor=game.armoryOpen();
+        const int rows=armor ? 4 : 2;
+        const auto selectedSlot=game.upgradeSelection();
+        const auto cost=gearUpgradeCost(equipment,selectedSlot);
+        const bool affordable=cost && equipment.inventory.count(cost->item)>=cost->count;
+        constexpr float panelWidth=480;
+        const float detailTop=78+rows*44,panelHeight=detailTop+174;
+        const float x=center-panelWidth*.5f,y=(height-panelHeight)*.5f;
+        drawing.quad(0,0,width,height,{.025f,.016f,.009f,.60f});
         drawing.frame(x,y,panelWidth,panelHeight,Edge);
-        drawing.text("BLACKSMITH",x+22,y+19,2,Gold);
-        drawing.quad(x+20,y+61,panelWidth-40,1,Edge);
-        drawing.frame(x+22,y+77,80,74,Edge,Canvas);
-        pickaxeIcon(drawing,{x+61,y+115},1.75f,equipment.pickaxeTier);
-        drawing.text("PICKAXE",x+122,y+81,1.75f,Cream);
-        fittedText(drawing,"CURRENT TIER "+std::to_string(equipment.pickaxeTier),x+122,y+103,panelWidth-144,1.25f,Muted);
-        const auto cost = pickaxeUpgradeCost(equipment.pickaxeTier);
-        const bool affordable = cost && equipment.inventory.count(ItemId::CopperOre) >= cost->copper && equipment.inventory.count(ItemId::IronOre) >= cost->iron;
-        fittedText(drawing,cost ? "NEXT TIER "+std::to_string(equipment.pickaxeTier+1) : "FULLY UPGRADED",
-                   x+122,y+124,panelWidth-144,1.25f,Gold);
-        std::string feedback = game.status;
+        drawing.text(armor ? "ARMORY" : "BLACKSMITH",x+24,y+22,2,Gold);
+        fittedText(drawing,armor ? "ARMOR" : "TOOLS",x+350,y+27,106,1,Muted);
+        for (int index=0;index<rows;++index) {
+            const auto slot=static_cast<GearSlot>(index+(armor ? static_cast<int>(GearSlot::Helmet) : 0));
+            const int current=gearTier(equipment,slot);
+            const float ry=y+64+index*44;
+            const bool active=slot==selectedSlot;
+            drawing.frame(x+20,ry,panelWidth-40,40,active ? Gold : Edge,active ? Selected : Panel,3);
+            drawing.text(std::to_string(index+1),x+28,ry+16,1,active ? Gold : Muted);
+            gearIcon(drawing,slot,{x+62,ry+20},.72f,current);
+            fittedText(drawing,gearSlotName(slot),x+92,ry+9,160,1,Cream);
+            fittedText(drawing,current>0 ? gearMaterial(current).name : "EMPTY",x+92,ry+25,160,1,
+                       current>0 ? glm::vec4(glm::mix(gearMaterial(current).color,glm::vec3(1),.35f),1) : Muted);
+            const auto next=gearUpgradeCost(equipment,slot);
+            fittedText(drawing,next ? "> "+std::string(gearMaterial(next->nextTier).name) : "MAXIMUM",
+                       x+278,ry+17,158,1,active ? Gold : Muted);
+        }
+        drawing.quad(x+24,y+detailTop-5,panelWidth-48,1,Edge);
+        fittedText(drawing,cost ? "NEXT: "+std::string(gearMaterial(cost->nextTier).name)+" "+std::string(gearSlotName(selectedSlot))
+                               : gearName(equipment,selectedSlot)+" / MAXIMUM",
+                   x+24,y+detailTop+9,panelWidth-48,1.25f,Cream);
+        auto upgraded=equipment;
+        if (cost) {
+            if (selectedSlot==GearSlot::Pickaxe) upgraded.pickaxeTier=cost->nextTier;
+            else if (selectedSlot==GearSlot::Sword) upgraded.swordTier=cost->nextTier;
+            else upgraded.armorTiers[static_cast<int>(selectedSlot)-static_cast<int>(GearSlot::Helmet)]=cost->nextTier;
+        }
+        const auto stat=[&](const Equipment& value) {
+            if (selectedSlot==GearSlot::Pickaxe) return "MINING POWER "+std::to_string(value.pickaxeTier);
+            if (selectedSlot==GearSlot::Sword) return "DAMAGE "+std::to_string(swordDamage(value));
+            return "PROTECTION "+std::to_string(armorProtection(value))+"%";
+        };
+        fittedText(drawing,stat(equipment)+(cost ? " > "+stat(upgraded) : ""),
+                   x+24,y+detailTop+32,panelWidth-48,1,Leaf);
+        if (cost) {
+            oreIcon(drawing,cost->item,{x+42,y+detailTop+67},.65f);
+            fittedText(drawing,std::to_string(cost->count)+" "+std::string(itemInfo(cost->item).name),
+                       x+68,y+detailTop+57,246,1,affordable ? Cream : glm::vec4(.94f,.53f,.39f,1));
+            fittedText(drawing,"HAVE "+std::to_string(equipment.inventory.count(cost->item)),
+                       x+328,y+detailTop+57,128,1,Muted);
+        }
+        std::string feedback=game.status;
         std::replace(feedback.begin(),feedback.end(),'\n',' ');
         std::replace(feedback.begin(),feedback.end(),'\r',' ');
-        if (feedback.size() > 60) feedback = feedback.substr(0,57) + "...";
-        const bool error = feedback.starts_with("Upgrade not saved") || feedback.starts_with("Progress unavailable")
+        const bool error=feedback.starts_with("Upgrade not saved") || feedback.starts_with("Progress unavailable")
             || feedback.starts_with("Not enough");
-        fittedText(drawing,feedback,x+24,y+153,panelWidth-48,1,error ? glm::vec4(0.94f,0.53f,0.39f,1)
-                   : feedback.starts_with("Pickaxe upgraded") ? Gold : Muted);
-        drawing.text("UPGRADE COST",x+24,y+166,1,Muted);
-        drawing.text("IN YOUR PACK",x+225,y+166,1,Muted);
-        drawing.text(cost ? std::to_string(cost->copper)+" COPPER" : "-",x+24,y+183,1.25f,
-                     cost && equipment.inventory.count(ItemId::CopperOre) < cost->copper ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
-        drawing.text(cost ? std::to_string(cost->iron)+" IRON" : "-",x+24,y+202,1.25f,
-                     cost && equipment.inventory.count(ItemId::IronOre) < cost->iron ? glm::vec4(0.91f,0.47f,0.35f,1) : Cream);
-        fittedText(drawing,std::to_string(equipment.inventory.count(ItemId::CopperOre))+" COPPER",x+225,y+183,panelWidth-249,1.25f,Cream);
-        fittedText(drawing,std::to_string(equipment.inventory.count(ItemId::IronOre))+" IRON",x+225,y+202,panelWidth-249,1.25f,Cream);
-        drawing.frame(x+22,y+226,panelWidth-44,30,affordable ? Gold : Edge,
-                      affordable ? glm::vec4(0.77f,0.51f,0.18f,1) : Canvas);
-        fittedCentered(drawing,!cost ? "MAXIMUM TIER" : affordable ? "ENTER - UPGRADE" : "MORE MATERIALS NEEDED",
-                       center,y+236,panelWidth-64,1.5f,affordable ? Panel : Muted);
-        drawing.centered("E / ESC - CLOSE",center,y+268,1, Cream);
+        fittedText(drawing,feedback,x+24,y+detailTop+88,panelWidth-48,1,
+                   error ? glm::vec4(.94f,.53f,.39f,1) : Muted);
+        drawing.frame(x+24,y+detailTop+110,panelWidth-48,30,affordable ? Gold : Edge,
+                      affordable ? Selected : Canvas);
+        fittedCentered(drawing,!cost ? "MAXIMUM TIER" : affordable ? "ENTER - UPGRADE" : "MORE ORE NEEDED",
+                       center,y+detailTop+121,panelWidth-64,1,affordable ? Gold : Muted);
+        drawing.centered(armor ? "1-4 / UP DOWN SELECT   E / ESC CLOSE" : "1-2 / UP DOWN SELECT   E / ESC CLOSE",
+                         center,y+detailTop+154,1,Muted);
     }
     if (game.crossingMenuOpen()) crossingPicker(drawing,game,width,height);
     render(drawing, shader_, vao_, buffer_);
@@ -1967,7 +2061,7 @@ void Hud::drawInventory(const Game& game,int framebufferWidth,int framebufferHei
 {
     if (game.editorMode() || framebufferWidth<=0 || framebufferHeight<=0
         || (game.devMode() && game.sectionEditor().screen()!=SectionEditorScreen::Test)) return;
-    const auto canvas=inventoryCanvas(framebufferWidth,framebufferHeight,contentScale);
+    const auto canvas=inventoryCanvas(framebufferWidth,framebufferHeight,contentScale,game.chestOpen());
     Drawing drawing(canvas.width,canvas.height,canvas.scale);
     std::vector<SectionHit> hits;
     if (game.inventoryOpen()) inventoryUi(drawing,hits,game,canvas.width,canvas.height);
@@ -1987,7 +2081,7 @@ std::optional<int> Hud::inventoryClick(const Game& game,int framebufferWidth,int
 {
     if (!game.inventoryOpen() || framebufferWidth<=0 || framebufferHeight<=0
         || !std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
-    const auto canvas=inventoryCanvas(framebufferWidth,framebufferHeight,contentScale);
+    const auto canvas=inventoryCanvas(framebufferWidth,framebufferHeight,contentScale,game.chestOpen());
     Drawing drawing(canvas.width,canvas.height,canvas.scale);
     std::vector<SectionHit> hits;
     inventoryUi(drawing,hits,game,canvas.width,canvas.height);

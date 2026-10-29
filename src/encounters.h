@@ -60,7 +60,7 @@ public:
     // Returns damage to apply to the player; menus and death pause by not
     // calling update. Holding the sword button repeats at its fixed cooldown.
     int update(const World& world, const Player& player, glm::vec3 aimDirection,
-               bool swordAttack, float deltaSeconds);
+               bool swordAttack, float deltaSeconds, int swordDamage = SwordDamage);
     void resetUnfinished();
     void markCleared(std::size_t assetIndex);
 
@@ -114,7 +114,7 @@ private:
     };
 
     bool spawnMob(const World& world, const Player& player, std::size_t spawner);
-    void swingSword(const World& world, const Player& player, glm::vec3 direction);
+    void swingSword(const World& world, const Player& player, glm::vec3 direction, int damage);
     int updateMob(Mob& mob, const World& world, const Player& player, float seconds);
     void refreshViews();
     void checkCompletions();

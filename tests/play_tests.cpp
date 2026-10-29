@@ -139,7 +139,7 @@ int main()
         actions.active = actions.interact = actions.upgrade = true;
         game.update(actions);
         check(!game.smithOpen() && game.equipment.pickaxeTier == 1
-              && game.equipment.inventory.count(voxel::ItemId::CopperOre) == 12,
+              && game.equipment.inventory.count(voxel::ItemId::Coal) == 12,
               "interaction and upgrade requests cannot reach the blacksmith from spawn");
         check(game.player.setFeetPosition(game.world, voxel::sceneBlacksmithApproach()), "blacksmith approach has player clearance");
         game.camera.setPosition(game.player.eyePosition());
@@ -170,16 +170,17 @@ int main()
               "blacksmith menu freezes walking, jumping and tool selection");
         actions.upgrade = true;
         game.update(actions);
-        check(game.equipment.pickaxeTier == 2 && game.equipment.inventory.count(voxel::ItemId::CopperOre) == 4,
-              "Enter upgrades the pickaxe and charges starter copper");
+        check(game.equipment.pickaxeTier == 2 && game.equipment.inventory.count(voxel::ItemId::Coal) == 2,
+              "Enter upgrades the pickaxe and charges starter coal");
         const auto upgraded = game.equipment;
         game.update(actions);
         check(game.equipment == upgraded && game.status.find("Not enough") != std::string::npos,
-              "another upgrade cannot spend missing iron or regrant copper");
-        game.equipment.inventory.add(voxel::ItemId::IronOre, 8);
+              "another upgrade cannot spend missing copper or regrant coal");
+        game.equipment.inventory.add(voxel::ItemId::CopperOre, 10);
         game.update(actions);
-        check(game.equipment.pickaxeTier == 3 && game.equipment.inventory.count(voxel::ItemId::IronOre) == 0,
-              "blacksmith supports the final iron tier");
+        check(game.equipment.pickaxeTier == 3 && game.equipment.inventory.count(voxel::ItemId::CopperOre) == 0,
+              "blacksmith upgrades Copper to Tin using ten copper");
+        game.equipment.pickaxeTier = voxel::GearTierCount;
         const auto maximum = game.equipment;
         game.update(actions);
         check(game.equipment == maximum, "max-tier requests never charge ore");
@@ -216,12 +217,12 @@ int main()
         openSmith(persistent);
         persistent.update(upgradeAction);
         check(persistent.equipment.pickaxeTier == 2
-              && voxel::loadEquipment(persistentOptions.progressPath).inventory.count(voxel::ItemId::CopperOre) == 4,
+              && voxel::loadEquipment(persistentOptions.progressPath).inventory.count(voxel::ItemId::Coal) == 2,
               "successful upgrade persists its exact remaining balance");
         voxel::Game resumed(persistentOptions);
-        check(resumed.equipment.pickaxeTier == 2 && resumed.equipment.inventory.count(voxel::ItemId::CopperOre) == 4
+        check(resumed.equipment.pickaxeTier == 2 && resumed.equipment.inventory.count(voxel::ItemId::Coal) == 2
               && resumed.status.find("STARTER") == std::string::npos,
-              "restart restores the tier and never grants starter copper twice");
+              "restart restores the tier and never grants starter coal twice");
         { std::ofstream file(persistentOptions.progressPath); file << "damaged profile"; }
         voxel::Game damaged(persistentOptions);
         const auto damagedHelp = damaged.statusText(0, 0, 0, 0, true, true);

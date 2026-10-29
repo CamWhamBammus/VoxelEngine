@@ -1,5 +1,6 @@
 #include "hub_assets.h"
 #include "asset_collision.h"
+#include "equipment.h"
 #include "scene.h"
 
 #include <algorithm>
@@ -740,6 +741,67 @@ void checkBlacksmith(const World& world, const std::vector<HubAsset>& plan)
     };
     check(hasForgeLight(lit) && !hasForgeLight(unlit),"the warm coal light follows forge placement and support edits");
 }
+
+void checkArmory(const World& world, const std::vector<HubAsset>& plan)
+{
+    const auto layout=sceneArmoryLayout();
+    const auto approach=sceneArmoryApproach();
+    const auto door=glm::vec3(hubBuildingDoor(sceneArmoryBuilding()))+glm::vec3(.5f,0,.5f);
+    std::vector<HubAsset> fixtures;
+    World edited=world;
+    int stands=0,benches=0,signs=0;
+    for (const auto& asset : plan) {
+        if (!isArmoryAsset(asset.kind)) continue;
+        fixtures.push_back(asset);
+        stands+=asset.kind==HubAssetKind::ArmorStand;
+        benches+=asset.kind==HubAssetKind::ArmorerBench;
+        signs+=asset.kind==HubAssetKind::ShieldSign;
+        const auto support=glm::ivec3(glm::floor(asset.position
+            +(asset.kind==HubAssetKind::ShieldSign ? glm::vec3(0,0,-.15f) : glm::vec3(0,-.01f,0))));
+        check(isSolid(world.get(support)),"armory furniture rests on the room floor or attaches to a wall");
+        edited.set(support,Block::Air);
+        const auto mesh=buildHubAsset(asset);
+        check(mesh.indices.size()/3<650,"armor displays and fitting furniture keep a modest triangle count");
+        for (std::size_t i=0;i<mesh.indices.size();i+=3) {
+            check(!triangleIntersectsBox(mesh,i,approach+glm::vec3(-.31f,.01f,-.31f),
+                                        approach+glm::vec3(.31f,1.81f,.31f)),
+                  "armory models leave the fitting bench approach clear");
+            check(!triangleIntersectsBox(mesh,i,door+glm::vec3(-1.1f,.01f,-5),
+                                        door+glm::vec3(1.1f,1.81f,1.5f)),
+                  "armory displays preserve the entry and central aisle");
+        }
+    }
+    check(stands==3 && benches==1 && signs==1,"the armory contains three armor sets, a fitting bench and a shield sign");
+    const auto changed=planHubAssets(edited);
+    for (const auto& asset : fixtures)
+        check(!containsAsset(changed,asset),"removing an armory fixture's support removes its model");
+    AssetCollision collision;
+    collision.rebuild(fixtures);
+    check(!collision.overlaps(approach+glm::vec3(-.3f,.01f,-.3f),approach+glm::vec3(.3f,1.8f,.3f)),
+          "the player can stand at the armory without penetrating model collision");
+    const auto ray=collision.raycast(approach+glm::vec3(0,1.62f,0),
+                                    sceneArmoryStation()-approach-glm::vec3(0,1.62f,0),3);
+    check(!ray || ray->distance>1.3f,"armory interaction is not blocked by a display in front of the work surface");
+    for (const auto stand : layout.stands)
+        check(collision.raycast(stand+glm::vec3(0,1.50f,1),{0,0,-1},2).has_value(),
+              "displayed breastplates have real collision geometry");
+    for (int tier=1;tier<=GearTierCount;++tier) {
+        const auto mesh=buildHubAsset({HubAssetKind::ArmorStand,{},0,std::uint32_t(tier-1)});
+        std::array<bool,4> pieces{};
+        bool bevel=false;
+        for (const auto& vertex : mesh.vertices) {
+            if (vertex.material!=static_cast<float>(Block::Slate)) continue;
+            const float y=vertex.position.y;
+            const int piece=y<.65f ? 0 : y<1.15f ? 1 : y<1.75f ? 2 : 3;
+            pieces[piece]=true;
+            bevel|=std::abs(vertex.normal.y)>.05f && std::abs(vertex.normal.y)<.95f;
+        }
+        check(std::all_of(pieces.begin(),pieces.end(),[](bool visible){ return visible; }) && bevel,
+              "every ore variant has separate boots, leggings, breastplate and a faceted helmet");
+        if (tier>1) check(!same(mesh,buildHubAsset({HubAssetKind::ArmorStand,{},0,std::uint32_t(tier-2)})),
+                          "consecutive ore armor displays use distinct material palettes");
+    }
+}
 } // namespace
 
 int main()
@@ -832,6 +894,7 @@ int main()
           "intrinsic block paving replaces automatically overlaid paving assets");
     checkHubPlacement(world, plan);
     checkBlacksmith(world, plan);
+    checkArmory(world, plan);
     const auto dressing = buildHubDressing(world);
     const auto repeated = buildHubDressing(world);
     std::size_t actualIndices = 0;

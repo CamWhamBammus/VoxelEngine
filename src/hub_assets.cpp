@@ -327,6 +327,28 @@ std::vector<HubAsset> planHubAssets(const World& world)
         if (isSolid(world.get(support)) && facadeFits(world,fixture)) assets.push_back(fixture);
     }
 
+    const auto armory = sceneArmoryLayout();
+    const auto armoryFloorClear = [&](const HubAsset& asset) {
+        for (const auto& vertex : buildHubAsset(asset).vertices) {
+            const auto foot = glm::ivec3(glm::floor(glm::vec3(vertex.position.x,
+                asset.position.y-0.01f,vertex.position.z)));
+            if (!isSolid(world.get(foot)) || !air(world,vertex.position+glm::vec3(0,0.001f,0))) return false;
+        }
+        return true;
+    };
+    // Copper, jade and mithril show the ore progression at a glance. The same
+    // models are available in the editor and supply their own triangle collision.
+    constexpr std::array<std::uint32_t,3> armorVariants{1,8,16};
+    for (std::size_t i=0;i<armory.stands.size();++i) {
+        const HubAsset stand{HubAssetKind::ArmorStand,armory.stands[i],0,armorVariants[i]};
+        if (armoryFloorClear(stand)) assets.push_back(stand);
+    }
+    const HubAsset fittingBench{HubAssetKind::ArmorerBench,armory.workbench,1,3};
+    if (armoryFloorClear(fittingBench)) assets.push_back(fittingBench);
+    const HubAsset shieldSign{HubAssetKind::ShieldSign,armory.sign,0,1};
+    if (isSolid(world.get(glm::ivec3(glm::floor(armory.sign-glm::vec3(0,0,.15f)))))
+        && facadeFits(world,shieldSign)) assets.push_back(shieldSign);
+
     // A few complementary plants share each irregular garden pocket. Empty
     // space between pockets keeps the paths and larger terrain shapes legible.
     using Kind = HubAssetKind;
@@ -558,7 +580,7 @@ MeshData buildHubAsset(const HubAsset& asset)
     else if (isFenceAsset(asset.kind)) appendHubFence(mesh, asset);
     else if (isBuildingKitAsset(asset.kind)) appendHubBuildingKit(mesh, asset);
     else if (isLushAsset(asset.kind)) appendHubLush(mesh, asset);
-    else if (isBlacksmithAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
+    else if (isBlacksmithAsset(asset.kind) || isArmoryAsset(asset.kind)) appendHubBlacksmith(mesh, asset);
     else if (asset.kind >= HubAssetKind::Dormer) appendHubArchitecture(mesh, asset);
     else if (asset.kind >= HubAssetKind::BroadleafClump) appendHubGarden(mesh, asset);
     else if (asset.kind >= HubAssetKind::Boulder) appendHubNature(mesh, asset);

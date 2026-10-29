@@ -412,6 +412,16 @@ int main()
               "the station is within interaction range with an unobstructed eye ray");
         check(&voxel::sceneBlacksmithBuilding() == &voxel::sceneBuildingPlan().front(),
               "blacksmith helpers refer to the existing arrival workshop");
+        const auto armoryApproach = voxel::sceneArmoryApproach();
+        checkRoute(world, routes, glm::ivec3(glm::floor(armoryApproach)), "armory fitting bench approach");
+        check(player.setFeetPosition(world, armoryApproach) && player.grounded(),
+              "armory standing position has player clearance and floor support");
+        const auto armorySight = voxel::sceneArmoryStation() - player.eyePosition();
+        check(glm::length(armorySight) < 4.0f && !voxel::raycast(player.eyePosition(), armorySight,
+              glm::length(armorySight), [&](glm::ivec3 cell) { return world.get(cell); }),
+              "armory fitting bench is in interaction range with an unobstructed eye ray");
+        check(&voxel::sceneArmoryBuilding() == &voxel::sceneBuildingPlan()[1],
+              "the armory occupies the existing cottage next to the blacksmith");
         const auto connected = routes.cells.size();
         std::cout << "Seed " << seed << ": " << connected << " connected floor cells, canopy "
                   << coordinate(canopyHigh - canopyLow) << " reaching Y" << highestCanopy << '\n';

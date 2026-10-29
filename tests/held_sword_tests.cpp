@@ -1,4 +1,5 @@
 #include "graphics/held_sword.h"
+#include "equipment.h"
 
 #include <algorithm>
 #include <cmath>
@@ -61,6 +62,23 @@ int main()
     check(bladeFront > .02f && bladeBack < -.02f && hi.y-lo.y > 1.0f && hi.y-lo.y < 1.3f,
           "Blade needs real thickness on both sides and a readable metre-long silhouette");
     check(steel && brass && leather,"Steel, guard and glove must retain distinct surface materials");
+
+    for (int tier=1;tier<=GearTierCount;++tier) {
+        const auto variant=buildHeldSword(tier);
+        check(variant.indices==mesh.indices && variant.vertices.size()==mesh.vertices.size(),
+              "Every material must retain the complete 3D sword mesh");
+        bool unchangedShape=true;
+        for (std::size_t vertex=0;vertex<mesh.vertices.size();++vertex)
+            unchangedShape &= variant.vertices[vertex].position==mesh.vertices[vertex].position
+                && variant.vertices[vertex].normal==mesh.vertices[vertex].normal
+                && finite(variant.vertices[vertex].color);
+        check(unchangedShape,"Material changes must preserve normals, framing and animation");
+        if (tier>1) check(glm::length(variant.vertices.front().color-mesh.vertices.front().color)>.01f,
+                         "Ore tiers need visibly distinct tool materials");
+    }
+    check(buildHeldSword(-1).vertices.front().color==mesh.vertices.front().color
+          && buildHeldSword(999).vertices.front().color==buildHeldSword(GearTierCount).vertices.front().color,
+          "Invalid tool material tiers must clamp safely");
 
     bool bounded = true, poseFinite = true, smooth = true;
     float minDepth=100,maxDepth=-100;

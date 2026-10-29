@@ -327,15 +327,30 @@ void verifyPlayHud(int width, int height)
         require(game.smithOpen(),"HUD fixture could not open the blacksmith");
         game.equipment.selectedSlot=0;
         game.equipment.pickaxeTier=1; game.equipment.inventory={};
-        game.equipment.inventory.add(ItemId::CopperOre,12);
+        game.equipment.inventory.add(ItemId::Coal,12);
         const auto affordable=draw(width,height);
-        game.equipment.inventory.remove(ItemId::CopperOre,12);
+        game.equipment.inventory.remove(ItemId::Coal,12);
         require(difference(affordable,draw(width,height))>400,"Unaffordable forge upgrade did not show a disabled state");
-        game.equipment.pickaxeTier=3;
+        game.equipment.pickaxeTier=GearTierCount;
         require(difference(affordable,draw(width,height))>400,"Maximum pickaxe tier did not change the forge panel");
         const auto capped=draw(width,height);
         game.status="Upgrade not saved: "+std::string(300,'X');
         require(difference(capped,draw(width,height))>30,"Forge panel did not show bounded save-error feedback");
+        InputActions chooseSword;chooseSword.active=true;chooseSword.selectedUpgrade=1;
+        game.update(chooseSword);
+        require(game.upgradeSelection()==GearSlot::Sword
+                && difference(capped,draw(width,height))>300,"Selecting the sword must change the upgrade preview");
+        InputActions closeShop;closeShop.closeMenu=true;game.update(closeShop);
+        require(game.player.setFeetPosition(game.world,sceneArmoryApproach()),"HUD fixture cannot reach the armory");
+        game.camera.setPosition(game.player.eyePosition());
+        game.update(open);
+        require(game.armoryOpen(),"HUD fixture could not open the armory");
+        game.equipment.armorTiers={2,8,14,0};
+        const auto armory=draw(width,height);
+        InputActions chooseBoots;chooseBoots.active=true;chooseBoots.selectedUpgrade=3;
+        game.update(chooseBoots);
+        require(game.upgradeSelection()==GearSlot::Boots && difference(armory,draw(width,height))>300,
+                "Armory selection must show the chosen armor piece and its crafting cost");
         draw(640,360,2);
         const auto before=state();
         hud.drawPlay(game,0,0);
@@ -352,7 +367,7 @@ void verifyPlayHud(int width, int height)
         cleanup(); throw;
     }
     cleanup();
-    std::cout << "Play HUD passed: directional player hit pulse, clear aim, fade/reset, health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, quiet swimming HUD, forge states, feedback, DPI and GL state\n";
+    std::cout << "Play HUD passed: directional player hit pulse, clear aim, fade/reset, health and death, sword swings, hit-revealed occluded mob bars, tool selection, compass, quiet swimming HUD, material tool icons, forge and armory states, feedback, DPI and GL state\n";
 }
 
 } // namespace voxel

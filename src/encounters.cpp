@@ -306,7 +306,7 @@ bool EncounterSession::spawnMob(const World& world, const Player& player, std::s
     return false;
 }
 
-void EncounterSession::swingSword(const World& world, const Player& player, glm::vec3 direction)
+void EncounterSession::swingSword(const World& world, const Player& player, glm::vec3 direction, int damage)
 {
     swordCooldown_ = SwordCooldown;
     if (!finite(direction) || glm::length(direction) < .001f) return;
@@ -322,7 +322,7 @@ void EncounterSession::swingSword(const World& world, const Player& player, glm:
         if (hit >= 0 && hit < nearest) { nearest = hit; target = &mob; }
     }
     if (!target) return;
-    target->health = std::max(0, target->health - SwordDamage);
+    target->health = std::max(0, target->health - std::clamp(damage, 1, 1000));
     target->healthVisible = 4.0f;
     target->recoilRemaining = HitRecoilDuration;
     target->model.hitReaction = 1;
@@ -514,7 +514,7 @@ void EncounterSession::refreshViews()
 }
 
 int EncounterSession::update(const World& world, const Player& player, glm::vec3 aimDirection,
-                             bool swordAttack, float deltaSeconds)
+                             bool swordAttack, float deltaSeconds, int swordDamage)
 {
     playerHitDirection_ = glm::vec3(0);
     if (!std::isfinite(deltaSeconds) || deltaSeconds <= 0) return 0;
@@ -550,7 +550,7 @@ int EncounterSession::update(const World& world, const Player& player, glm::vec3
             spawner.spawnDelay = SpawnInterval;
         }
     }
-    if (swordAttack && swordCooldown_ == 0) swingSword(world, player, aimDirection);
+    if (swordAttack && swordCooldown_ == 0) swingSword(world, player, aimDirection, swordDamage);
     std::erase_if(mobs_, [](const Mob& mob) { return mob.health <= 0; });
     int damage = 0;
     glm::vec3 damageDirection(0);

@@ -1,5 +1,6 @@
 #include "held_pickaxe_smoke.h"
 #include "camera.h"
+#include "equipment.h"
 #include "graphics/renderer.h"
 
 #include <algorithm>
@@ -73,12 +74,12 @@ void verifyHeldPickaxe(int width, int height)
     camera.setPosition({.5f,41.6f,4.5f});
     camera.rotate(35,25); // Look along -Z, level with the horizon.
     WorldRenderer renderer;
-    const auto draw=[&](std::optional<float> swing, int w, int h, std::optional<float> sword = {}) {
+    const auto draw=[&](std::optional<float> swing, int w, int h, std::optional<float> sword = {}, int tier=1) {
         glBindFramebuffer(GL_FRAMEBUFFER,0);
         glViewport(0,0,w,h);
         glEnable(GL_DEPTH_TEST); glDepthMask(GL_TRUE); glDepthRange(0,1);
         glDisable(GL_SCISSOR_TEST); glDisable(GL_BLEND);
-        renderer.render(world,camera,w,h,false,true,0,false,false,{},{},{},{},sword,{},swing);
+        renderer.render(world,camera,w,h,false,true,0,false,false,{},{},{},{},sword,{},swing,{},false,{},{},1,tier);
         Frame frame{w,h,std::vector<unsigned char>(static_cast<std::size_t>(w)*h*4),
                         std::vector<float>(static_cast<std::size_t>(w)*h)};
         glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,frame.pixels.data());
@@ -102,6 +103,13 @@ void verifyHeldPickaxe(int width, int height)
             "Pickaxe swing did not move its visible 3D silhouette");
     require(renderer.sceneRebuildCount()==rebuilds,"Pickaxe animation rebuilt static scenery");
     require(draw({},width,height).pickaxePixels()==0,"Switching away left a held pickaxe in the view");
+    const auto upgraded=draw(0,width,height,{},GearTierCount);
+    require(upgraded.depth==idle.depth && glm::length(pickaxeColor(upgraded)-pickaxeColor(idle))>5,
+            "Upgrading must recolor the cached 3D pickaxe without changing its silhouette");
+    const auto restored=draw(0,width,height);
+    require(restored.pixels==idle.pixels && renderer.sceneRebuildCount()==rebuilds,
+            "Changing pickaxe material must update its cache without rebuilding the world");
+
 
     const auto swordOnly=draw({},width,height,0);
     const auto bothTools=draw(0,width,height,0);

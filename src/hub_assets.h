@@ -34,10 +34,11 @@ enum class HubAssetKind {
     JungleMonstera, JungleCycad, BambooClump, FiddleheadFerns,
     HangingFern, MossDrape, PitcherPlants, SeedPodCluster,
     RootBridge, RootStump, MossyPlatform, MossyColumn,
-    OvergrownArch, RuinedPillar, RuinedWall, RuinSlab
+    OvergrownArch, RuinedPillar, RuinedWall, RuinSlab,
+    ArmorStand, ShieldSign, ArmorerBench
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::RuinSlab) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ArmorerBench) + 1;
 
 inline constexpr int SpawnerMobLimit = 20;
 struct SpawnerSettings {
@@ -106,6 +107,11 @@ constexpr bool isPathAsset(HubAssetKind kind)
 constexpr bool isBlacksmithAsset(HubAssetKind kind)
 {
     return kind >= HubAssetKind::Forge && kind <= HubAssetKind::AnvilSign;
+}
+
+constexpr bool isArmoryAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::ArmorStand && kind <= HubAssetKind::ArmorerBench;
 }
 
 constexpr bool isLushAsset(HubAssetKind kind)

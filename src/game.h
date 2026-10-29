@@ -114,6 +114,8 @@ public:
     LevelController& levelController() { return levelController_; }
     const LevelController& levelController() const { return levelController_; }
     bool smithOpen() const { return smithOpen_; }
+    bool armoryOpen() const { return armoryOpen_; }
+    GearSlot upgradeSelection() const { return upgradeSelection_; }
     bool inventoryOpen() const { return inventoryOpen_; }
     bool chestOpen() const { return openChest_.has_value(); }
     int inventorySelection() const { return inventorySelection_; }
@@ -134,6 +136,7 @@ public:
         return sectionLootActive_ ? loot_.collision() : sectionEditor_.assetCollision();
     }
     bool nearBlacksmith() const;
+    bool nearArmory() const;
     bool crossingMenuOpen() const { return crossingMenuOpen_; }
     bool rootCrossingActive() const { return rootCrossingIndex_ >= 0; }
     int rootCrossingIndex() const { return rootCrossingIndex_; }
@@ -145,7 +148,7 @@ public:
     int crossingFalls() const { return crossingFalls_; }
     bool nearExpeditionGate() const;
     glm::vec3 compassTarget() const;
-    bool menuOpen() const { return inventoryOpen_ || smithOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
+    bool menuOpen() const { return inventoryOpen_ || smithOpen_ || armoryOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
                            bool captured, bool showHelp) const;
@@ -215,6 +218,8 @@ private:
     int editReach_;
     bool editorMode_;
     bool smithOpen_ = false;
+    bool armoryOpen_ = false;
+    GearSlot upgradeSelection_ = GearSlot::Pickaxe;
     std::string progressPath_;
     std::string progressError_;
     LootSession loot_;

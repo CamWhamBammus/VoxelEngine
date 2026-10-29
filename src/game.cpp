@@ -130,7 +130,7 @@ Game::Game(const Options& options)
         else {
             buildVillage();
             if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
-            status = "F6 ROOT CROSSING TESTS | BLACKSMITH SOUTHWEST | 12 STARTER COPPER";
+            status = "F6 ROOT CROSSING TESTS | WORKSHOPS SOUTHWEST | 12 STARTER COAL";
         }
         if (!progressPath_.empty()) {
             try {
@@ -164,7 +164,7 @@ void Game::resetMonsterCamera()
 void Game::enterMonsterPreview()
 {
     endSectionLoot();
-    smithOpen_ = crossingMenuOpen_ = false;
+    smithOpen_ = armoryOpen_ = crossingMenuOpen_ = false;
     monsterPreviewActive_ = true;
     monsterPreview_.build(world);
     auto collision = std::make_shared<AssetCollision>();
@@ -198,7 +198,7 @@ void Game::updateMonsters(const InputActions& actions, float deltaSeconds)
 void Game::enterDevMode()
 {
     if (levelController_.open() && !levelController_.leave(*this)) { status = levelController_.message(); return; }
-    smithOpen_ = crossingMenuOpen_ = false;
+    smithOpen_ = armoryOpen_ = crossingMenuOpen_ = false;
     rootCrossingIndex_ = -1;
     endSectionLoot();
     devMode_ = true;
@@ -226,7 +226,7 @@ void Game::enterLevelMode(bool creator)
     buildVillage();
     if (!returnToVillage()) throw std::runtime_error("Village spawn has no room for the player");
     rootCrossingIndex_ = -1;
-    smithOpen_ = crossingMenuOpen_ = false;
+    smithOpen_ = armoryOpen_ = crossingMenuOpen_ = false;
     levelController_.enter(*this, creator);
 }
 
@@ -330,7 +330,7 @@ void Game::buildVillage()
 
 bool Game::returnToVillage()
 {
-    smithOpen_ = false;
+    smithOpen_ = armoryOpen_ = false;
     // Search only inside the cavern. The surface spawn helper would put us
     // above its roof. Nearby supported spaces also handle an obstructed arrival.
     Player destination = player;
@@ -370,7 +370,7 @@ bool Game::returnToVillage()
 
 void Game::updatePlay(const InputActions& actions, float deltaSeconds)
 {
-    if (actions.closeMenu) { smithOpen_ = crossingMenuOpen_ = false; return; }
+    if (actions.closeMenu) { smithOpen_ = armoryOpen_ = crossingMenuOpen_ = false; return; }
     if (!actions.active) return;
     if (actions.crossingMenu) {
         if (crossingMenuOpen_) crossingMenuOpen_ = false;
@@ -411,13 +411,22 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
                                    : "No safe space at the village entrance";
         return;
     }
-    if (smithOpen_ && !nearBlacksmith()) {
-        smithOpen_ = false;
-        status = "Blacksmith is out of reach";
+    if ((smithOpen_ && !nearBlacksmith()) || (armoryOpen_ && !nearArmory())) {
+        smithOpen_ = armoryOpen_ = false;
+        status = "Workshop is out of reach";
     }
-    if (smithOpen_) {
-        if (actions.interact) smithOpen_ = false;
-        else if (actions.upgrade) upgradeEquipment();
+    if (smithOpen_ || armoryOpen_) {
+        if (actions.interact) { smithOpen_ = armoryOpen_ = false; return; }
+        const int first = armoryOpen_ ? int(GearSlot::Helmet) : int(GearSlot::Pickaxe);
+        const int count = armoryOpen_ ? 4 : 2;
+        int row = int(upgradeSelection_) - first;
+        if (actions.selectedUpgrade && *actions.selectedUpgrade >= 0 && *actions.selectedUpgrade < count)
+            row = *actions.selectedUpgrade;
+        else if (actions.upgradeStep != 0)
+            row = (row + (actions.upgradeStep > 0 ? 1 : count - 1)) % count;
+        const auto selected = static_cast<GearSlot>(first + row);
+        if (selected != upgradeSelection_) { upgradeSelection_ = selected; status.clear(); }
+        if (actions.upgrade) upgradeEquipment();
         return;
     }
     if (actions.selectedTool && *actions.selectedTool >= 0 && *actions.selectedTool < ToolCount)
@@ -430,7 +439,14 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
     }
     if (actions.interact && nearBlacksmith()) {
         smithOpen_ = true;
-        status = "Spend ore from your satchel to strengthen your pickaxe";
+        upgradeSelection_ = GearSlot::Pickaxe;
+        status.clear();
+        return;
+    }
+    if (actions.interact && nearArmory()) {
+        armoryOpen_ = true;
+        upgradeSelection_ = GearSlot::Helmet;
+        status.clear();
         return;
     }
     player.update(world, actions.movement, camera.forward(), actions.jump, actions.sprint, deltaSeconds, actions.descend);
@@ -442,7 +458,7 @@ void Game::updatePlay(const InputActions& actions, float deltaSeconds)
 
 void Game::openCrossingMenu()
 {
-    smithOpen_ = false;
+    smithOpen_ = armoryOpen_ = false;
     crossingMenuOpen_ = true;
     if (rootCrossingActive()) crossingMenuSelection_ = rootCrossingIndex_;
 }
@@ -477,7 +493,7 @@ void Game::startRootCrossing(int index)
     crossingCourse_ = buildRootCrossing(world, index);
     player.setAssetCollision(nullptr);
     rootCrossingIndex_ = crossingMenuSelection_ = index;
-    smithOpen_ = crossingMenuOpen_ = false;
+    smithOpen_ = armoryOpen_ = crossingMenuOpen_ = false;
     crossingCompleted_ = crossingCheckpointReached_ = false;
     crossingElapsed_ = 0.0f;
     crossingFalls_ = 0;
@@ -556,41 +572,6 @@ glm::vec3 Game::compassTarget() const
     if (devMode_ && sectionEditor_.hasSection()) return sectionEditor_.meta().finish;
     if (levelActive()) return levelController_.meta().finish;
     return rootCrossingActive() ? crossingCourse_.finish : HeartTreeCenter;
-}
-
-bool Game::nearBlacksmith() const
-{
-    if (editorMode_ || devMode_ || levelController_.open() || rootCrossingActive()) return false;
-    const auto station = sceneBlacksmithStation();
-    const auto support = glm::ivec3(glm::floor(station)) - glm::ivec3(0, 1, 0);
-    if (!isSolid(world.get(support)) || !isSolid(world.get(support - glm::ivec3(0, 1, 0)))) return false;
-    const auto delta = station - player.eyePosition();
-    const float distance = glm::length(delta);
-    if (distance > 4.0f || glm::distance(player.feetPosition(), sceneBlacksmithApproach()) > 4.0f) return false;
-    if (distance < .001f) return true;
-    const auto obstruction = raycast(player.eyePosition(), delta, distance,
-        [this](glm::ivec3 position) { return world.get(position); });
-    return !obstruction || obstruction->distance >= distance - .001f;
-}
-
-void Game::upgradeEquipment()
-{
-    if (!progressError_.empty()) { status = progressError_; return; }
-    auto upgraded = equipment;
-    switch (upgradePickaxe(upgraded)) {
-    case UpgradeResult::MaxTier: status = "Pickaxe is already tier 3"; return;
-    case UpgradeResult::InsufficientResources: status = "Not enough ore for this upgrade"; return;
-    case UpgradeResult::Upgraded: break;
-    }
-    try {
-        // Commit the profile before charging the in-memory inventory. A failed
-        // write leaves both the old equipment and existing save intact.
-        if (!progressPath_.empty()) saveEquipment(upgraded, progressPath_);
-        equipment = upgraded;
-        status = "Pickaxe upgraded to tier " + std::to_string(equipment.pickaxeTier);
-    } catch (const std::exception& error) {
-        status = std::string("Upgrade not saved: ") + error.what();
-    }
 }
 
 void Game::handleFiles(const InputActions& actions)

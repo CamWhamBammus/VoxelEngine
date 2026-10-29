@@ -106,20 +106,25 @@ void verifyInventoryHud(int width,int height)
         require(game.inventoryOpen(),"I action did not open inventory during F8 playtest");
         const auto opened=draw(width,height);
         require(difference(closed,opened)>10000,"Inventory did not open visibly");
+        game.equipment.armorTiers={2,8,14,18};
+        const auto equipped=draw(width,height);
+        require(difference(opened,equipped)>250,"Equipped armor materials and protection did not appear beside the pack");
+        game.equipment.armorTiers={};
+        require(difference(opened,draw(width,height))==0,"Empty armor slots did not restore correctly");
         const auto verifyHits=[&](int w,int h,float dpi,bool chest) {
-            const float scale=std::min({dpi,w/784.0f,h/530.0f});
-            const float x=(w/scale-(chest ? 748 : 396))*.5f,y=(h/scale-482)*.5f;
+            const float scale=std::min({dpi,w/(chest ? 976.0f : 784.0f),h/530.0f});
+            const float x=(w/scale-(chest ? 940 : 588))*.5f,y=(h/scale-482)*.5f;
             const auto hit=[&](float px,float py) { return Hud::inventoryClick(game,w,h,dpi,px*scale,py*scale); };
             for (int slot=0;slot<20;++slot)
                 require(hit(x+54+(slot%5)*68,y+122+(slot/5)*68)==InventoryUiSlotBase+slot,
                         "Inventory slot hit area disagrees with DPI layout");
             require(hit(x+309,y+70)==InventoryUiSort,"Sort target disagrees with DPI layout");
-            require(hit(x+(chest ? 748 : 396)-36,y+29)==InventoryUiClose,"Close target disagrees with DPI layout");
+            require(hit(x+(chest ? 940 : 588)-36,y+29)==InventoryUiClose,"Close target disagrees with DPI layout");
             if (chest) {
                 for (int slot=0;slot<ChestSlotCount;++slot)
-                    require(hit(x+396+72+(slot%2)*153,y+92+12+(slot/2)*26)==InventoryUiLootBase+slot,
+                    require(hit(x+588+72+(slot%2)*153,y+92+12+(slot/2)*26)==InventoryUiLootBase+slot,
                             "Every authored chest stack needs a visible target at normal and high DPI");
-                require(hit(x+545,y+387)==InventoryUiTakeAll,"Take All target disagrees with DPI layout");
+                require(hit(x+737,y+387)==InventoryUiTakeAll,"Take All target disagrees with DPI layout");
             }
             require(!hit(x-1,y-1),"Inventory accepts outside clicks");
             draw(w,h,dpi);
@@ -193,6 +198,6 @@ void verifyInventoryHud(int width,int height)
         require(state()==before,"Minimized inventory altered OpenGL state");
     } catch (...) { cleanup(); throw; }
     cleanup();
-    std::cout<<"Inventory HUD passed: 20 slots, ore/key icons, 20 authored chest stacks, full/empty states, DPI hit tests and GL state\n";
+    std::cout<<"Inventory HUD passed: 20 slots, four equipped armor slots, material colors, protection, ore/key icons, 20 authored chest stacks, full/empty states, DPI hit tests and GL state\n";
 }
 } // namespace voxel

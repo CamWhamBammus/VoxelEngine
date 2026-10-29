@@ -244,6 +244,12 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         actions_.mineHeld = !modal && buttons.remove;
         actions_.interact = pressed(buttons.interact, previous.interact);
         actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
+        if (modal && !crossingPicker) {
+            for (int row = 0; row < 4; ++row)
+                if (pressed(buttons.tools[row], previous.tools[row])) actions_.selectedUpgrade = row;
+            actions_.upgradeStep = int(pressed(buttons.menuNext, previous.menuNext))
+                - int(pressed(buttons.menuPrevious, previous.menuPrevious));
+        }
         actions_.crossingMenu = pressed(buttons.crossingMenu, previous.crossingMenu);
         actions_.crossingStep = static_cast<int>(pressed(buttons.nextCrossing, previous.nextCrossing))
             - static_cast<int>(pressed(buttons.previousCrossing, previous.previousCrossing));

@@ -131,7 +131,8 @@ int main(int argc, char** argv)
                                 && game.equipment.selectedTool() == voxel::Tool::Pickaxe
                                 ? std::optional<float>(game.mining().swing()) : std::nullopt,
                             holdLantern ? std::optional<float>(carriedToolTime) : std::nullopt,
-                            game.darkCave(), heldCompass, game.encounters().activations());
+                            game.darkCave(), heldCompass, game.encounters().activations(),
+                            game.equipment.swordTier, game.equipment.pickaxeTier);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
             if (input.captured() && !game.menuOpen()) {

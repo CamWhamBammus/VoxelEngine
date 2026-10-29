@@ -77,7 +77,7 @@ void mappingAndPersistence(const Options& options, const LevelDefinition& level,
     const auto authored = read(section);
     Game game(options);
     require(game.levelController().start(game, level), "ore room starts");
-    game.equipment.pickaxeTier = 3;
+    game.equipment.pickaxeTier = GearTierCount;
     game.equipment.inventory = {};
     for (std::size_t i = 0; i < oreCatalog().size(); ++i) {
         const auto info = oreCatalog()[i];
@@ -132,7 +132,7 @@ void controls(const Options& options, const LevelDefinition& level)
 
     approach(game, oreCell(4)); hold(game, 30);
     require(game.world.get(oreCell(4)) == Block::SilverOre && game.mining().blocked(), "silver requires an upgraded pickaxe");
-    game.equipment.pickaxeTier = 2;
+    game.equipment.pickaxeTier = oreInfo(Block::SilverOre)->requiredTier;
     mine(game, oreCell(4));
     approach(game, cell);
     position(game, glm::vec3(cell.x + .5f, 9, cell.z + 7.5f)); aim(game, glm::vec3(cell) + .5f);
@@ -248,6 +248,7 @@ void minedMarkerRespawns(const Options& options, const std::filesystem::path& ro
     level.sections = {section.lexically_relative(options.sectionLibrary)};
     auto liveOptions = options; liveOptions.progressPath = (root / "marker-respawn.vxp").string();
     Game live(liveOptions);
+    live.equipment.pickaxeTier = oreInfo(Block::CopperOre)->requiredTier;
     require(live.levelController().start(live, level), "mineable marker room starts");
 
     const auto deathAndReturn = [](Game& game) {

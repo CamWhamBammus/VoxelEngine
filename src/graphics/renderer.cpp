@@ -1,5 +1,6 @@
 #include "graphics/renderer.h"
 #include "camera.h"
+#include "equipment.h"
 #include "graphics/cave_details.h"
 #include "graphics/block_relief.h"
 #include "graphics/materials.h"
@@ -389,7 +390,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                            std::optional<float> heldPickaxeSwing,
                            std::optional<float> heldLanternTime, bool darkCave,
                            std::optional<HeldCompassState> heldCompass,
-                           std::span<const EncounterActivation> activations)
+                           std::span<const EncounterActivation> activations,
+                           int swordTier, int pickaxeTier)
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
@@ -853,9 +855,17 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     if (heldSwordSwing || heldPickaxeSwing || showLantern || showCompass) {
         auto& heldMesh = heldSwordSwing ? heldSword_ : heldPickaxeSwing ? heldPickaxe_
                       : showLantern ? heldLantern_ : heldCompass_;
-        if (!heldMesh.indexCount())
-            heldMesh.upload(heldSwordSwing ? buildHeldSword() : heldPickaxeSwing ? buildHeldPickaxe()
+        swordTier = std::clamp(swordTier, 1, GearTierCount);
+        pickaxeTier = std::clamp(pickaxeTier, 1, GearTierCount);
+        const bool materialChanged = heldSwordSwing ? heldSwordTier_ != swordTier
+                                   : heldPickaxeSwing && heldPickaxeTier_ != pickaxeTier;
+        if (!heldMesh.indexCount() || materialChanged) {
+            heldMesh.upload(heldSwordSwing ? buildHeldSword(swordTier)
+                          : heldPickaxeSwing ? buildHeldPickaxe(pickaxeTier)
                           : showLantern ? buildHeldLantern() : buildHeldCompass());
+            if (heldSwordSwing) heldSwordTier_ = swordTier;
+            if (heldPickaxeSwing) heldPickaxeTier_ = pickaxeTier;
+        }
         if (showCompass && !compassNeedle_.indexCount()) compassNeedle_.upload(buildHeldCompassNeedle());
         const auto view = camera.viewMatrix();
         const float aspect = static_cast<float>(width) / height;

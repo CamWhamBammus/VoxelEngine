@@ -1,4 +1,5 @@
 #include "mining.h"
+#include "equipment.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,7 +35,7 @@ std::optional<MiningTarget> MiningSession::update(std::optional<MiningTarget> ta
 
     // Upgrades unlock tougher deposits and shorten familiar ones. Damage is
     // continuous while held; releasing or changing the target discards work.
-    const float speed = 1.0f + .25f * (std::clamp(tier,1,3) - 1);
+    const float speed = 1.0f + .07f * (std::clamp(tier, 1, GearTierCount) - 1);
     worked_ += seconds * speed;
     progress_ = std::min(1.0f, worked_ / ore->mineSeconds);
     if (progress_ < 1.0f) return {};

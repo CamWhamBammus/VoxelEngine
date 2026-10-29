@@ -1,12 +1,12 @@
 #include "graphics/held_pickaxe.h"
 #include "graphics/asset_builder.h"
+#include "equipment.h"
 
 #include <array>
 
 namespace voxel {
 namespace {
 
-constexpr glm::vec3 Steel{.32f,.43f,.48f};
 constexpr glm::vec3 Brass{.67f,.43f,.19f};
 constexpr glm::vec3 Wood{.42f,.24f,.12f};
 constexpr glm::vec3 Leather{.23f,.105f,.055f};
@@ -46,14 +46,15 @@ HeadRing headRing(float x, float y, float halfHeight, float halfDepth)
 
 } // namespace
 
-MeshData buildHeldPickaxe()
+MeshData buildHeldPickaxe(int tier)
 {
+    const auto Steel = glm::mix(gearMaterial(tier).color, glm::vec3(1), .12f);
     MeshData mesh;
     const HubAsset origin{};
     AssetBuilder b(mesh,origin);
 
     // Separate cross sections curve down into two solid sharp points. Broad
-    // blue-grey side faces and lighter cutting bevels remain legible in shade.
+    // material-colored side faces and lighter cutting bevels remain legible in shade.
     const std::array<HeadRing,6> head{{
         headRing(-.36f,.53f,.029f,.022f),
         headRing(-.22f,.64f,.052f,.046f),

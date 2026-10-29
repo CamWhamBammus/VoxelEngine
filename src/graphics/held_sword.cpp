@@ -1,5 +1,6 @@
 #include "graphics/held_sword.h"
 #include "graphics/asset_builder.h"
+#include "equipment.h"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +10,6 @@
 namespace voxel {
 namespace {
 
-constexpr glm::vec3 Steel{0.58f, 0.73f, 0.77f};
 constexpr glm::vec3 Brass{0.62f, 0.39f, 0.15f};
 constexpr glm::vec3 Leather{0.23f, 0.105f, 0.055f};
 constexpr glm::vec3 LeatherEdge{0.36f, 0.19f, 0.09f};
@@ -55,8 +55,9 @@ struct PoseKey {
 
 } // namespace
 
-MeshData buildHeldSword()
+MeshData buildHeldSword(int tier)
 {
+    const auto Steel = glm::mix(gearMaterial(tier).color, glm::vec3(1), .12f);
     MeshData mesh;
     const HubAsset origin{};
     AssetBuilder b(mesh, origin);

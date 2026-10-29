@@ -1,5 +1,6 @@
 #include "equipment.h"
 
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <fstream>
@@ -16,6 +17,41 @@ constexpr std::size_t MaxProfileBytes = 16 * 1024 * 1024;
 constexpr std::size_t MaxLootRecords = 65536;
 constexpr std::size_t MaxLootKeyBytes = 1024;
 
+const std::array<GearMaterial, GearTierCount> Materials{{
+    {1, ItemId::Coal, "Coal", {.27f, .31f, .37f}},
+    {2, ItemId::CopperOre, "Copper", {.91f, .49f, .24f}},
+    {3, ItemId::TinOre, "Tin", {.70f, .79f, .79f}},
+    {4, ItemId::IronOre, "Iron", {.64f, .67f, .75f}},
+    {5, ItemId::Quartz, "Quartz", {.91f, .94f, 1.00f}},
+    {6, ItemId::Amber, "Amber", {1.00f, .58f, .12f}},
+    {7, ItemId::SilverOre, "Silver", {.83f, .91f, .97f}},
+    {8, ItemId::GoldOre, "Gold", {1.00f, .78f, .20f}},
+    {9, ItemId::Jade, "Jade", {.26f, .78f, .54f}},
+    {10, ItemId::Amethyst, "Amethyst", {.71f, .40f, .98f}},
+    {11, ItemId::Obsidian, "Obsidian", {.36f, .25f, .52f}},
+    {12, ItemId::CobaltOre, "Cobalt", {.22f, .51f, .89f}},
+    {13, ItemId::TitaniumOre, "Titanium", {.59f, .78f, .91f}},
+    {14, ItemId::Ruby, "Ruby", {.96f, .22f, .36f}},
+    {15, ItemId::Sapphire, "Sapphire", {.25f, .48f, 1.00f}},
+    {16, ItemId::Emerald, "Emerald", {.18f, .95f, .49f}},
+    {17, ItemId::MithrilOre, "Mithril", {.31f, 1.00f, .88f}},
+    {18, ItemId::GlowCrystal, "Glow Crystal", {.29f, .91f, 1.00f}}
+}};
+
+int& tierFor(Equipment& equipment, GearSlot slot)
+{
+    switch (slot) {
+    case GearSlot::Pickaxe: return equipment.pickaxeTier;
+    case GearSlot::Sword: return equipment.swordTier;
+    case GearSlot::Helmet: return equipment.armorTiers[0];
+    case GearSlot::Chestplate: return equipment.armorTiers[1];
+    case GearSlot::Leggings: return equipment.armorTiers[2];
+    case GearSlot::Boots: return equipment.armorTiers[3];
+    case GearSlot::Count: break;
+    }
+    throw std::invalid_argument("Unknown equipment slot");
+}
+
 bool validLootKey(std::string_view key)
 {
     if (key.empty() || key.size() > MaxLootKeyBytes) return false;
@@ -26,7 +62,10 @@ bool validLootKey(std::string_view key)
 
 void validate(const Equipment& equipment)
 {
-    if (equipment.pickaxeTier < 1 || equipment.pickaxeTier > 3
+    if (equipment.pickaxeTier < 1 || equipment.pickaxeTier > GearTierCount
+        || equipment.swordTier < 1 || equipment.swordTier > GearTierCount
+        || std::any_of(equipment.armorTiers.begin(), equipment.armorTiers.end(),
+                       [](int tier) { return tier < 0 || tier > GearTierCount; })
         || !equipment.inventory.valid()) {
         throw std::runtime_error("Invalid equipment tier or inventory");
     }
@@ -39,7 +78,49 @@ void validate(const Equipment& equipment)
 }
 } // namespace
 
-Equipment::Equipment() { inventory.add(ItemId::CopperOre, 12); }
+Equipment::Equipment() { inventory.add(ItemId::Coal, 12); }
+
+std::span<const GearMaterial> gearMaterials() { return Materials; }
+
+const GearMaterial& gearMaterial(int tier)
+{
+    return Materials[std::clamp(tier, 1, GearTierCount) - 1];
+}
+
+std::string_view gearSlotName(GearSlot slot)
+{
+    switch (slot) {
+    case GearSlot::Pickaxe: return "Pickaxe";
+    case GearSlot::Sword: return "Sword";
+    case GearSlot::Helmet: return "Helmet";
+    case GearSlot::Chestplate: return "Chestplate";
+    case GearSlot::Leggings: return "Leggings";
+    case GearSlot::Boots: return "Boots";
+    case GearSlot::Count: break;
+    }
+    throw std::invalid_argument("Unknown equipment slot");
+}
+
+int gearTier(const Equipment& equipment, GearSlot slot)
+{
+    switch (slot) {
+    case GearSlot::Pickaxe: return equipment.pickaxeTier;
+    case GearSlot::Sword: return equipment.swordTier;
+    case GearSlot::Helmet: return equipment.armorTiers[0];
+    case GearSlot::Chestplate: return equipment.armorTiers[1];
+    case GearSlot::Leggings: return equipment.armorTiers[2];
+    case GearSlot::Boots: return equipment.armorTiers[3];
+    case GearSlot::Count: break;
+    }
+    throw std::invalid_argument("Unknown equipment slot");
+}
+
+std::string gearName(const Equipment& equipment, GearSlot slot)
+{
+    const int tier = gearTier(equipment, slot);
+    if (tier == 0) return "No " + std::string(gearSlotName(slot));
+    return std::string(gearMaterial(tier).name) + " " + std::string(gearSlotName(slot));
+}
 
 std::string_view toolName(Tool tool)
 {
@@ -57,25 +138,45 @@ Tool Equipment::selectedTool() const
     return selectedSlot >= 0 && selectedSlot < ToolCount ? static_cast<Tool>(selectedSlot) : Tool::Pickaxe;
 }
 
-std::optional<UpgradeCost> pickaxeUpgradeCost(int tier)
+std::optional<GearUpgradeCost> gearUpgradeCost(const Equipment& equipment, GearSlot slot)
 {
-    if (tier == 1) return UpgradeCost{8, 0};
-    if (tier == 2) return UpgradeCost{0, 8};
-    return std::nullopt;
+    const int tier = gearTier(equipment, slot);
+    if (tier >= GearTierCount) return {};
+    return GearUpgradeCost{gearMaterial(tier).ore, 10, tier + 1};
 }
 
-UpgradeResult upgradePickaxe(Equipment& equipment)
+UpgradeResult upgradeGear(Equipment& equipment, GearSlot slot)
 {
     validate(equipment);
-    const auto cost = pickaxeUpgradeCost(equipment.pickaxeTier);
+    const auto cost = gearUpgradeCost(equipment, slot);
     if (!cost) return UpgradeResult::MaxTier;
-    if (equipment.inventory.count(ItemId::CopperOre) < cost->copper
-        || equipment.inventory.count(ItemId::IronOre) < cost->iron)
+    if (equipment.inventory.count(cost->item) < cost->count)
         return UpgradeResult::InsufficientResources;
-    equipment.inventory.remove(ItemId::CopperOre, cost->copper);
-    equipment.inventory.remove(ItemId::IronOre, cost->iron);
-    ++equipment.pickaxeTier;
+    equipment.inventory.remove(cost->item, cost->count);
+    tierFor(equipment, slot) = cost->nextTier;
     return UpgradeResult::Upgraded;
+}
+
+UpgradeResult upgradePickaxe(Equipment& equipment) { return upgradeGear(equipment, GearSlot::Pickaxe); }
+
+int swordDamage(const Equipment& equipment)
+{
+    return 25 + 2 * (std::clamp(equipment.swordTier, 1, GearTierCount) - 1);
+}
+
+int armorProtection(const Equipment& equipment)
+{
+    int protection = 0;
+    for (const int tier : equipment.armorTiers)
+        protection += std::clamp(tier, 0, GearTierCount);
+    return protection;
+}
+
+int armoredDamage(const Equipment& equipment, int rawDamage)
+{
+    if (rawDamage <= 0) return 0;
+    // Round up so small attacks still hurt. Use wide arithmetic for damage input.
+    return static_cast<int>((static_cast<long long>(rawDamage) * (100 - armorProtection(equipment)) + 99) / 100);
 }
 
 Equipment loadEquipment(const std::filesystem::path& path)
@@ -97,8 +198,20 @@ Equipment loadEquipment(const std::filesystem::path& path)
     Equipment equipment;
     equipment.inventory = {};
     if (!(fields >> magic >> version >> tierLabel >> equipment.pickaxeTier)
-        || magic != "VOXEL_PROGRESS" || (version != 1 && version != 2 && version != 3) || tierLabel != "TIER") {
+        || magic != "VOXEL_PROGRESS" || version < 1 || version > 4
+        || tierLabel != (version == 4 ? "GEAR" : "TIER")) {
         throw std::runtime_error("Invalid progress format or version");
+    }
+    if (version == 4) {
+        if (!(fields >> equipment.swordTier)) throw std::runtime_error("Invalid sword tier");
+        for (int& tier : equipment.armorTiers)
+            if (!(fields >> tier)) throw std::runtime_error("Invalid armor tier");
+    } else {
+        // Preserve access to every ore the old three-tier pickaxe could mine.
+        constexpr std::array legacyTiers{6, 11, GearTierCount};
+        if (equipment.pickaxeTier < 1 || equipment.pickaxeTier > 3)
+            throw std::runtime_error("Invalid legacy pickaxe tier");
+        equipment.pickaxeTier = legacyTiers[equipment.pickaxeTier - 1];
     }
     if (version == 1) {
         std::string oreLabel;
@@ -127,7 +240,7 @@ Equipment loadEquipment(const std::filesystem::path& path)
             slot.item = static_cast<ItemId>(item);
         }
     }
-    if (version == 3) {
+    if (version >= 3) {
         std::string label;
         int recordCount = 0;
         if (!(fields >> label >> recordCount) || label != "LOOT" || recordCount < 0
@@ -162,8 +275,9 @@ void saveEquipment(const Equipment& equipment, const std::filesystem::path& path
     const auto parent = path.has_parent_path() ? path.parent_path() : std::filesystem::path(".");
     if (!std::filesystem::is_directory(parent)) throw std::runtime_error("Progress folder does not exist");
     std::ostringstream output;
-    output << "VOXEL_PROGRESS 3\nTIER " << equipment.pickaxeTier
-           << "\nINVENTORY " << Inventory::SlotCount << '\n';
+    output << "VOXEL_PROGRESS 4\nGEAR " << equipment.pickaxeTier << ' ' << equipment.swordTier;
+    for (const int tier : equipment.armorTiers) output << ' ' << tier;
+    output << "\nINVENTORY " << Inventory::SlotCount << '\n';
     for (const auto& slot : equipment.inventory.slots) {
         const auto persisted = slot.item == ItemId::Key ? ItemStack{} : slot;
         output << "SLOT " << static_cast<int>(persisted.item) << ' ' << persisted.count << '\n';

@@ -241,7 +241,7 @@ int main()
         press(game, &InputActions::devTest);
         require(editor.screen() == SectionEditorScreen::Test, "authored item room can enter F8 walk testing");
         collect(game, placed[0]); collect(game, placed.back());
-        require(game.equipment.inventory.count(ItemId::Coal) == placed[0].pickupItem.count
+        require(game.equipment.inventory.count(ItemId::Coal) == originalEquipment.inventory.count(ItemId::Coal) + placed[0].pickupItem.count
                 && game.equipment.inventory.count(ItemId::Key) == placed.back().pickupItem.count
                 && game.sectionSceneAssets().size() == withCopy.size() - 2,
                 "walking through drops in F8 collects exact ore/key stacks without aiming or pressing E");

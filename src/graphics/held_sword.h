@@ -6,7 +6,7 @@
 namespace voxel {
 
 // Authored in metres around the grip: blade points up +Y, broad face toward +Z.
-MeshData buildHeldSword();
+MeshData buildHeldSword(int tier = 1);
 
 // View-space pose for a 65-degree vertical field of view. Remaining swing is
 // normalized: 1 begins the windup, 0 is the resting pose.

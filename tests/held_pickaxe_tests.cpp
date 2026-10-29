@@ -1,4 +1,5 @@
 #include "graphics/held_pickaxe.h"
+#include "equipment.h"
 
 #include <algorithm>
 #include <array>
@@ -81,6 +82,23 @@ int main()
           && hi.y-lo.y>1.0f && hi.y-lo.y<1.2f,
           "Pickaxe needs a broad curved head with real depth and a metre-long handle");
     check(steel && brass && wood,"Head, socket, shaft and glove need their own readable materials");
+
+    for (int tier=1;tier<=GearTierCount;++tier) {
+        const auto variant=buildHeldPickaxe(tier);
+        check(variant.indices==mesh.indices && variant.vertices.size()==mesh.vertices.size(),
+              "Every material must retain the complete 3D pickaxe mesh");
+        bool unchangedShape=true;
+        for (std::size_t vertex=0;vertex<mesh.vertices.size();++vertex)
+            unchangedShape &= variant.vertices[vertex].position==mesh.vertices[vertex].position
+                && variant.vertices[vertex].normal==mesh.vertices[vertex].normal
+                && finite(variant.vertices[vertex].color);
+        check(unchangedShape,"Material changes must preserve normals, framing and animation");
+        if (tier>1) check(glm::length(variant.vertices.front().color-mesh.vertices.front().color)>.01f,
+                         "Ore tiers need visibly distinct tool materials");
+    }
+    check(buildHeldPickaxe(-1).vertices.front().color==mesh.vertices.front().color
+          && buildHeldPickaxe(999).vertices.front().color==buildHeldPickaxe(GearTierCount).vertices.front().color,
+          "Invalid tool material tiers must clamp safely");
 
     bool bounded=true,poseFinite=true,smooth=true;
     float minDepth=100,maxDepth=-100;

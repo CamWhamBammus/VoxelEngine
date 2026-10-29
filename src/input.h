@@ -28,6 +28,8 @@ struct InputActions {
     bool mineHeld = false; // Mining continues while the left button is held.
     bool interact = false;
     bool upgrade = false;
+    std::optional<int> selectedUpgrade; // Local shop row: 0..1 tools, 0..3 armor.
+    int upgradeStep = 0;
     bool closeMenu = false;
     bool inventory = false, inventorySort = false, lootAll = false;
     std::optional<int> inventoryClick, lootClick;

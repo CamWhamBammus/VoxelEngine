@@ -36,7 +36,8 @@ public:
                 std::optional<float> heldPickaxeSwing = {},
                 std::optional<float> heldLanternTime = {}, bool darkCave = false,
                 std::optional<HeldCompassState> heldCompass = {},
-                std::span<const EncounterActivation> activations = {});
+                std::span<const EncounterActivation> activations = {},
+                int swordTier = 1, int pickaxeTier = 1);
     std::size_t triangleCount() const;
     std::size_t visibleChunks() const { return visibleChunks_; }
     std::size_t drawnTriangles() const { return drawnTriangles_; }
@@ -59,6 +60,7 @@ private:
     std::array<GpuMesh,3> hitChips_; // Cached bone chips, amethyst shards, slime droplets.
     GpuMesh heldSword_;
     GpuMesh heldPickaxe_;
+    int heldSwordTier_ = 0, heldPickaxeTier_ = 0;
     GpuMesh heldLantern_;
     GpuMesh heldCompass_, compassNeedle_;
     std::size_t heldSwordTriangles_ = 0;

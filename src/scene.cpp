@@ -780,6 +780,17 @@ HubBlacksmithLayout sceneBlacksmithLayout()
 }
 glm::vec3 sceneBlacksmithStation() { return sceneBlacksmithLayout().anvil + glm::vec3(0,1.4f,0); }
 glm::vec3 sceneBlacksmithApproach() { return sceneBlacksmithLayout().anvil + glm::vec3(0,0,2.5f); }
+const HubBuilding& sceneArmoryBuilding() { return Buildings[1]; }
+HubArmoryLayout sceneArmoryLayout()
+{
+    const auto origin = glm::vec3(sceneArmoryBuilding().origin);
+    return {origin + glm::vec3(2.5f,1,5.5f),
+            origin + glm::vec3(10.5f,5.8f,10.99f),
+            {origin + glm::vec3(2.5f,1,2.5f), origin + glm::vec3(5.5f,1,2.5f),
+             origin + glm::vec3(8.5f,1,2.5f)}};
+}
+glm::vec3 sceneArmoryStation() { return sceneArmoryLayout().workbench + glm::vec3(0.6f,1.2f,0); }
+glm::vec3 sceneArmoryApproach() { return sceneArmoryLayout().workbench + glm::vec3(2.0f,0,0); }
 std::span<const HubBridge> sceneBridgePlan() { return Bridges; }
 std::span<const HubWaterfall> sceneWaterfallPlan() { return Waterfalls; }
 std::span<const glm::ivec3> sceneExpeditionApproach() { return ExpeditionApproach; }
@@ -800,6 +811,11 @@ void buildUndergroundScene(World& world)
     // A solid rear panel carries the tool rack instead of hanging across a window.
     const auto wall = sceneBlacksmithBuilding().origin;
     box(world, wall + glm::ivec3(2,2,0), wall + glm::ivec3(7,5,0), Block::Timber);
+    // Three display alcoves and a fitting bench turn the existing cottage next
+    // door into an armory. The entrance and middle of its floor remain open.
+    const auto armory = sceneArmoryBuilding().origin;
+    box(world, armory + glm::ivec3(1,1,0), armory + glm::ivec3(9,4,0), Block::Timber);
+    for (const int x : {2,5,8}) world.set(armory + glm::ivec3(x,4,0), Block::Lantern);
     for (const auto& b : Bridges) bridge(world,b);
     heartTree(world);
     expeditionGateway(world);

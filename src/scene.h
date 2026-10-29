@@ -30,6 +30,15 @@ HubBlacksmithLayout sceneBlacksmithLayout();
 glm::vec3 sceneBlacksmithStation();
 glm::vec3 sceneBlacksmithApproach();
 
+struct HubArmoryLayout {
+    glm::vec3 workbench, sign;
+    std::array<glm::vec3, 3> stands;
+};
+const HubBuilding& sceneArmoryBuilding();
+HubArmoryLayout sceneArmoryLayout();
+glm::vec3 sceneArmoryStation();
+glm::vec3 sceneArmoryApproach();
+
 struct HubBridge { glm::ivec2 from, to; };
 struct HubWaterfall {
     glm::ivec2 lip; // Top of the first fall; cascades flow along world X.

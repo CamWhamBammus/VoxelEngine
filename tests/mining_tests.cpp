@@ -1,4 +1,5 @@
 #include "mining.h"
+#include "equipment.h"
 
 #include <cmath>
 #include <iostream>
@@ -40,8 +41,8 @@ int main()
         require(session.swing() == 0, "released pickaxe returns to idle");
         session.update(coal, true, 1, .1f);
         session.update(coal, true, 1, .1f);
-        session.update(copper, true, 1, .1f);
-        require(std::abs(session.progress() - .1f / oreInfo(Block::CopperOre)->mineSeconds) < .0001f,
+        session.update(copper, true, 2, .1f);
+        require(std::abs(session.progress() - .107f / oreInfo(Block::CopperOre)->mineSeconds) < .0001f,
                 "target changes cannot transfer mining progress");
         session.update({}, true, 1, .1f);
         require(!session.target() && session.progress() == 0 && session.swing() > 0,
@@ -56,8 +57,25 @@ int main()
             require(!session.update(ruby, true, 2, .1f), "low tier cannot break a gem source");
         require(session.target() == ruby && session.blocked() && session.progress() == 0,
                 "locked ore exposes the tier warning with zero progress");
-        breakFrames(session, ruby, 3, 1.0f/60);
+        breakFrames(session, ruby, 14, 1.0f/60);
         require(!session.target() && session.progress() == 0, "completion consumes accumulated work");
+        for (const auto& ore : oreCatalog()) {
+            const MiningTarget target{{3,10,0}, ore.block};
+            session.reset();
+            for (int frame = 0; frame < 30; ++frame)
+                require(!session.update(target, true, ore.requiredTier - 1, .1f),
+                        "no resource can be mined below its own material tier");
+            require(session.blocked() && session.progress() == 0,
+                    "every locked material reports zero progress");
+            breakFrames(session, target, ore.requiredTier, 1.0f/60);
+        }
+        float previousProgress = 0;
+        for (int tier = 1; tier <= GearTierCount; ++tier) {
+            session.reset();
+            session.update(coal, true, tier, .01f);
+            require(session.progress() > previousProgress, "every material tier mines familiar ore faster");
+            previousProgress = session.progress();
+        }
         session.reset();
         const int starter = breakFrames(session, coal, 1, 1.0f/60);
         const int upgraded = breakFrames(session, coal, 3, 1.0f/60);

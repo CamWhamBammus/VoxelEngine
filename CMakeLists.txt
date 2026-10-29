@@ -18,6 +18,7 @@ endfunction()
 # Game logic and CPU mesh generation can be tested without an OpenGL window.
 add_library(VoxelCore
     src/game.cpp
+    src/game_equipment.cpp
     src/game_health.cpp
     src/game_view.cpp
     src/game_combat.cpp
@@ -141,7 +142,7 @@ if(BUILD_TESTING)
         lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe held_lantern
         mining mining_loot mining_game built_surface_relief cave_game section_naming section_presets section_creation
         held_compass compass_target jungle_assets spawner_chains encounter_chain spawner_chain_editor
-        arena_preset arena_game
+        arena_preset arena_game gear_game
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

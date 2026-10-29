@@ -210,7 +210,7 @@ bool Game::commitEquipment(const Equipment& next, std::string_view action)
 bool Game::updateInventory(const InputActions& actions, float deltaSeconds)
 {
     const bool testing = devMode_ && sectionEditor_.screen() == SectionEditorScreen::Test;
-    const bool playing = !editorMode_ && ((!devMode_ && !levelController_.open() && !smithOpen_ && !crossingMenuOpen_)
+    const bool playing = !editorMode_ && ((!devMode_ && !levelController_.open() && !smithOpen_ && !armoryOpen_ && !crossingMenuOpen_)
         || testing || levelController_.screen() == LevelScreen::Play);
     if (!playing) { closeInventory(); lootPrompt_.clear(); return false; }
     refreshLootPrompt();

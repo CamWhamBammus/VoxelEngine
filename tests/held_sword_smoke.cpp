@@ -1,5 +1,6 @@
 #include "held_sword_smoke.h"
 #include "camera.h"
+#include "equipment.h"
 #include "graphics/renderer.h"
 
 #include <algorithm>
@@ -73,12 +74,12 @@ void verifyHeldSword(int width, int height)
     camera.setPosition({.5f,41.6f,4.5f});
     camera.rotate(35,25); // Look along -Z, level with the horizon.
     WorldRenderer renderer;
-    const auto draw=[&](std::optional<float> swing, int w, int h) {
+    const auto draw=[&](std::optional<float> swing, int w, int h, int tier=1) {
         glBindFramebuffer(GL_FRAMEBUFFER,0);
         glViewport(0,0,w,h);
         glEnable(GL_DEPTH_TEST); glDepthMask(GL_TRUE); glDepthRange(0,1);
         glDisable(GL_SCISSOR_TEST); glDisable(GL_BLEND);
-        renderer.render(world,camera,w,h,false,true,0,false,false,{},{},{},{},swing);
+        renderer.render(world,camera,w,h,false,true,0,false,false,{},{},{},{},swing,{}, {}, {},false, {}, {},tier);
         Frame frame{w,h,std::vector<unsigned char>(static_cast<std::size_t>(w)*h*4),
                         std::vector<float>(static_cast<std::size_t>(w)*h)};
         glReadPixels(0,0,w,h,GL_RGBA,GL_UNSIGNED_BYTE,frame.pixels.data());
@@ -102,6 +103,13 @@ void verifyHeldSword(int width, int height)
             "Sword swing did not move its visible 3D silhouette");
     require(renderer.sceneRebuildCount()==rebuilds,"Sword animation rebuilt static scenery");
     require(draw({},width,height).swordPixels()==0,"Switching away left a held sword in the view");
+    const auto upgraded=draw(0,width,height,GearTierCount);
+    require(upgraded.depth==idle.depth && glm::length(swordColor(upgraded)-swordColor(idle))>5,
+            "Upgrading must recolor the cached 3D sword without changing its silhouette");
+    const auto restored=draw(0,width,height);
+    require(restored.pixels==idle.pixels && renderer.sceneRebuildCount()==rebuilds,
+            "Changing sword material must update its cache without rebuilding the world");
+
 
     // Both lamps sit behind the viewer, out of frame; any change measured here
     // must be world light falling on the blade rather than a visible lamp.

@@ -32,7 +32,7 @@ int main()
         Block::EmeraldOre, Block::CobaltOre, Block::TitaniumOre, Block::MithrilOre,
         Block::Obsidian, Block::Crystal
     };
-    constexpr std::array expectedTiers{1, 1, 1, 1, 2, 2, 1, 1, 2, 2, 3, 3, 3, 3, 3, 3, 2, 3};
+    constexpr std::array expectedTiers{1, 2, 3, 4, 7, 8, 5, 6, 9, 10, 14, 15, 16, 12, 13, 17, 11, 18};
     check(oreCatalog().size() == expectedBlocks.size(), "all eighteen resources have mineable source blocks");
     std::array<int, ItemCount> itemSources{};
     std::array<int, BlockCount> blockSources{};

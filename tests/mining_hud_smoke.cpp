@@ -1,5 +1,6 @@
 #include "mining_hud_smoke.h"
 #include "game.h"
+#include "ores.h"
 #include "input.h"
 #include "graphics/hud.h"
 
@@ -101,7 +102,7 @@ void verifyMiningHud(int width,int height)
     LevelDefinition level;level.name="Mining HUD test";
     level.sections={section.lexically_relative(temporary.path/"sections")};
     require(game.levelController().start(game,level),"Mining HUD fixture level did not load");
-    game.equipment.selectedSlot=0;game.equipment.pickaxeTier=1;
+    game.equipment.selectedSlot=0;game.equipment.pickaxeTier=oreInfo(Block::CopperOre)->requiredTier;
     Hud hud;
     const auto draw=[&](int w,int h,float scale=1) {
         glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,w,h);
@@ -142,7 +143,7 @@ void verifyMiningHud(int width,int height)
             "A tier-one pickaxe must report the ruby's required tier");
     const auto locked=draw(width,height);
     require(difference(blank,locked)>150,"Blocked ore has no visible tier warning");
-    game.equipment.pickaxeTier=3;game.update(held,.1f);
+    game.equipment.pickaxeTier=oreInfo(Block::RubyOre)->requiredTier;game.update(held,.1f);
     require(!game.mining().blocked(),"The required tier must unlock mining");
     require(difference(locked,draw(width,height))>100,"Tier warning did not change after equipping a sufficient pickaxe");
 

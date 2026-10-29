@@ -1,4 +1,5 @@
 #include "asset_builder.h"
+#include "equipment.h"
 
 #include <array>
 #include <glm/vec2.hpp>
@@ -154,6 +155,111 @@ void sign(AssetBuilder& out, std::uint32_t variant)
     ironAnvil(out,{0,-1.72f,1.61f},0.70f,{0.74f,0.49f,0.22f});
 }
 
+void helmet(AssetBuilder& out, glm::vec3 origin, glm::vec3 metal)
+{
+    const auto p=[&](glm::vec3 point) { return origin+point; };
+    taper(out,p({0,0,0}),p({0,.24f,0}),{.28f,.24f},{.29f,.25f},Block::Slate,metal*.86f);
+    taper(out,p({0,.24f,0}),p({0,.40f,0}),{.29f,.25f},{.19f,.17f},Block::Slate,metal);
+    // A recessed face opening, raised brow, cheek guards and nose strip give
+    // the helmet a readable silhouette even on a small preview thumbnail.
+    out.box(p({-.22f,.04f,.245f}),p({.22f,.19f,.267f}),Block::Slate,Soot);
+    out.box(p({-.30f,.19f,.24f}),p({.30f,.24f,.30f}),Block::Slate,metal);
+    for (const float x : {-.22f,.22f})
+        out.box(p({x-.06f,-.035f,.22f}),p({x+.06f,.14f,.29f}),Block::Slate,metal*.9f);
+    out.box(p({-.035f,.03f,.27f}),p({.035f,.22f,.31f}),Block::Slate,metal);
+    out.box(p({-.035f,.38f,-.15f}),p({.035f,.43f,.15f}),Block::Slate,metal*.72f);
+}
+
+void armorStand(AssetBuilder& out, std::uint32_t variant)
+{
+    const auto metal=gearMaterial(int(variant%GearTierCount)+1).color;
+    const auto trim=glm::mix(metal,glm::vec3(.85f,.78f,.60f),.28f);
+    const auto dark=metal*.34f;
+    out.box({-.64f,0,-.46f},{.64f,.12f,.51f},Block::Planks,Oak*.73f);
+    taper(out,{0,.12f,0},{0,.20f,0},{.60f,.42f},{.52f,.36f},Block::Planks,Oak);
+    out.beam({0,.18f,-.14f},{0,1.91f,-.14f},.13f,Block::Timber,Oak*.6f);
+    out.beam({-.50f,1.58f,-.12f},{.50f,1.58f,-.12f},.12f,Block::Timber,Oak);
+
+    for (const float x : {-.22f,.22f}) {
+        // Flat soles and beveled toes project beyond the separate shin plates.
+        out.box({x-.17f,.20f,-.21f},{x+.17f,.27f,.37f},Block::Slate,dark);
+        taper(out,{x,.27f,.07f},{x,.40f,.01f},{.17f,.30f},{.15f,.24f},Block::Slate,metal);
+        taper(out,{x,.40f,-.01f},{x,.66f,-.01f},{.14f,.19f},{.15f,.16f},Block::Slate,metal*.84f);
+        out.box({x-.155f,.58f,-.17f},{x+.155f,.64f,.16f},Block::Slate,trim);
+        taper(out,{x,.66f,-.015f},{x,1.13f,-.015f},{.145f,.15f},{.18f,.17f},Block::Slate,dark);
+        taper(out,{x,.72f,.03f},{x,1.07f,.02f},{.14f,.16f},{.17f,.19f},Block::Slate,metal*.91f);
+        out.box({x-.145f,.67f,.13f},{x+.145f,.78f,.21f},Block::Slate,trim);
+    }
+
+    // Flared skirt plates, a belt and a faceted breastplate separate the torso
+    // from the leggings. The breastplate center actually stands proud.
+    taper(out,{0,1.09f,0},{0,1.26f,0},{.41f,.25f},{.33f,.21f},Block::Slate,metal*.76f);
+    out.box({-.35f,1.23f,-.22f},{.35f,1.31f,.23f},Block::Timber,Oak*.5f);
+    out.box({-.085f,1.225f,.23f},{.085f,1.315f,.275f},Block::Slate,trim);
+    taper(out,{0,1.31f,-.01f},{0,1.69f,-.01f},{.32f,.21f},{.43f,.22f},Block::Slate,metal*.82f);
+    const glm::vec3 chest[]{{-.30f,1.34f,.205f},{.30f,1.34f,.205f},
+                           {.40f,1.65f,.215f},{-.40f,1.65f,.215f}};
+    for (int i=0;i<4;++i)
+        out.triangle(chest[i],chest[(i+1)%4],{0,1.52f,.32f},Block::Slate,metal*(i==2 ? 1.f : .91f));
+    for (const float side : {-1.f,1.f}) {
+        const float x=side*.49f;
+        taper(out,{x,1.48f,0},{x,1.70f,0},{.19f,.23f},{.15f,.18f},Block::Slate,metal);
+        out.box({x-.18f,1.47f,-.23f},{x+.18f,1.52f,.23f},Block::Slate,trim);
+        taper(out,{side*.50f,1.18f,0},{side*.51f,1.48f,0},{.10f,.13f},{.13f,.16f},Block::Slate,dark);
+    }
+    out.box({-.14f,1.69f,-.14f},{.14f,1.80f,.14f},Block::Timber,Oak*.5f);
+    helmet(out,{0,1.79f,0},metal);
+}
+
+void shieldSign(AssetBuilder& out, std::uint32_t variant)
+{
+    const auto metal=gearMaterial(int(variant%GearTierCount)+1).color;
+    out.box({-.09f,-.30f,-.02f},{.09f,.10f,.14f},Block::Slate,Iron);
+    out.beam({0,0,.08f},{0,0,1.20f},.09f,Block::Slate,Iron);
+    out.beam({0,-.29f,.09f},{0,-.02f,.87f},.06f,Block::Slate,Iron);
+    for (const float x : {-.35f,.35f}) {
+        out.beam({0,0,1.12f},{x,0,1.12f},.06f,Block::Slate,Iron);
+        out.beam({x,0,1.12f},{x,-.40f,1.12f},.045f,Block::Slate,Copper);
+    }
+    constexpr glm::vec2 outline[]{{-.62f,.53f},{-.64f,-.12f},{0,-.81f},{.64f,-.12f},{.62f,.53f}};
+    constexpr glm::vec3 origin{0,-.90f,1.12f};
+    for (int i=0;i<5;++i) {
+        const int next=(i+1)%5;
+        const auto a=origin+glm::vec3(outline[i],0), b=origin+glm::vec3(outline[next],0);
+        const auto A=origin+glm::vec3(outline[i]*.82f,.10f), B=origin+glm::vec3(outline[next]*.82f,.10f);
+        out.quad(a,a-glm::vec3(0,0,.13f),b-glm::vec3(0,0,.13f),b,Block::Slate,Iron);
+        out.triangle(b-glm::vec3(0,0,.13f),a-glm::vec3(0,0,.13f),origin-glm::vec3(0,0,.13f),Block::Planks,Oak);
+        out.quad(a,b,B,A,Block::Slate,metal*.85f);
+        out.triangle(A,B,origin+glm::vec3(0,0,.19f),Block::Slate,glm::vec3(.10f,.29f,.28f));
+    }
+    // An embossed helmet is visible from the street, instead of tiny lettering.
+    out.box(origin+glm::vec3(-.21f,-.10f,.20f),origin+glm::vec3(.21f,.23f,.26f),Block::Slate,metal);
+    out.box(origin+glm::vec3(-.16f,.03f,.26f),origin+glm::vec3(.16f,.09f,.28f),Block::Slate,Iron);
+    out.box(origin+glm::vec3(-.025f,-.08f,.28f),origin+glm::vec3(.025f,.12f,.30f),Block::Slate,metal);
+}
+
+void armorerBench(AssetBuilder& out, std::uint32_t variant)
+{
+    const auto metal=gearMaterial(int(variant%GearTierCount)+1).color;
+    for (const float x : {-1.35f,1.35f}) for (const float z : {-.37f,.37f})
+        out.box({x-.11f,0,z-.11f},{x+.11f,1.02f,z+.11f},Block::Timber,Oak*.65f);
+    out.box({-1.45f,.17f,-.42f},{1.45f,.28f,.42f},Block::Planks,Oak*.8f);
+    for (int plank=0;plank<6;++plank) {
+        const float x=-1.59f+plank*.53f;
+        out.box({x,1.00f,-.60f},{x+.515f,1.15f,.60f},Block::Planks,Oak*(plank%2 ? .96f : 1.08f));
+    }
+    out.box({-.65f,1.15f,-.42f},{.58f,1.18f,.44f},Block::Timber,glm::vec3(.25f,.16f,.09f));
+    for (const float x : {-.42f,-.12f,.18f}) {
+        out.box({x,1.18f,-.37f},{x+.10f,1.20f,.33f},Block::Timber,Oak*1.18f);
+        out.box({x-.02f,1.20f,.22f},{x+.12f,1.235f,.34f},Block::Slate,metal);
+    }
+    helmet(out,{1.03f,1.15f,-.04f},metal);
+    out.beam({-1.30f,1.19f,.32f},{-.92f,1.19f,-.24f},.065f,Block::Timber,Oak*.65f);
+    out.box({-1.10f,1.17f,-.30f},{-.79f,1.31f,-.14f},Block::Slate,Steel);
+    out.box({-.94f,.28f,-.33f},{.74f,.63f,.31f},Block::Timber,glm::vec3(.28f,.19f,.12f));
+    out.box({-.88f,.63f,-.29f},{.78f,.70f,.30f},Block::Timber,glm::vec3(.39f,.26f,.14f));
+}
+
 } // namespace
 
 void appendHubBlacksmith(MeshData& mesh, const HubAsset& asset)
@@ -165,6 +271,9 @@ void appendHubBlacksmith(MeshData& mesh, const HubAsset& asset)
     case HubAssetKind::ToolRack: toolRack(out,asset.variation); break;
     case HubAssetKind::SmithWorkbench: workbench(out,asset.variation); break;
     case HubAssetKind::AnvilSign: sign(out,asset.variation); break;
+    case HubAssetKind::ArmorStand: armorStand(out,asset.variation); break;
+    case HubAssetKind::ShieldSign: shieldSign(out,asset.variation); break;
+    case HubAssetKind::ArmorerBench: armorerBench(out,asset.variation); break;
     default: break;
     }
 }
