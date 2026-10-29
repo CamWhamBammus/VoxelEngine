@@ -2,7 +2,7 @@
 
 A voxel game set entirely underground, written in C++20 with OpenGL. The idea is to head out from a cave village, find ore and loot, then come home to upgrade your gear. Deeper expeditions will lead to different cave worlds.
 
-It's still early. You can explore the village, build and play your own levels, mine ore, fight encounters, collect loot, and upgrade a pickaxe at the blacksmith. Procedural expeditions, sword upgrades, and the central tree's skill tree aren't built yet.
+It's still early. You can explore the village, build and play your own levels, mine ore, fight encounters, collect loot, and upgrade tools and armor at the village workshops. Procedural expeditions and the central tree's skill tree aren't built yet.
 
 ![The underground village, with its central tree, bridges, and water](docs/screenshots/village.png)
 
@@ -37,7 +37,7 @@ Encounter starts have a positional chime when OpenAL is available. macOS include
 
 ## Playing
 
-You start in the village. The blacksmith is southwest of the central tree, marked with an anvil sign. The expedition gate is to the north.
+You start in the village. The blacksmith is southwest of the central tree, marked with an anvil sign. The armory is the neighboring building to its east, with a shield sign and armor displays. The expedition gate is to the north.
 
 | Control | Action |
 | --- | --- |
@@ -47,7 +47,7 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | 1–4 or mouse wheel | Select pickaxe, lantern, compass, or sword |
 | Hold left click with pickaxe | Mine the ore block you're aiming at |
 | Left click with sword | Swing at the enemy you're aiming at |
-| E | Use a nearby chest, blacksmith, or expedition gate |
+| E | Use a nearby chest, workshop, or expedition gate |
 | I | Open the 20-slot inventory |
 | R | Return to the village spawn, or the current expedition checkpoint |
 | Escape / Tab | Pause / resume |
@@ -75,19 +75,29 @@ Select the pickaxe with **1** and hold left click on a nearby ore block. The pic
 
 ![Mining copper with the 3D pickaxe; dropped iron floats beside it](docs/screenshots/mining.png)
 
-All 18 resources have source blocks in the creative menu. Place them in a section, then press **F8** to try mining. Pickaxe tiers unlock tougher deposits and mine familiar ones faster:
-
-| Pickaxe tier | New resources |
-| --- | --- |
-| 1 | Coal, copper, tin, iron, quartz, amber |
-| 2 | Silver, gold, jade, amethyst, obsidian |
-| 3 | Ruby, sapphire, emerald, cobalt, titanium, mithril, glow crystal |
-
-Upgrade at the village blacksmith. The first upgrade costs 8 copper; the second costs 8 iron.
+All 18 resources have source blocks in the creative menu. Place them in a section, then press **F8** to try mining. A pickaxe mines its own material and every material below it in the upgrade order. Each upgrade also speeds up mining. New players start with Coal tools and 12 coal, enough for the first tool upgrade.
 
 ![The 18 ore sources in the creative palette](docs/screenshots/ores.png)
 
 Mined blocks stay gone when you revisit a published section, and uncollected drops wait there for you. F8 tests use temporary terrain and loot: returning to the builder restores the blocks, and a fresh test starts over. Mining works in authored sections; village scenery and ordinary building blocks stay intact.
+
+## Tools and armor
+
+The blacksmith upgrades your **pickaxe** and **sword**. The **armory**, next door to the east, makes and upgrades **helmets, chestplates, leggings, and boots**. Approach the fitting bench and press **E**. Use **1–4** or the **arrow keys** to select a piece, **Enter** to buy, and **E / Escape** to close.
+
+![The village armory, with copper, jade and mithril armor displays](docs/screenshots/armory.png)
+
+Each piece upgrades separately and equips immediately. Open **I** to see your four armor slots and total protection beside the 20-slot bag. Each material tier adds 1% combat protection per armor piece, up to 72% with a full final-tier set. It does not protect against falls or falling out of a section. Better swords deal more damage; boots have no jump ability yet.
+
+Every ore has a tool and armor tier. The current order is:
+
+Coal → Copper → Tin → Iron → Quartz → Amber → Silver → Gold → Jade → Amethyst → Obsidian → Cobalt → Titanium → Ruby → Sapphire → Emerald → Mithril → Glow Crystal.
+
+Every upgrade costs **10 of the current material**: Copper to Tin costs 10 copper, for example. An empty armor slot costs 10 coal to make its first Coal piece. The menu shows the next piece, its benefit, the cost, and how much ore you have. Costs and order live together in `src/equipment.cpp` for later balancing.
+
+![Choosing an armor upgrade and checking its ore cost](docs/screenshots/armor-upgrades.png)
+
+Purchases save immediately. Older profiles retain their inventory, collected loot, and access to previously mineable ores when converted to the new gear tiers. Section playtests restore your real equipment when you return to building.
 
 ## Creature preview
 
@@ -156,7 +166,7 @@ Files are stored relative to the folder you launch the game from. Run it from th
 
 | Location | Contents |
 | --- | --- |
-| `progress.vxp` | Inventory, pickaxe upgrades, mined ore, collected loot, and unlocked chests |
+| `progress.vxp` | Inventory, equipped tools and armor, mined ore, collected loot, and unlocked chests |
 | `sections/` | Section drafts and accepted rooms |
 | `levels/` | Level drafts and published section orders |
 | `world.vxl` | The older terrain editor's world |
@@ -174,6 +184,7 @@ The main loop in [src/main.cpp](src/main.cpp) reads input, updates the game, and
 | Movement and collision | [player.cpp](src/player.cpp), [asset_collision.cpp](src/asset_collision.cpp) |
 | Health and respawning | [health.cpp](src/health.cpp), [game_health.cpp](src/game_health.cpp) |
 | Spawners and combat | [encounters.cpp](src/encounters.cpp), [spawner_chains.cpp](src/spawner_chains.cpp), [game_combat.cpp](src/game_combat.cpp), [spawner_loot.cpp](src/spawner_loot.cpp) |
+| Equipment and workshops | [equipment.cpp](src/equipment.cpp), [game_equipment.cpp](src/game_equipment.cpp) |
 | Pickaxe and mining | [mining.cpp](src/mining.cpp), [ores.cpp](src/ores.cpp), [game_mining.cpp](src/game_mining.cpp), [mining_loot.cpp](src/mining_loot.cpp) |
 | Village layout and buildings | [scene.cpp](src/scene.cpp), [hub_buildings.cpp](src/hub_buildings.cpp) |
 | Blocks and chunk meshes | [world.h](src/world.h), [mesh.cpp](src/mesh.cpp) |
