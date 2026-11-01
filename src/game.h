@@ -12,6 +12,7 @@
 #include "player.h"
 #include "root_crossings.h"
 #include "section_editor.h"
+#include "skills.h"
 #include "world.h"
 
 #include <array>
@@ -115,6 +116,9 @@ public:
     const LevelController& levelController() const { return levelController_; }
     bool smithOpen() const { return smithOpen_; }
     bool armoryOpen() const { return armoryOpen_; }
+    bool skillsOpen() const { return skillsOpen_; }
+    bool nearSkillTree() const;
+    const SkillJournal& skillJournal() const { return skillJournal_; }
     GearSlot upgradeSelection() const { return upgradeSelection_; }
     bool inventoryOpen() const { return inventoryOpen_; }
     bool chestOpen() const { return openChest_.has_value(); }
@@ -148,7 +152,7 @@ public:
     int crossingFalls() const { return crossingFalls_; }
     bool nearExpeditionGate() const;
     glm::vec3 compassTarget() const;
-    bool menuOpen() const { return inventoryOpen_ || smithOpen_ || armoryOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
+    bool menuOpen() const { return skillsOpen_ || inventoryOpen_ || smithOpen_ || armoryOpen_ || crossingMenuOpen_ || devMenuOpen() || levelMenuOpen(); }
     std::string statusText(std::size_t visibleChunks, std::size_t drawnTriangles,
                            std::size_t totalTriangles, double fps,
                            bool captured, bool showHelp) const;
@@ -178,6 +182,7 @@ private:
     void leaveDevMode();
     void updatePlay(const InputActions& actions, float deltaSeconds);
     void upgradeEquipment();
+    bool updateSkills(const InputActions& actions);
     bool updateInventory(const InputActions& actions, float deltaSeconds);
     bool commitEquipment(const Equipment& next, std::string_view action);
     void refreshLootPrompt();
@@ -219,6 +224,8 @@ private:
     bool editorMode_;
     bool smithOpen_ = false;
     bool armoryOpen_ = false;
+    bool skillsOpen_ = false;
+    SkillJournal skillJournal_;
     GearSlot upgradeSelection_ = GearSlot::Pickaxe;
     std::string progressPath_;
     std::string progressError_;

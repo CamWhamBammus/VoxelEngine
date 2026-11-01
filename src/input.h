@@ -31,6 +31,11 @@ struct InputActions {
     std::optional<int> selectedUpgrade; // Local shop row: 0..1 tools, 0..3 armor.
     int upgradeStep = 0;
     bool closeMenu = false;
+    std::optional<int> skillTab, skillSelection;
+    glm::ivec2 skillMove{0};
+    int skillTabStep = 0;
+    bool skillPointerPressed = false;
+    glm::vec2 skillPointer{0};
     bool inventory = false, inventorySort = false, lootAll = false;
     std::optional<int> inventoryClick, lootClick;
     bool inventoryPointerPressed = false;

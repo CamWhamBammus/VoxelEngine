@@ -20,6 +20,7 @@ add_library(VoxelCore
     src/game.cpp
     src/game_equipment.cpp
     src/skills.cpp
+    src/game_skills.cpp
     src/game_health.cpp
     src/game_view.cpp
     src/game_combat.cpp

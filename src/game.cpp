@@ -274,6 +274,7 @@ void Game::update(const InputActions& actions, float deltaSeconds)
         enterMonsterPreview();
         return;
     }
+    if (updateSkills(actions)) return;
     if (updateInventory(actions, deltaSeconds)) return;
     if (!editorMode_ && actions.active && (actions.levelCreator || actions.levelMenu
         || (actions.devClick && *actions.devClick == SectionUiLevelCreator))) {
@@ -321,6 +322,7 @@ void Game::update(const InputActions& actions, float deltaSeconds)
 
 void Game::buildVillage()
 {
+    skillsOpen_ = false;
     endSectionLoot();
     buildUndergroundScene(world);
     auto collision = std::make_shared<AssetCollision>();
@@ -330,6 +332,7 @@ void Game::buildVillage()
 
 bool Game::returnToVillage()
 {
+    skillsOpen_ = false;
     smithOpen_ = armoryOpen_ = false;
     // Search only inside the cavern. The surface spawn helper would put us
     // above its roof. Nearby supported spaces also handle an obstructed arrival.
