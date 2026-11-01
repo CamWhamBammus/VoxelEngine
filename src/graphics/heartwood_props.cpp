@@ -24,7 +24,7 @@ void bevel(AssetBuilder& out, glm::vec3 lo, glm::vec3 hi, float edge,
     out.quad(upper[0],upper[1],upper[2],upper[3],material,color*1.08f);
 }
 
-void heartSeed(AssetBuilder& out)
+void heartSeed(AssetBuilder& out, std::uint32_t variation)
 {
     // Separate masonry courses leave actual recessed mortar under the root bowl.
     bevel(out,{-1.72f,0,-1.72f},{1.72f,.25f,1.72f},.07f,Block::Slate,Stone*.74f);
@@ -68,7 +68,7 @@ void heartSeed(AssetBuilder& out)
     }
     for (int row=0;row<5;++row) for (int side=0;side<8;++side) {
         const int next=(side+1)%8;
-        const glm::vec3 amber{1.0f,.45f+.055f*float((side+row)%4),.035f};
+        const glm::vec3 amber{.98f+.01f*float(variation%3),.45f+.055f*float((side+row+variation%3)%4),.035f};
         out.quad(ring[row][next],ring[row][side],ring[row+1][side],ring[row+1][next],Block::Lantern,amber);
         out.beam(ring[row][side],ring[row+1][side],.027f,Block::Slate,Brass*1.25f);
         if (row>0) out.beam(ring[row][side],ring[row][next],.025f,Block::Slate,Brass*1.25f);
@@ -262,7 +262,7 @@ void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
 {
     AssetBuilder out(mesh,asset);
     switch (asset.kind) {
-    case HubAssetKind::HeartSeed: heartSeed(out); break;
+    case HubAssetKind::HeartSeed: heartSeed(out,asset.variation); break;
     case HubAssetKind::ChainLantern: chainLantern(out,asset.variation); break;
     case HubAssetKind::LibraryBookcase: bookcase(out,asset.variation); break;
     case HubAssetKind::ReadingDesk: readingDesk(out,asset.variation); break;

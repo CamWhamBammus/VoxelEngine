@@ -663,10 +663,10 @@ void checkHubPlacement(const World& world, const std::vector<HubAsset>& plan)
                   "projecting facades leave player headroom through every entrance");
         }
     }
-    check(garden && coveredGarden && bay && boulder && stalactite && rootArch,
+    check(garden && coveredGarden && bay && boulder && stalactite,
           "the real hub provides garden, facade, grounded, and hanging edit fixtures");
-    check(archCount == 4 && std::all_of(archFacings.begin(), archFacings.end(), [](bool found) { return found; }),
-          "the real hub retains one safely planted arch facing each bridge approach");
+    check(archCount == 0,
+          "the enlarged walk-in hall replaces the old island's four small freestanding arches");
     const auto mine = [&](const HubAsset* asset, glm::vec3 offset) {
         if (!asset) return;
         const auto support = cell(asset->position + turn(offset, asset->facing));
@@ -884,8 +884,11 @@ int main()
         expectedIndices += buildHubAsset(asset).indices.size();
     }
     for (std::size_t kind=0;kind<=static_cast<std::size_t>(HubAssetKind::AnvilSign);++kind) {
+        // The hollow hall now occupies the former tree bed, so its four small
+        // freestanding root arches are replaced by the hall's structural doors.
         if (kind==static_cast<std::size_t>(HubAssetKind::PathStep)
-            || kind==static_cast<std::size_t>(HubAssetKind::PathPaving)) continue;
+            || kind==static_cast<std::size_t>(HubAssetKind::PathPaving)
+            || kind==static_cast<std::size_t>(HubAssetKind::RootArch)) continue;
         check(present[kind],("the lush pass retains supported hub asset family " + std::to_string(kind)).c_str());
     }
     check(!present[static_cast<std::size_t>(HubAssetKind::PathStep)],

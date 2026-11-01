@@ -71,8 +71,8 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
         const auto support=glm::ivec3(glm::floor(position-directions[facing&3]*.12f));
         if (isSolid(world.get(support))&&clearModel(world,asset,true)) assets.push_back(asset);
     };
-    const auto ceiling=[&](glm::vec3 position) {
-        HubAsset asset{HubAssetKind::ChainLantern,position,0,seed++};
+    const auto ceiling=[&](glm::vec3 position,HubAssetKind kind=HubAssetKind::ChainLantern) {
+        HubAsset asset{kind,position,0,seed++};
         if (!isSolid(world.get(glm::ivec3(glm::floor(position+glm::vec3(0,.05f,0)))))) return;
         // The top plate embeds into the beam; only the hanging part needs air.
         for (const auto& vertex:buildHubAsset(asset).vertices) {
@@ -125,6 +125,32 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
         wall(HubAssetKind::RootCorbel,{3.5f,y,-15.0f});
         wall(HubAssetKind::RootCorbel,{18.5f,y,-15.0f});
     }
+
+    constexpr std::array<glm::vec3,4> gardenCenters{{
+        {-3.5f,10,-.5f},{21.5f,10,-.5f},{-3.5f,10,21.5f},{23.5f,10,22.5f}
+    }};
+    for (std::size_t i=0;i<gardenCenters.size();++i) {
+        floor(i%2 ? HubAssetKind::MossGarden : HubAssetKind::FernBed,gardenCenters[i]);
+        floor(HubAssetKind::CrystalFlower,gardenCenters[i]+glm::vec3(.7f,0,.5f));
+    }
+
+    // The garden layer follows rail edges and beam undersides. No broad leaves
+    // are scattered across the stairs, seed approach, or library doors.
+    for (const float y:{21.f,34.f}) {
+        for (const float z:{6.5f,18.5f}) {
+            ceiling({-5.5f,y,z},HubAssetKind::HangingFern);
+            ceiling({21.5f,y,z},HubAssetKind::HangingFern);
+            wall(HubAssetKind::MossDrape,{-5.f,y+.08f,z-1.6f},1);
+            wall(HubAssetKind::MossDrape,{21.f,y+.08f,z-1.6f},3);
+        }
+        for (const float x:{4.5f,16.5f})
+            wall(HubAssetKind::BlossomVines,{x,y+.10f,26.f},2);
+    }
+    for (const float x:{-11.5f,28.5f})
+        for (const float z:{-.5f,21.5f}) ceiling({x,48,z},HubAssetKind::Vines);
+    for (const auto& room:heartwoodRooms())
+        ceiling({float(room.maximum.x)-1.0f,float(room.maximum.y)+1,
+                 float(room.maximum.z)-1.0f},HubAssetKind::HangingPlanter);
 
     // Continuous waist-high rails fill the gaps between the voxel newel posts.
     // The first gallery's west stair landing remains a broad open threshold.
