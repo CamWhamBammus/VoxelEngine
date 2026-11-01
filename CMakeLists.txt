@@ -49,6 +49,7 @@ add_library(VoxelCore
     src/spawner_loot.cpp
     src/scene.cpp
     src/heartwood.cpp
+    src/heartwood_assets.cpp
     src/root_crossings.cpp
     src/sections.cpp
     src/section_presets.cpp

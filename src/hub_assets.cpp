@@ -1,5 +1,6 @@
 #include "hub_assets.h"
 #include "hub_lush.h"
+#include "heartwood_assets.h"
 #include "scene.h"
 #include "graphics/asset_builder.h"
 
@@ -488,6 +489,7 @@ std::vector<HubAsset> planHubAssets(const World& world)
     // with the decorative plant budget. Each exposed Path tile owns its kit.
     assets.insert(assets.end(), paths.begin(), paths.end());
     blendLushAssets(world, assets);
+    blendHeartwoodAssets(world, assets);
     return assets;
 }
 

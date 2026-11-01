@@ -69,11 +69,15 @@ void heartSeed(AssetBuilder& out)
     for (int row=0;row<5;++row) for (int side=0;side<8;++side) {
         const int next=(side+1)%8;
         const glm::vec3 amber{1.0f,.45f+.055f*float((side+row)%4),.035f};
-        out.quad(ring[row][side],ring[row][next],ring[row+1][next],ring[row+1][side],Block::Lantern,amber);
+        out.quad(ring[row][next],ring[row][side],ring[row+1][side],ring[row+1][next],Block::Lantern,amber);
         out.beam(ring[row][side],ring[row+1][side],.027f,Block::Slate,Brass*1.25f);
         if (row>0) out.beam(ring[row][side],ring[row][next],.025f,Block::Slate,Brass*1.25f);
     }
-    out.quad(ring[5][0],ring[5][2],ring[5][4],ring[5][6],Block::Lantern,{1.f,.81f,.22f});
+    for (int side=0;side<8;++side) {
+        const int next=(side+1)%8;
+        out.triangle({0,heights[0],0},ring[0][side],ring[0][next],Block::Lantern,{.86f,.44f,.04f});
+        out.triangle({0,heights[5],0},ring[5][next],ring[5][side],Block::Lantern,{1.f,.81f,.22f});
+    }
     for (int leaf=0;leaf<8;++leaf) {
         const float angle=float(leaf)*jungle::Pi/4;
         const glm::vec3 base{std::cos(angle)*1.4f,1.03f,std::sin(angle)*1.4f};
@@ -224,8 +228,8 @@ void sapCluster(AssetBuilder& out, std::uint32_t variation)
         }
         for (int side=0;side<6;++side) {
             const int next=(side+1)%6;
-            out.triangle(foot,ring[next],ring[side],Block::Crystal,cyan*(.83f+.02f*float(side)));
-            out.triangle(ring[side],ring[next],peak,Block::Crystal,cyan*(.9f+.02f*float(side)));
+            out.triangle(foot,ring[side],ring[next],Block::Crystal,cyan*(.83f+.02f*float(side)));
+            out.triangle(ring[next],ring[side],peak,Block::Crystal,cyan*(.9f+.02f*float(side)));
         }
     }
 }
