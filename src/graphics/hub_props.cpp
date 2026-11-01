@@ -45,8 +45,10 @@ void loop(AssetBuilder& out, float bottom, float width, float height)
 
 void lanternCap(AssetBuilder& out, std::uint32_t variation)
 {
-    cap(out, 0.51f, 0.83f, 1.46f, 0.54f, variation % 2 == 0 ? Copper : clothColor(0));
-    out.box({-0.75f,0.50f,-0.75f}, {0.75f,0.55f,0.75f}, Block::Slate, Copper);
+    cap(out, 0.51f, 0.83f, 1.30f, 0.54f, variation % 2 == 0 ? Copper : clothColor(0));
+    // Keep a modest overhang beyond the one-block glass body. Wider roofs
+    // catch a walker's head beside the outer lane of a descending staircase.
+    out.box({-0.66f,0.50f,-0.66f}, {0.66f,0.55f,0.66f}, Block::Slate, Copper);
     out.box({-0.32f,0.82f,-0.32f}, {0.32f,0.89f,0.32f}, Block::Slate, Metal);
     loop(out, 0.88f, 0.26f, 0.30f);
     // The voxel lantern remains visible between these thin outside struts.

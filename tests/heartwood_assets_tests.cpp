@@ -147,7 +147,8 @@ void hallFurnishing()
         }
         return true;
     };
-    for (const float x:{-13.5f,-11.5f,-9.5f}) {
+    for (int lane=-15;lane<=-9;++lane) {
+        const float x=float(lane)+.5f;
         check(player.setFeetPosition(world,{x,9,28.5f})&&walk({0,0,-1},14)
             &&std::abs(player.feetPosition().y-22)<.01f,
             "full asset collision leaves every main-stair lane climbable");

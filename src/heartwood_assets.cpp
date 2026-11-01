@@ -114,7 +114,7 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
     for (const float y:{21.f,34.f}) {
         for (const float x:{-5.5f,21.5f})
             for (const float z:{3.5f,15.5f,25.5f}) ceiling({x,y,z});
-        for (const float x:{1.5f,13.5f}) ceiling({x,y,26.5f});
+        for (const float x:{-5.5f,21.5f}) ceiling({x,y,31.5f});
     }
 
     // Fine sap fragments sit proud of the native glowing seam and connect the
@@ -126,7 +126,7 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
 
     // Each carved knee meets a full-height tree column beneath the gallery.
     // The projecting branch reaches its deck without a freestanding root end.
-    for (const float y:{21.f,34.f}) {
+    for (const float y:{20.f,33.f}) {
         wall(HubAssetKind::RootCorbel,{-15.0f,y,28.5f},1);
         wall(HubAssetKind::RootCorbel,{32.0f,y,28.5f},3);
         wall(HubAssetKind::RootCorbel,{3.5f,y,-15.0f});
@@ -150,8 +150,8 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
             wall(HubAssetKind::MossDrape,{-5.f,y+.08f,z-1.6f},1);
             wall(HubAssetKind::MossDrape,{21.f,y+.08f,z-1.6f},3);
         }
-        for (const float x:{4.5f,16.5f})
-            wall(HubAssetKind::BlossomVines,{x,y+.10f,26.f},2);
+        wall(HubAssetKind::BlossomVines,{-5.f,y+.10f,31.5f},1);
+        wall(HubAssetKind::BlossomVines,{21.f,y+.10f,31.5f},3);
     }
     for (const float x:{-11.5f,28.5f})
         for (const float z:{-.5f,21.5f}) ceiling({x,48,z},HubAssetKind::Vines);
@@ -162,16 +162,25 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
     // Continuous waist-high rails fill the gaps between the voxel newel posts.
     // The first gallery's west stair landing remains a broad open threshold.
     for (const int top:{HeartwoodGalleryFloor,HeartwoodUpperFloor}) {
-        for (int z=3;z<=25;++z) {
+        for (int z=3;z<=33;++z) {
             if (z==3||z==9||z==15||z==21||z==25) continue;
             for (const int x:{-6,21})
                 floor(HubAssetKind::TimberFence,{float(x)+.5f,float(top+1),float(z)+.5f},1);
         }
-        for (int x=-5;x<=19;++x) {
-            if (x==-5||x==1||x==7||x==13||x==19) continue;
-            floor(HubAssetKind::TimberFence,{float(x)+.5f,float(top+1),26.5f});
-        }
+        // The open front of the U-shaped gallery needs guards across its
+        // exposed ends as well as along the inner edge of the atrium.
+        for (int x=-16;x<=32;++x)
+            if (x<=-7 || x>=22)
+                floor(HubAssetKind::TimberFence,{float(x)+.5f,float(top+1),33.5f});
     }
+    // Stair guards follow each half-step flight along its outside shoulder.
+    for (const auto flight:std::array<glm::ivec2,2>{{{HeartwoodFloor,27},{HeartwoodGalleryFloor,11}}})
+        for (int step=0;step<13;++step) {
+            if (step%4==0) continue; // Existing full-height newel posts.
+            const int top=flight.x+1+step,z=flight.y-step;
+            for (const int x:{-16,-8})
+                floor(HubAssetKind::TimberFence,{float(x)+.5f,float(top+1),float(z)+.5f},1);
+        }
     return assets;
 }
 

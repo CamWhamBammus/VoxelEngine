@@ -54,30 +54,32 @@ void foundation(World& world)
 void shell(World& world)
 {
     for (int z=-20;z<=36;++z) for (int x=-20;x<=36;++x) {
-        if (!footprint(x,z) || footprint(x,z,3)) continue;
+        if (!footprint(x,z)) continue;
         const int rib=(std::abs(x*7+z*3)%7==0)?2:0;
         for (int y=9;y<=54+rib;++y) {
+            const int taper=y>45?2:y>30?1:0;
+            if (!footprint(x,z,taper) || footprint(x,z,taper+3)) continue;
             const bool band=y==20||y==33||y==47||y==53;
             const bool bark=(std::abs(x+z)%4==0);
             world.set({x,y,z},band?Block::Timber:bark?Block::RootWood:Block::Timber);
         }
     }
     // Tall open arches frame the water and districts on all four sides.
-    box(world,{-1,9,31},{17,27,37},Block::Air);
-    box(world,{31,9,-1},{37,27,23},Block::Air);
+    box(world,{-11,9,30},{27,43,37},Block::Air);
+    box(world,{30,9,-1},{37,35,27},Block::Air);
     box(world,{-21,9,1},{-15,19,15},Block::Air);
     box(world,{3,9,-21},{13,19,-15},Block::Air);
     // Stepped shoulders make the openings part of a living timber arch.
-    for (int step=0;step<5;++step) {
-        box(world,{-1+step,24+step,32},{-1+step,28,36},Block::Timber);
-        box(world,{17-step,24+step,32},{17-step,28,36},Block::Timber);
-        box(world,{32,24+step,-1+step},{36,28,-1+step},Block::Timber);
-        box(world,{32,24+step,23-step},{36,28,23-step},Block::Timber);
+    for (int step=0;step<8;++step) {
+        box(world,{-11+step,35+step,31},{-11+step,44,34},Block::Timber);
+        box(world,{27-step,35+step,31},{27-step,44,34},Block::Timber);
+        box(world,{31,28+step,-1+step},{34,36,-1+step},Block::Timber);
+        box(world,{31,28+step,27-step},{34,36,27-step},Block::Timber);
     }
     // Inner columns carry the balconies, with broad rooted stone feet.
-    for (const auto p : std::array<glm::ivec3,8>{{
+    for (const auto p : std::array<glm::ivec3,6>{{
         {-17,0,-17},{3,0,-17},{18,0,-17},{33,0,-17},
-        {-17,0,28},{-1,0,32},{18,0,32},{33,0,28}
+        {-17,0,28},{33,0,28}
     }}) {
         box(world,{p.x-1,9,p.z-1},{p.x+1,49,p.z+1},Block::Timber);
         box(world,{p.x-2,9,p.z-2},{p.x+2,10,p.z+2},Block::MossBrick);
@@ -92,7 +94,7 @@ void shell(World& world)
     for (const int x : {-12,8,28}) box(world,{x,48,-18},{x+1,49,34},Block::Timber);
     for (const int z : {-13,9,29}) box(world,{-18,48,z},{34,49,z+1},Block::Timber);
     for (int y=50;y<=59;++y) {
-        const int inset=(y-50)/2;
+        const int inset=2+(y-50)/2;
         for (int z=-20+inset;z<=36-inset;++z) for (int x=-20+inset;x<=36-inset;++x) {
             if (!footprint(x,z,inset) || footprint(x,z,inset+2)) continue;
             world.set({x,y,z},Block::Timber);
@@ -120,7 +122,7 @@ void galleries(World& world)
     for (const int floor : {HeartwoodGalleryFloor,HeartwoodUpperFloor}) {
         for (int z=-17;z<=33;++z) for (int x=-17;x<=33;++x) {
             if (!footprint(x,z,2)) continue;
-            const bool ring=x<=-6 || x>=21 || z<=-5 || z>=26;
+            const bool ring=x<=-6 || x>=21 || z<=-5;
             const bool porch=z<=0;
             if (!ring && !porch) continue;
             world.set({x,floor,z},Block::AgedPlanks);
@@ -128,7 +130,6 @@ void galleries(World& world)
         }
         // Deep inner fascias and corbel steps expose real depth below the rail.
         for (const int x : {-6,21}) box(world,{x,floor-2,1},{x,floor-1,26},Block::Timber);
-        box(world,{-6,floor-2,26},{21,floor-1,26},Block::Timber);
         for (const int x : {-6,21}) for (const int z : {3,9,15,21,25}) {
             box(world,{x,floor+1,z},{x,floor+2,z},Block::Timber);
             if (z==3||z==15||z==25) world.set({x,floor+3,z},Block::Lantern);
@@ -137,10 +138,6 @@ void galleries(World& world)
                 const int first=x+inward*drop,last=x+inward*(drop+1);
                 box(world,{std::min(first,last),floor-2-drop,z},{std::max(first,last),floor-1,z},Block::Timber);
             }
-        }
-        for (const int x : {-5,1,7,13,19}) {
-            box(world,{x,floor+1,26},{x,floor+2,26},Block::Timber);
-            if (x==1||x==13) world.set({x,floor+3,26},Block::Lantern);
         }
     }
     // Both stairwells are cut before placing their treads. The flight below
@@ -282,6 +279,46 @@ void rootGardens(World& world)
         box(world,center-glm::ivec3(2,0,2),center+glm::ivec3(2,0,2),Block::MossBrick);
         box(world,center-glm::ivec3(1,0,1),center+glm::ivec3(1,0,1),Block::Moss);
     }
+    // Broad banks beside the approaches give the lush planting pass enough
+    // real soil for tree ferns, small trees, and mushrooms outside the hall.
+    for (const auto center : std::array<glm::ivec3,6>{{
+        {-29,8,1},{-29,8,19},{46,8,1},{46,8,19},{-5,8,-29},{19,8,-29}
+    }}) {
+        for (int dz=-4;dz<=4;++dz) for (int dx=-4;dx<=4;++dx) {
+            const int edge=std::max(std::abs(dx),std::abs(dz));
+            if (edge<3 || std::abs(dx)+std::abs(dz)>6) continue;
+            const auto p=center+glm::ivec3(dx,0,dz);
+            if (isSolid(world.get(p))) continue;
+            const int top=edge==3?7:6;
+            box(world,{p.x,1,p.z},{p.x,top-1,p.z},Block::Stone);
+            world.set({p.x,top,p.z},Block::MossStone);
+        }
+        box(world,center-glm::ivec3(2,7,2),center+glm::ivec3(2,-1,2),Block::Stone);
+        box(world,center-glm::ivec3(2,0,2),center+glm::ivec3(2,0,2),Block::Grass);
+        box(world,center+glm::ivec3(-2,1,-2),center+glm::ivec3(2,8,2),Block::Air);
+    }
+}
+
+void groundLighting(World& world)
+{
+    const auto mounted=[&](glm::ivec3 cell,glm::ivec3 behind) {
+        if (isSolid(world.get(cell+behind))) world.set(cell,Block::Lantern);
+    };
+    // Low lamps sit just above headroom, where their warm pool reaches the
+    // timber and paving. High pendants still describe the atrium's full height.
+    for (const int z : {-10,3,20}) {
+        mounted({-17,14,z},{-1,0,0});
+        mounted({33,14,z},{1,0,0});
+    }
+    for (const int x : {-9,25}) mounted({x,14,-17},{0,0,-1});
+    mounted({-15,14,28},{-1,0,0});
+    mounted({31,14,28},{1,0,0});
+    mounted({33,14,-15},{0,0,-1});
+    for (const int x : {-8,24}) {
+        mounted({x,15,38},{0,0,-1});
+        mounted({x,25,36},{0,0,-1});
+    }
+    for (const int x : {-10,26}) mounted({x,39,35},{0,0,-1});
 }
 
 } // namespace
@@ -300,5 +337,6 @@ void buildHeartwood(World& world)
     rootedSilhouette(world);
     rootGardens(world);
     walkingClearance(world);
+    groundLighting(world);
 }
 } // namespace voxel

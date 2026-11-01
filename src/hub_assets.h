@@ -170,6 +170,9 @@ constexpr glm::ivec3 buildingGridSize(HubAssetKind kind, int facing = 0)
 // Z=0 wall toward +Z. CaveLotus/WaterGrass use the water surface as their origin.
 // HangingFern also grows down from Y=0; MossDrape grows out of a Z=0 wall.
 // Other jungle models stand on Y=0, including the root bridge's two footings.
+// Heartwood furniture and the seed stand on Y=0. ChainLantern hangs from its
+// ceiling anchor; SapCluster grows up a local Z=0 wall. RootCorbel extends down
+// and outward from the wall/beam junction, with its top at Y=0.
 
 // Includes full model extents for chunk culling and light candidate bounds.
 inline constexpr float HubAssetMargin = 4.0f;

@@ -1,5 +1,6 @@
 #include "hub_lush.h"
 #include "scene.h"
+#include "heartwood.h"
 
 #include <algorithm>
 #include <array>
@@ -94,8 +95,10 @@ bool overlaps(Bounds a, Bounds b, float margin = 0)
         && a.low.z < b.high.z + margin && a.high.z > b.low.z - margin;
 }
 
-bool clearOfBuildings(Bounds bounds)
+bool clearOfBuildings(Bounds bounds,bool heartwood=false)
 {
+    if (heartwood&&overlaps(bounds,{glm::vec3(HeartwoodMinimum),
+            glm::vec3(HeartwoodMaximum)+glm::vec3(1,2,1)})) return false;
     for (const auto& building : sceneBuildingPlan()) {
         const auto size = hubBuildingFootprint(building);
         const auto base = glm::vec3(building.origin);
@@ -191,9 +194,12 @@ std::vector<HubAsset> planLushAssets(const World& world, std::span<const HubAsse
         const auto cell = glm::ivec3(glm::floor(position));
         return HubAsset{kind,position,facing,hash(cell.x,cell.z,world.seed()^std::uint32_t(cell.y*97))};
     };
+    const bool heartwood=world.get({8,38,-11})==Block::RootWood&&world.get({8,48,9})==Block::Timber;
     const auto add = [&](const HubAsset& asset) {
         const auto bounds = placed(asset,localBounds(asset.kind));
-        if (!clearOfBuildings(bounds) || !leavesRoutesClear(world,bounds)) return false;
+        // Reserve the enlarged interior before spending a garden slot. Its
+        // shelves, paths and hanging plants use a separate architectural plan.
+        if (!clearOfBuildings(bounds,heartwood) || !leavesRoutesClear(world,bounds)) return false;
         for (const auto& other : occupied) {
             if (tallPlant(asset.kind) && other.smallPlant) continue;
             if (overlaps(bounds,other.bounds,.18f)) return false;
