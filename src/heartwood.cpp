@@ -205,6 +205,85 @@ void rooms(World& world)
     }
 }
 
+void rootedSilhouette(World& world)
+{
+    // Buttress roots spread out from the trunk's corners. Every slice reaches
+    // the island bed so the tree has weight at the water, with no floating toes.
+    for (const auto direction : std::array<glm::ivec3,8>{{
+        {-1,0,-1},{1,0,-1},{-1,0,1},{1,0,1},
+        {-1,0,0},{1,0,0},{0,0,-1},{0,0,1}
+    }}) {
+        const bool diagonal=direction.x!=0 && direction.z!=0;
+        const int side=diagonal?25:27;
+        const glm::ivec3 center{8+direction.x*side,8,8+direction.z*side};
+        // Cardinal routes remain open: their buttresses split to both sides.
+        for (const int offset : (diagonal?std::array{-1,1}:std::array{-16,16})) {
+            const glm::ivec3 across{-direction.z,0,direction.x};
+            for (int run=0;run<=8;++run) {
+                const auto p=center+direction*run+across*offset;
+                const int radius=run<3?2:1;
+                const int height=std::max(1,18-run*2);
+                for (int dz=-radius;dz<=radius;++dz) for (int dx=-radius;dx<=radius;++dx) {
+                    if (std::abs(dx)+std::abs(dz)>radius+1) continue;
+                    const int x=p.x+dx,z=p.z+dz;
+                    const bool roomInterior=std::any_of(Rooms.begin(),Rooms.end(),[&](const auto& room) {
+                        return x>=room.minimum.x && x<=room.maximum.x && z>=room.minimum.z && z<=room.maximum.z;
+                    });
+                    if (roomInterior) continue;
+                    const int top=8+std::max(1,height-std::abs(dx)-std::abs(dz));
+                    box(world,{p.x+dx,1,p.z+dz},{p.x+dx,7,p.z+dz},Block::Stone);
+                    box(world,{p.x+dx,8,p.z+dz},{p.x+dx,top,p.z+dz},
+                        (dx+dz+run)%3==0?Block::RootWood:Block::Timber);
+                }
+            }
+        }
+    }
+    // Recessed bark edges break up the long wall planes in silhouette. Place
+    // them high enough to leave every ground-floor entrance untouched.
+    for (const int z : {-10,0,12,24}) for (const int x : {-21,37}) {
+        const int inward=x<8?1:-1;
+        for (int y=30;y<=52;++y) {
+            const int width=(y/6+z+48)%3==0?2:1;
+            box(world,{std::min(x,x+inward*width),y,z},
+                {std::max(x,x+inward*width),y,z+1},Block::RootWood);
+        }
+    }
+    // The inner balcony arches carry the straight deck on stepped wooden
+    // haunches, echoing the large doorway rather than a flat square rim.
+    for (const int floor : {HeartwoodGalleryFloor,HeartwoodUpperFloor}) {
+        for (const int z : {3,15,25}) for (int step=0;step<4;++step) {
+            box(world,{-5+step,floor-5+step,z},{-5+step,floor-2,z},Block::RootWood);
+            box(world,{20-step,floor-5+step,z},{20-step,floor-2,z},Block::RootWood);
+        }
+    }
+}
+
+void walkingClearance(World& world)
+{
+    // All joinery is in place before clearing the travelling volume. In
+    // particular, a gallery corbel must never enter the stair below its deck.
+    for (const auto flight : {glm::ivec3(0,HeartwoodFloor,27),glm::ivec3(0,HeartwoodGalleryFloor,11)}) {
+        for (int step=0;step<13;++step) {
+            const int z=flight.z-step,top=flight.y+1+step;
+            box(world,{-15,top+1,z},{-9,top+4,z},Block::Air);
+        }
+        box(world,{-15,flight.y+1,flight.z+1},{-9,flight.y+4,flight.z+1},Block::Air);
+        box(world,{-15,flight.y+14,flight.z-13},{-9,flight.y+17,flight.z-13},Block::Air);
+    }
+    box(world,{3,9,37},{13,15,39},Block::Air);
+    box(world,{3,9,-23},{13,15,-21},Block::Air);
+    box(world,{-23,9,3},{-21,15,13},Block::Air);
+    box(world,{37,9,3},{39,15,13},Block::Air);
+}
+
+void rootGardens(World& world)
+{
+    for (const auto center : std::array<glm::ivec3,4>{{{-4,9,-1},{21,9,-1},{-4,9,21},{23,9,22}}}) {
+        box(world,center-glm::ivec3(2,0,2),center+glm::ivec3(2,0,2),Block::MossBrick);
+        box(world,center-glm::ivec3(1,0,1),center+glm::ivec3(1,0,1),Block::Moss);
+    }
+}
+
 } // namespace
 
 const HeartwoodLayout& heartwoodLayout() { return Layout; }
@@ -218,5 +297,8 @@ void buildHeartwood(World& world)
     galleries(world);
     stairs(world);
     rooms(world);
+    rootedSilhouette(world);
+    rootGardens(world);
+    walkingClearance(world);
 }
 } // namespace voxel

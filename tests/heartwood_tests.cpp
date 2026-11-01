@@ -23,7 +23,11 @@ bool walk(voxel::Player& player,const voxel::World& world,glm::vec3 step,int cou
         player.move(world,{0,-1,0});
         const auto after=player.feetPosition();
         if (!player.grounded() || std::abs(after.x-before.x-step.x)>.01f
-            || std::abs(after.z-before.z-step.z)>.01f || std::abs(after.y-before.y)>1.01f) return false;
+            || std::abs(after.z-before.z-step.z)>.01f || std::abs(after.y-before.y)>1.01f) {
+            std::cerr<<"Walk blocked from "<<before.x<<','<<before.y<<','<<before.z
+                     <<" to "<<after.x<<','<<after.y<<','<<after.z<<'\n';
+            return false;
+        }
     }
     return true;
 }
