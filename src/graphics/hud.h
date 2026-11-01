@@ -54,6 +54,11 @@ public:
     static std::optional<int> inventoryClick(const Game& game, int framebufferWidth,
                                             int framebufferHeight, float contentScale,
                                             float x, float y);
+    void drawSkills(const Game& game, int framebufferWidth, int framebufferHeight,
+                    float contentScale = 1.0f);
+    static std::optional<int> skillClick(const Game& game, int framebufferWidth,
+                                        int framebufferHeight, float contentScale,
+                                        float x, float y);
 
 private:
     Shader shader_;
