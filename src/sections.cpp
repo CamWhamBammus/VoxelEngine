@@ -131,6 +131,8 @@ constexpr std::array Assets{
     SectionAssetInfo{HubAssetKind::LibraryBookcase, "Library bookcase", "Heartwood / library / ground"},
     SectionAssetInfo{HubAssetKind::ReadingDesk, "Reading desk", "Heartwood / library / ground"},
     SectionAssetInfo{HubAssetKind::ReadingSeat, "Reading seat", "Heartwood / library / ground"},
+    SectionAssetInfo{HubAssetKind::SapCluster, "Glowing sap", "Heartwood / wall / light"},
+    SectionAssetInfo{HubAssetKind::RootCorbel, "Root corbel", "Heartwood / wall / beam support"},
 };
 static_assert(Assets.size() == HubAssetCount);
 constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};

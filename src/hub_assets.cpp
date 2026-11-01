@@ -612,6 +612,11 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
         for (const auto vertex : mesh.indices) destination.indices.push_back(start + vertex);
         if (asset.kind == HubAssetKind::HeartSeed)
             dressing.lights.push_back({asset.position + glm::vec3(0,2.65f,0), {1.25f,.69f,.16f},11.0f});
+        if (asset.kind == HubAssetKind::SapCluster) {
+            constexpr glm::vec3 outward[]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
+            dressing.lights.push_back({asset.position + glm::vec3(0,1.65f,0) + outward[asset.facing&3]*.6f,
+                {.12f,.60f,.67f},6.0f});
+        }
         if (asset.kind == HubAssetKind::ChainLantern)
             dressing.lights.push_back({asset.position - glm::vec3(0,heartwoodLanternDrop(asset.variation),0),
                 {1.05f,.64f,.30f},10.0f});

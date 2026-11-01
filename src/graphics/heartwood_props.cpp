@@ -198,6 +198,60 @@ void readingSeat(AssetBuilder& out, std::uint32_t variation)
         bevel(out,{-.37f,y,-.41f},{.37f,y+.17f,-.25f},.03f,Block::Planks,Oak*1.1f);
 }
 
+void sapCluster(AssetBuilder& out, std::uint32_t variation)
+{
+    // The bark backing and thin gold-brown rims hold irregular glowing sap
+    // plates against a real wall. The crystals project only a little past it.
+    for (int row=0;row<7;++row) {
+        const float x=.16f*std::sin(float(row)*1.32f+float(variation%3));
+        const float y=float(row)*.48f;
+        bevel(out,{x-.30f,y,-.055f},{x+.30f,y+.50f,.11f},.045f,Block::RootWood,Bark);
+        bevel(out,{x-.22f,y+.025f,.08f},{x+.24f,y+.475f,.25f},.06f,Block::Crystal,
+            {.09f,.62f+.035f*float(row%3),.57f});
+        if (row%2==0)
+            bevel(out,{x+.10f,y+.12f,.23f},{x+.35f,y+.38f,.40f},.05f,Block::Crystal,{.14f,.78f,.70f});
+    }
+    for (int crystal=0;crystal<3;++crystal) {
+        const float x=-.50f+float(crystal)*.46f;
+        const float y=.12f+float((crystal+variation)%3)*.88f;
+        const float height=.46f+.12f*float(crystal%2);
+        const glm::vec3 foot{x,y,.25f},peak{x+.045f,y+height,.30f};
+        constexpr glm::vec3 cyan{.10f,.73f,.73f};
+        std::array<glm::vec3,6> ring{};
+        for (int side=0;side<6;++side) {
+            const float angle=float(side)*jungle::Pi/3;
+            ring[side]=foot+glm::vec3(std::cos(angle)*.14f,height*.48f,std::sin(angle)*.14f);
+        }
+        for (int side=0;side<6;++side) {
+            const int next=(side+1)%6;
+            out.triangle(foot,ring[next],ring[side],Block::Crystal,cyan*(.83f+.02f*float(side)));
+            out.triangle(ring[side],ring[next],peak,Block::Crystal,cyan*(.9f+.02f*float(side)));
+        }
+    }
+}
+
+void rootCorbel(AssetBuilder& out, std::uint32_t variation)
+{
+    const auto wood=Oak*(.9f+.04f*float(variation%3));
+    out.box({-.24f,-2.18f,-.05f},{.24f,0,.19f},Block::Timber,Bark);
+    // Broad branched knees run continuously from the wall to the underside of
+    // the projecting beam. Their top face is exactly the anchor's Y plane.
+    constexpr std::array<glm::vec3,4> points{{{0,-2.02f,.10f},{0,-1.18f,.52f},
+        {0,-.59f,1.03f},{0,-.19f,1.73f}}};
+    for (int section=0;section<3;++section) {
+        jungle::stem(out,points[section],points[section+1],.23f-.025f*float(section),
+            .205f-.025f*float(section),wood);
+        jungle::stem(out,points[section]+glm::vec3(.17f,0,0),points[section+1]+glm::vec3(.14f,0,0),
+            .05f,.045f,wood*1.2f);
+    }
+    out.box({-.24f,-.19f,.04f},{.24f,0,1.95f},Block::Timber,wood);
+    jungle::stem(out,{0,-1.65f,.23f},{-.58f,-.55f,.49f},.13f,.09f,wood*.87f);
+    jungle::stem(out,{-.58f,-.55f,.49f},{-.60f,-.11f,.51f},.09f,.08f,wood);
+    out.box({-.69f,-.15f,.34f},{-.51f,0,.65f},Block::Timber,wood);
+    for (const float y:{-.30f,-1.80f})
+        out.box({-.27f,y,-.01f},{.27f,y+.12f,.22f},Block::Slate,Brass*.65f);
+}
+
 } // namespace
 
 void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
@@ -209,6 +263,8 @@ void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
     case HubAssetKind::LibraryBookcase: bookcase(out,asset.variation); break;
     case HubAssetKind::ReadingDesk: readingDesk(out,asset.variation); break;
     case HubAssetKind::ReadingSeat: readingSeat(out,asset.variation); break;
+    case HubAssetKind::SapCluster: sapCluster(out,asset.variation); break;
+    case HubAssetKind::RootCorbel: rootCorbel(out,asset.variation); break;
     default: break;
     }
 }
