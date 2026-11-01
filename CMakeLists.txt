@@ -48,6 +48,7 @@ add_library(VoxelCore
     src/mining_loot.cpp
     src/spawner_loot.cpp
     src/scene.cpp
+    src/heartwood.cpp
     src/root_crossings.cpp
     src/sections.cpp
     src/section_presets.cpp

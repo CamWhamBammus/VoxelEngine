@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "heartwood.h"
 #include "hub_lush.h"
 #include "world.h"
 
@@ -67,8 +68,8 @@ constexpr auto Buildings = std::to_array<HubBuilding>({
     {{27,16,-42},11,11,Style::Cottage,0,2},
 });
 constexpr std::array<HubBridge, 4> Bridges{{
-    {{8,21},{8,47}}, {{8,-31},{8,-5}},
-    {{-50,8},{-6,8}}, {{22,8},{65,8}},
+    {{8,39},{8,55}}, {{8,-31},{8,-23}},
+    {{-50,8},{-23,8}}, {{39,8},{65,8}},
 }};
 constexpr std::array<HubWaterfall, 2> Waterfalls{{
     {{-90,-18},1,39}, {{106,-14},-1,45},
@@ -101,7 +102,7 @@ float ellipse(int x, int z, glm::vec2 center, glm::vec2 radius)
 
 bool lake(int x, int z)
 {
-    return (ellipse(x,z,Center,{42,36}) < 1 && ellipse(x,z,Center,{18,17}) > 1)
+    return (ellipse(x,z,Center,{50,40}) < 1 && ellipse(x,z,Center,{34,32}) > 1)
         || ellipse(x,z,{-64,-14},{25,16}) < 1
         || ellipse(x,z,{78,-12},{24,17}) < 1
         || ellipse(x,z,{-34,0},{23,9}) < 1
@@ -147,7 +148,7 @@ int terrainHeight(int x, int z)
         const float rise = (hill.height-Ground)*shoulder;
         ground = std::max(ground,float(Ground)+std::floor(rise/2)*2);
     }
-    float shore=std::max(0.0f,(std::sqrt(ellipse(x,z,Center,{42,36}))-1)*36);
+    float shore=std::max(0.0f,(std::sqrt(ellipse(x,z,Center,{50,40}))-1)*40);
     for (const auto basin : {glm::vec4(-64,-14,25,16),glm::vec4(78,-12,24,17)})
         shore=std::min(shore,std::max(0.0f,(std::sqrt(ellipse(x,z,{basin.x,basin.y},{basin.z,basin.w}))-1)*basin.w));
     ground=glm::mix(float(Ground),ground,std::clamp(shore/9,0.0f,1.0f));
@@ -402,48 +403,34 @@ void canopy(World& world,glm::vec3 center,glm::vec3 radius)
 
 void heartTree(World& world)
 {
-    for (const auto root : {glm::vec3(-1,9,-1),{17,9,-1},{-1,9,17},{17,9,17}})
-        branch(world,{8,14,8},root,3.1f,1.0f);
-    branch(world,{8,10,8},{4,28,11},5.2f,4.0f);
-    branch(world,{4,28,11},{10,44,6},4.0f,2.8f);
-    branch(world,{10,44,6},{4,64,9},2.8f,1.0f);
+    buildHeartwood(world);
+    // The rebuilt trunk is a fifty-seven-block hall. Large, connected boughs
+    // grow above its roof instead of occupying the rooms and walking routes.
     struct Bough { glm::vec3 base,elbow,tip,spread; };
     for (const auto& b : std::array<Bough,8>{{
-        {{5,26,10},{-9,33,9},{-24,44,2},{14,7,11}},
-        {{5,29,10},{20,34,14},{38,45,21},{13,8,13}},
-        {{7,34,8},{0,41,-6},{-6,49,-24},{13,8,14}},
-        {{8,35,8},{10,41,24},{18,51,40},{13,8,12}},
-        {{9,42,7},{-4,49,18},{-20,58,25},{14,9,13}},
-        {{9,44,7},{23,51,-3},{27,60,-12},{17,6,14}},
-        {{6,52,8},{-6,58,2},{-12,63,-6},{18,6,16}},
-        {{5,57,9},{9,62,14},{11,66,13},{19,6,17}},
+        {{-14,53,8},{-25,61,9},{-30,68,2},{15,7,14}},
+        {{30,53,8},{41,61,14},{45,69,21},{14,8,14}},
+        {{8,54,-15},{0,62,-24},{-6,70,-30},{15,8,14}},
+        {{8,54,31},{10,61,40},{18,70,47},{14,8,13}},
+        {{-9,53,27},{-15,64,29},{-21,72,34},{14,8,13}},
+        {{25,54,-8},{30,65,-17},{35,72,-22},{15,7,14}},
+        {{8,56,-9},{-6,66,2},{-12,76,-6},{19,7,17}},
+        {{8,57,9},{9,69,14},{11,78,13},{20,7,18}},
     }}) {
-        branch(world,b.base,b.elbow,2.8f,1.7f);
-        branch(world,b.elbow,b.tip,1.7f,.65f);
-        branch(world,b.elbow,b.tip+glm::vec3(-5,1,6),1.2f,.4f);
-        canopy(world,b.tip+glm::vec3(0,4,0),b.spread);
+        branch(world,b.base,b.elbow,3.5f,2.2f);
+        branch(world,b.elbow,b.tip,2.2f,.75f);
+        branch(world,b.elbow,b.tip+glm::vec3(-5,1,6),1.4f,.5f);
+        canopy(world,b.tip+glm::vec3(0,3,0),b.spread);
         canopy(world,glm::mix(b.elbow,b.tip,.65f)+glm::vec3(0,5,0),b.spread*.72f);
     }
-    canopy(world,{-3,59,7},{21,9,19});
-    canopy(world,{12,52,17},{22,7,19});
-    canopy(world,{-6,49,-9},{16,6,17});
-    // Wide, coherent glow accents keep the lower boughs softly visible.
-    for (int z=-42;z<=56;++z) for (int x=-42;x<=54;++x) for (int y=38;y<=86;++y) {
+    canopy(world,{-3,72,7},{23,10,22});
+    canopy(world,{12,67,17},{24,8,22});
+    canopy(world,{-6,66,-9},{20,8,20});
+    for (int z=-44;z<=62;++z) for (int x=-46;x<=60;++x) for (int y=57;y<=89;++y) {
         if (world.get({x,y,z})!=Block::Leaves) continue;
         if (hash((x+48)/7+y/6,(z+48)/7,world.seed())%7==0
             && (world.get({x,y-1,z})==Block::Air || world.get({x,y+1,z})==Block::Air))
             world.set({x,y,z},Block::GlowLeaves);
-    }
-    for (const auto light : {glm::ivec3(3,18,9),{13,27,9},{8,38,4},{-8,32,9},{25,39,18},{10,40,26}}) {
-        int support=light.y+1;
-        while (support<70 && world.get({light.x,support,light.z})==Block::Air) ++support;
-        if (support>=70) continue;
-        box(world,light+glm::ivec3(0,1,0),{light.x,support,light.z},Block::Timber);
-        world.set(light,Block::Lantern);
-    }
-    for (int z=-9;z<=25;++z) for (int x=-10;x<=26;++x) {
-        const float r=glm::length((glm::vec2(x,z)-glm::vec2(Center))/glm::vec2(18,17));
-        if (r>.72f && r<=1) world.set({x,Ground,z},Block::Path);
     }
 }
 
@@ -610,7 +597,7 @@ void neighborhoods(World& world)
     };
     // Each waterfront landing climbs a different district. The roads wind
     // around buildings rather than cutting a rectangular grid through them.
-    avenue({{8,8,48},{-2,14,63},{2,18,77},{24,18,79},{53,20,77},{72,20,70},{72,20,52},{70,18,32},{70,12,18},{65,8,8}});
+    avenue({{8,8,56},{-2,14,63},{2,18,77},{24,18,79},{53,20,77},{72,20,70},{72,20,52},{70,18,32},{70,12,18},{65,8,8}});
     avenue({{-50,8,8},{-58,12,18},{-57,20,39},{-49,22,54},{-49,22,74},{2,18,77}});
     avenue({{-50,8,8},{-48,12,-9},{-56,20,-30},{-62,26,-44},{-62,28,-67},{-50,28,-79},{-30,28,-81},{8,30,-78}});
     avenue({{65,8,8},{66,10,-5},{63,18,-22},{61,24,-42},{80,26,-43},{86,26,-71},{62,28,-76},{30,28,-77},{8,30,-78}});
@@ -822,7 +809,7 @@ void buildUndergroundScene(World& world)
     // These reserves do not overlap any room, door spur, or cleared road.
     for (const auto& fall : Waterfalls) waterfall(world,fall);
     for (const auto p : {glm::ivec2(-62,6),{87,9},{-49,-30},{54,-29}}) outcrop(world,p,4,7,true);
-    for (const auto p : {glm::ivec2(-23,-10),{39,24},{-15,33},{29,-18},{-50,39},{69,4}}) crystalGarden(world,p,3);
+    for (const auto p : {glm::ivec2(-29,-10),{45,24},{-28,37},{43,-24},{-50,39},{69,4}}) crystalGarden(world,p,3);
     for (const auto p : {glm::ivec2(-43,45),{48,49},{-74,61},{70,47},{-43,-67},{64,-65},
                         {-30,22},{42,33},{-23,-26},{41,-26},{-61,46},{58,18},
                         {-46,17},{-37,43},{-18,55},{37,41},{52,17},{69,-29},

@@ -8,7 +8,7 @@
 namespace voxel {
 class World;
 
-// Feet position on the arrival avenue, facing the tree island and north gate.
+// Feet position on the arrival avenue, facing Heartwood Hall and the north gate.
 inline constexpr glm::vec3 VillageSpawn{2.5f, 19.0f, 77.5f};
 inline constexpr float VillageYaw = -90.0f;
 inline constexpr float VillagePitch = 4.0f;
@@ -51,7 +51,9 @@ std::span<const HubWaterfall> sceneWaterfallPlan();
 // Flights rise at most one block per tread; the level sections are landings.
 std::span<const glm::ivec3> sceneExpeditionApproach();
 
-// Replace the world with the enclosed tree-and-water hub. No building services
+// Replace the world with the enclosed village around the large Heartwood Hall.
+// Four waterfront approaches connect its hollow trunk to the village districts.
+// No building services
 // or expedition transitions run here; this scene supplies their physical spaces.
 void buildUndergroundScene(World& world);
 
