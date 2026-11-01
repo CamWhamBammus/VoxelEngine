@@ -135,7 +135,7 @@ void galleries(World& world)
             for (int drop=1;drop<=3;++drop) {
                 const int inward=x==-6?-1:1;
                 const int first=x+inward*drop,last=x+inward*(drop+1);
-                box(world,{std::min(first,last),floor-2-drop,z},{std::max(first,last),floor-2-drop,z},Block::Timber);
+                box(world,{std::min(first,last),floor-2-drop,z},{std::max(first,last),floor-1,z},Block::Timber);
             }
         }
         for (const int x : {-5,1,7,13,19}) {
@@ -171,6 +171,40 @@ void stairs(World& world)
     flight(HeartwoodGalleryFloor,11);
 }
 
+void rooms(World& world)
+{
+    for (const auto& room : Rooms) {
+        const auto low=room.minimum,high=room.maximum;
+        const int floor=low.y-1;
+        box(world,{low.x-1,floor,low.z-1},{high.x+1,floor,high.z+1},Block::AgedPlanks);
+        box(world,low,high,Block::Air);
+        box(world,{low.x-1,low.y,low.z-1},{high.x+1,high.y,low.z-1},Block::AgedPlanks);
+        box(world,{low.x-1,low.y,high.z+1},{high.x+1,high.y,high.z+1},Block::AgedPlanks);
+        box(world,{low.x-1,low.y,low.z-1},{low.x-1,high.y,high.z+1},Block::AgedPlanks);
+        box(world,{high.x+1,low.y,low.z-1},{high.x+1,high.y,high.z+1},Block::AgedPlanks);
+        box(world,{low.x-1,high.y+1,low.z-1},{high.x+1,high.y+1,high.z+1},Block::Timber);
+        for (const int x : {low.x-1,high.x+1}) for (const int z : {low.z-1,high.z+1})
+            box(world,{x,low.y,z},{x,high.y,z},Block::Timber);
+        for (int x=low.x+2;x<high.x;x+=4) {
+            box(world,{x,low.y,low.z-1},{x,high.y,low.z-1},Block::Timber);
+            box(world,{x,low.y,high.z+1},{x,high.y,high.z+1},Block::Timber);
+        }
+        // Wide door frames keep future furniture away from the approach.
+        const int door=int(std::floor(room.entrance.x));
+        box(world,{door-1,low.y,high.z+1},{door+2,low.y+5,high.z+1},Block::Air);
+        box(world,{door-2,low.y,high.z+1},{door-2,low.y+6,high.z+1},Block::Timber);
+        box(world,{door+3,low.y,high.z+1},{door+3,low.y+6,high.z+1},Block::Timber);
+        box(world,{door-2,low.y+6,high.z+1},{door+3,low.y+6,high.z+1},Block::Timber);
+        // An open reading window looks across the hall from either room.
+        const int windowX=door<8?high.x-1:low.x+1;
+        box(world,{windowX,low.y+2,high.z+1},{windowX+1,low.y+4,high.z+1},Block::Air);
+        for (const int x : {low.x+1,high.x-1}) {
+            world.set({x,low.y+4,low.z-1},Block::Lantern);
+            world.set({x,low.y+5,low.z-1},Block::Timber);
+        }
+    }
+}
+
 } // namespace
 
 const HeartwoodLayout& heartwoodLayout() { return Layout; }
@@ -183,5 +217,6 @@ void buildHeartwood(World& world)
     sapWall(world);
     galleries(world);
     stairs(world);
+    rooms(world);
 }
 } // namespace voxel
