@@ -125,6 +125,7 @@ if(VOXEL_BUILD_APP)
         tests/spawner_chain_graphics_smoke.cpp
         tests/level_hud_smoke.cpp
         tests/lush_material_smoke.cpp
+        tests/skill_journal_hud_smoke.cpp
     )
     target_include_directories(VoxelEngine PRIVATE tests)
     target_link_libraries(VoxelEngine PRIVATE VoxelCore OpenGL::GL glfw GLEW::GLEW)
@@ -147,7 +148,7 @@ if(BUILD_TESTING)
         lush_hub monsters health spawner_editor spawner_loot encounters encounter_game held_sword held_pickaxe held_lantern
         mining mining_loot mining_game built_surface_relief cave_game section_naming section_presets section_creation
         held_compass compass_target jungle_assets spawner_chains encounter_chain spawner_chain_editor
-        arena_preset arena_game gear_game skills skills_game
+        arena_preset arena_game gear_game skills skills_game heartwood
     )
         add_executable(${test_name}_tests tests/${test_name}_tests.cpp)
         target_link_libraries(${test_name}_tests PRIVATE VoxelCore)

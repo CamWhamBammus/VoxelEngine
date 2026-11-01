@@ -18,6 +18,7 @@
 #include "spawner_chain_graphics_smoke.h"
 #include "level_hud_smoke.h"
 #include "lush_material_smoke.h"
+#include "skill_journal_hud_smoke.h"
 #include "graphics/hud.h"
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
@@ -1492,6 +1493,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyCaveLighting(width, height);
     verifyMiningHud(width, height);
     verifyInventoryHud(width, height);
+    verifySkillJournalHud(width, height);
     verifyRootCrossingHud(width, height);
     verifyRootCrossingRendering(width, height);
     verifyPalettePreviews();

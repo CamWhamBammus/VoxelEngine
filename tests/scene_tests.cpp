@@ -1,4 +1,5 @@
 #include "scene.h"
+#include "heartwood.h"
 #include "player.h"
 #include "world.h"
 #include "editing.h"
@@ -385,8 +386,9 @@ int main()
         check(roadStairs>=100 && shoreStairs>=20,
               "authored roads and swimming exits use substantial flights of real stair blocks");
         check(highestWater >= 25, "falling water reaches far above the lake surface");
-        check(world.get({8, 15, 8}) == Block::Timber && highestWood >= 52 && highestCanopy >= 68,
-              "the heart tree has a substantial central trunk and a tall crown");
+        check(world.get({8, 15, 8}) == Block::Air && isSolid(world.get({8,15,-11}))
+              && highestWood >= 58 && highestCanopy >= 78,
+              "the heart tree has a hollow hall, a rooted sap wall, and a tall crown");
         check(crownLeaves >= 5000 && canopyHigh.x - canopyLow.x >= 65 && canopyHigh.z - canopyLow.z >= 65,
               "the central canopy spreads broadly above the village");
         check(std::all_of(branches.begin(), branches.end(), [](int count) { return count >= 10; }),
@@ -398,6 +400,9 @@ int main()
         check(player.setFeetPosition(world, voxel::VillageSpawn) && player.grounded(),
               "arrival spawn has full player clearance and ground support");
         const auto routes = walkableRoutes(world);
+        checkRoute(world,routes,glm::ivec3(glm::floor(voxel::heartwoodLayout().approach)),"Heartwood seed approach");
+        for (const auto& room : voxel::heartwoodRooms())
+            checkRoute(world,routes,glm::ivec3(glm::floor(room.entrance)),std::string(room.name));
         const auto smithApproach = voxel::sceneBlacksmithApproach();
         const auto station = voxel::sceneBlacksmithStation();
         checkRoute(world, routes, glm::ivec3(glm::floor(smithApproach)), "blacksmith anvil approach");
