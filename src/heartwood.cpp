@@ -115,6 +115,62 @@ void sapWall(World& world)
         world.set(p,Block::Crystal);
 }
 
+void galleries(World& world)
+{
+    for (const int floor : {HeartwoodGalleryFloor,HeartwoodUpperFloor}) {
+        for (int z=-17;z<=33;++z) for (int x=-17;x<=33;++x) {
+            if (!footprint(x,z,2)) continue;
+            const bool ring=x<=-6 || x>=21 || z<=-5 || z>=26;
+            const bool porch=z<=0;
+            if (!ring && !porch) continue;
+            world.set({x,floor,z},Block::AgedPlanks);
+            world.set({x,floor-1,z},Block::Timber);
+        }
+        // Deep inner fascias and corbel steps expose real depth below the rail.
+        for (const int x : {-6,21}) box(world,{x,floor-2,1},{x,floor-1,26},Block::Timber);
+        box(world,{-6,floor-2,26},{21,floor-1,26},Block::Timber);
+        for (const int x : {-6,21}) for (const int z : {3,9,15,21,25}) {
+            box(world,{x,floor+1,z},{x,floor+2,z},Block::Timber);
+            if (z==3||z==15||z==25) world.set({x,floor+3,z},Block::Lantern);
+            for (int drop=1;drop<=3;++drop) {
+                const int inward=x==-6?-1:1;
+                const int first=x+inward*drop,last=x+inward*(drop+1);
+                box(world,{std::min(first,last),floor-2-drop,z},{std::max(first,last),floor-2-drop,z},Block::Timber);
+            }
+        }
+        for (const int x : {-5,1,7,13,19}) {
+            box(world,{x,floor+1,26},{x,floor+2,26},Block::Timber);
+            if (x==1||x==13) world.set({x,floor+3,26},Block::Lantern);
+        }
+    }
+    // Both stairwells are cut before placing their treads. The flight below
+    // must keep full headroom right up to the landing above it.
+    box(world,{-15,19,16},{-9,23,28},Block::Air);
+    box(world,{-15,32,0},{-9,36,12},Block::Air);
+}
+
+void stairs(World& world)
+{
+    const auto flight=[&](int lowFloor,int firstZ) {
+        for (int step=0;step<13;++step) {
+            const int z=firstZ-step,top=lowFloor+1+step;
+            // One voxel stair supplies two half-height treads; the player
+            // climbs with the same shape and collision used in the editor.
+            box(world,{-15,lowFloor+1,z},{-9,top-1,z},Block::Timber);
+            box(world,{-15,top,z},{-9,top,z},Block::PlankStairs);
+            for (const int x : {-16,-8}) {
+                world.set({x,top,z},Block::Timber);
+                if (step%4==0) {
+                    box(world,{x,top+1,z},{x,top+2,z},Block::Timber);
+                    world.set({x,top+3,z},Block::Lantern);
+                }
+            }
+        }
+    };
+    flight(HeartwoodFloor,27);
+    flight(HeartwoodGalleryFloor,11);
+}
+
 } // namespace
 
 const HeartwoodLayout& heartwoodLayout() { return Layout; }
@@ -125,5 +181,7 @@ void buildHeartwood(World& world)
     foundation(world);
     shell(world);
     sapWall(world);
+    galleries(world);
+    stairs(world);
 }
 } // namespace voxel
