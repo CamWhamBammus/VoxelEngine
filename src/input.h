@@ -181,6 +181,7 @@ public:
 
 private:
     bool wasSkillsModal_ = false;
+    bool suppressJournalClick_ = false;
     struct Buttons {
         bool releaseMouse = false;
         bool toggleMouse = false;

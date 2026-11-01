@@ -121,6 +121,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     wasEditorMode_ = editorMode;
     if (!editorMode) wireframe_ = false;
     const Buttons buttons = readButtons();
+    if (!buttons.remove) suppressJournalClick_ = false;
     const Buttons previous = previousButtons_;
     previousButtons_ = buttons;
 
@@ -179,6 +180,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     }
     if (wasSkillsModal_) {
         if (!modal) capture(true);
+        suppressJournalClick_ = buttons.remove;
         wasSkillsModal_ = false;
     }
     if (inventoryModal) {
@@ -271,7 +273,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         }
     } else {
         actions_.attack = !modal && pressed(buttons.remove, previous.remove);
-        actions_.mineHeld = !modal && buttons.remove;
+        actions_.mineHeld = !modal && buttons.remove && !suppressJournalClick_;
         actions_.interact = pressed(buttons.interact, previous.interact);
         actions_.upgrade = pressed(buttons.upgrade, previous.upgrade);
         if (modal && !crossingPicker) {
