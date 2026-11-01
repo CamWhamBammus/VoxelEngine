@@ -21,4 +21,14 @@ struct SkillEntry {
 std::span<const std::string_view> skillTabNames();
 std::span<const SkillEntry> skillEntries(int tab);
 
+// Menu navigation is transient. It never touches equipment or profile files.
+struct SkillJournal {
+    int tab = 0;
+    int selected = 0;
+    void selectTab(int index);
+    void selectSkill(int index);
+    void cycleTab(int direction);
+    void moveSelection(glm::ivec2 direction);
+};
+
 } // namespace voxel

@@ -40,4 +40,31 @@ std::span<const SkillEntry> skillEntries(int tab)
                                                : std::span<const SkillEntry>{};
 }
 
+void SkillJournal::selectTab(int index)
+{
+    if (index < 0 || index >= int(Tabs.size()) || index == tab) return;
+    tab = index;
+    selected = 0;
+}
+
+void SkillJournal::selectSkill(int index)
+{
+    if (index >= 0 && index < int(skillEntries(tab).size())) selected = index;
+}
+
+void SkillJournal::cycleTab(int direction)
+{
+    if (direction) selectTab((tab + (direction > 0 ? 1 : 3)) % 4);
+}
+
+void SkillJournal::moveSelection(glm::ivec2 direction)
+{
+    // Cards are laid out in two rows of three. Edges stop instead of wrapping
+    // to a different row so keyboard movement follows the visible grid.
+    const int column = selected % 3, row = selected / 3;
+    const int x = column + (direction.x > 0 ? 1 : direction.x < 0 ? -1 : 0);
+    const int y = row + (direction.y > 0 ? 1 : direction.y < 0 ? -1 : 0);
+    if (x >= 0 && x < 3 && y >= 0 && y < 2) selectSkill(y * 3 + x);
+}
+
 } // namespace voxel
