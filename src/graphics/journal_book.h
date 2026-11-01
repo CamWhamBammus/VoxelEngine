@@ -131,7 +131,7 @@ void drawBook(Drawing& out,const JournalLayout& layout,int currentTab,int select
         for(int dash=0;dash<21;++dash)out.quad(tab.x+10+dash*8.5f,tab.y+5,3,1,{.68f,.48f,.25f,.5f});
         paperGrain(out,tab.x+7,tab.y+9,tab.width-14,tab.height-13,310+index);
         tabMark(out,index,{tab.x+34,tab.y+28},1.08f);
-        fitted(out,tabs[index],tab.x+61,tab.y+19,tab.width-69,21,{.89f,.81f,.61f,1});
+        fitted(out,tabs[index],tab.x+61,tab.y+19,tab.width-69,18,{.89f,.81f,.61f,1});
     }
     bookPage(out,x,y,false);bookPage(out,x,y,true);
     // The gutter is a sequence of translucent gradients instead of a black
@@ -145,18 +145,26 @@ void drawBook(Drawing& out,const JournalLayout& layout,int currentTab,int select
         const float ry=y+145+ring*181;
         out.frame(x+537,ry,6,8,{.31f,.18f,.07f,1},{.59f,.40f,.17f,1},1);
     }
-    text(out,"SKILL TREE",x+86,y+125,32,Ink);
-    sprig(out,x+328,y+148,.9f);
+    text(out,"SKILL TREE",x+86,y+125,29,Ink,true);
+    sprig(out,x+371,y+146,.9f);
     out.bar({x+85,y+169},{x+503,y+169},1,FaintInk);
 
     const auto entries=skillEntries(currentTab);
     for(int index=0;index<int(entries.size());++index) {
         const auto card=layout.card(index);const bool active=index==selected;
         const glm::vec4 outline=active?MossInk:glm::vec4(.42f,.34f,.20f,.35f);
-        out.frame(card.x,card.y,card.width,card.height,outline,
-                  active?glm::vec4(.51f,.60f,.26f,.20f):glm::vec4(.92f,.82f,.60f,.01f),3);
+        if(active)out.quad(card.x,card.y,card.width,card.height,{.46f,.57f,.24f,.21f});
+        const auto border=[&](float inset,glm::vec4 color,float thickness) {
+            const float left=card.x+inset,right=card.x+card.width-inset;
+            const float top=card.y+inset,bottom=card.y+card.height-inset;
+            out.bar({left,top},{right,top},thickness,color);
+            out.bar({right,top},{right,bottom},thickness,color);
+            out.bar({right,bottom},{left,bottom},thickness,color);
+            out.bar({left,bottom},{left,top},thickness,color);
+        };
+        border(0,outline,active?1.5f:.8f);
         if(active) {
-            out.frame(card.x+2.5f,card.y+2.5f,card.width-5,card.height-5,{.34f,.43f,.16f,.66f},{.6f,.7f,.3f,.025f},2);
+            border(2.5f,{.34f,.43f,.16f,.66f},.8f);
             out.bar({card.x+7,card.y+1},{card.x+card.width-8,card.y+1},2,MossInk);
             out.bar({card.x+6,card.y+card.height-2},{card.x+card.width-7,card.y+card.height-2},1.8f,MossInk);
         }
@@ -165,7 +173,7 @@ void drawBook(Drawing& out,const JournalLayout& layout,int currentTab,int select
         foliageCorner(out,card.x+6,card.y+card.height-6,1,-1,.73f);
         foliageCorner(out,card.x+card.width-6,card.y+card.height-6,-1,-1,.73f);
         icon(out,entries[index].icon,{card.x+card.width*.5f,card.y+83},105);
-        fitted(out,entries[index].name,card.x+card.width*.5f,card.y+139,card.width-17,16,Ink,true);
+        fitted(out,entries[index].name,card.x+card.width*.5f,card.y+139,card.width-17,14,Ink,true);
     }
     // Facing page keeps one illustration and one short sentence, with no
     // progression widgets until the skill system itself has been designed.
@@ -179,8 +187,8 @@ void drawBook(Drawing& out,const JournalLayout& layout,int currentTab,int select
         icon(out,entry.icon,{detailCenter,y+326},290);
         sprig(out,detailCenter,y+442,.72f);
         out.bar({x+611,y+448},{x+969,y+448},.8f,FaintInk);
-        fitted(out,entry.name,detailCenter,y+468,386,27,Ink,true);
-        paragraph(out,entry.description,detailCenter,y+512,370,16,Ink);
+        fitted(out,entry.name,detailCenter,y+468,386,25,Ink,true,true);
+        paragraph(out,entry.description,detailCenter,y+512,370,14,Ink);
     }
     text(out,"Preview only",x+891,y+550,11,{.43f,.37f,.24f,1});
     const auto close=layout.close();
