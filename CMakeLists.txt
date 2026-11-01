@@ -75,6 +75,7 @@ add_library(VoxelCore
     src/graphics/hub_fences.cpp
     src/graphics/hub_building_kit.cpp
     src/graphics/hub_blacksmith.cpp
+    src/graphics/heartwood_props.cpp
     src/graphics/hub_lush.cpp
     src/graphics/jungle_plants.cpp
     src/graphics/jungle_structures.cpp

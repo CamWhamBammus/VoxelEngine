@@ -35,10 +35,11 @@ enum class HubAssetKind {
     HangingFern, MossDrape, PitcherPlants, SeedPodCluster,
     RootBridge, RootStump, MossyPlatform, MossyColumn,
     OvergrownArch, RuinedPillar, RuinedWall, RuinSlab,
-    ArmorStand, ShieldSign, ArmorerBench
+    ArmorStand, ShieldSign, ArmorerBench,
+    HeartSeed, ChainLantern
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ArmorerBench) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ChainLantern) + 1;
 
 inline constexpr int SpawnerMobLimit = 20;
 struct SpawnerSettings {
@@ -112,6 +113,17 @@ constexpr bool isBlacksmithAsset(HubAssetKind kind)
 constexpr bool isArmoryAsset(HubAssetKind kind)
 {
     return kind >= HubAssetKind::ArmorStand && kind <= HubAssetKind::ArmorerBench;
+}
+
+constexpr bool isHeartwoodAsset(HubAssetKind kind)
+{
+    return kind >= HubAssetKind::HeartSeed && kind <= HubAssetKind::ChainLantern;
+}
+
+// Ceiling anchor to the center of the suspended lantern's glass chamber.
+constexpr float heartwoodLanternDrop(std::uint32_t variation)
+{
+    return 2.3f + .3f * float(variation % 3);
 }
 
 constexpr bool isLushAsset(HubAssetKind kind)

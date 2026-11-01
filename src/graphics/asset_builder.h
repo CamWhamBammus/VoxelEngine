@@ -80,6 +80,7 @@ void appendHubPath(MeshData& mesh, const HubAsset& asset);
 void appendHubNature(MeshData& mesh, const HubAsset& asset);
 void appendHubGarden(MeshData& mesh, const HubAsset& asset);
 void appendHubArchitecture(MeshData& mesh, const HubAsset& asset);
+void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset);
 void appendHubBlacksmith(MeshData& mesh, const HubAsset& asset);
 void appendHubLush(MeshData& mesh, const HubAsset& asset);
 void appendHubFence(MeshData& mesh, const HubAsset& asset);

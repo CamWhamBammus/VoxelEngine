@@ -574,6 +574,7 @@ MeshData buildHubAsset(const HubAsset& asset)
         for (const float x : {-.38f,.38f})
             b.box({x-.07f,.84f,-.31f},{x+.07f,.96f,.31f},Block::Stone,stone);
     }
+    else if (isHeartwoodAsset(asset.kind)) appendHeartwoodProp(mesh, asset);
     else if (isJunglePlant(asset.kind)) appendJunglePlants(mesh, asset);
     else if (isJungleStructure(asset.kind)) appendJungleStructures(mesh, asset);
     else if (isChestAsset(asset.kind) || isItemPickup(asset.kind)) appendHubProp(mesh, asset);
@@ -609,6 +610,11 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
         const auto start = static_cast<std::uint32_t>(destination.vertices.size());
         destination.vertices.insert(destination.vertices.end(), mesh.vertices.begin(), mesh.vertices.end());
         for (const auto vertex : mesh.indices) destination.indices.push_back(start + vertex);
+        if (asset.kind == HubAssetKind::HeartSeed)
+            dressing.lights.push_back({asset.position + glm::vec3(0,2.65f,0), {1.25f,.69f,.16f},11.0f});
+        if (asset.kind == HubAssetKind::ChainLantern)
+            dressing.lights.push_back({asset.position - glm::vec3(0,heartwoodLanternDrop(asset.variation),0),
+                {1.05f,.64f,.30f},10.0f});
         if (asset.kind == HubAssetKind::HangingLamp)
             dressing.lights.push_back({asset.position, {1.05f,0.57f,0.23f},8.0f});
         if (standaloneLights && (asset.kind == HubAssetKind::LanternCap || asset.kind == HubAssetKind::WallBracket))
