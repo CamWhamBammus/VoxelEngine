@@ -4,6 +4,7 @@
 #include "graphics/window.h"
 #include "graphics/renderer.h"
 #include "graphics/hud.h"
+#include "graphics/journal_layout.h"
 #include "graphics_smoke.h"
 
 #include <GLFW/glfw3.h>
@@ -68,8 +69,23 @@ int main(int argc, char** argv)
             input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen(),
                          game.devMode() || game.levelMenuOpen(), game.devFlying(),
                          (game.devMode() && game.sectionEditor().typing())
-                             || game.levelController().typing(), game.inventoryOpen());
+                             || game.levelController().typing(), game.inventoryOpen(), game.skillsOpen());
             auto actions = input.actions();
+            if (game.skillsOpen() && actions.skillPointerPressed) {
+                int menuWidth, menuHeight;
+                float menuScaleX, menuScaleY;
+                window.framebufferSize(menuWidth, menuHeight);
+                glfwGetWindowContentScale(window.handle(), &menuScaleX, &menuScaleY);
+                const auto hit = voxel::Hud::skillClick(game, menuWidth, menuHeight, menuScaleY,
+                    actions.skillPointer.x * menuWidth, actions.skillPointer.y * menuHeight);
+                if (hit) {
+                    if (*hit >= voxel::SkillUiTabBase && *hit < voxel::SkillUiTabBase + 4)
+                        actions.skillTab = *hit - voxel::SkillUiTabBase;
+                    else if (*hit >= voxel::SkillUiEntryBase && *hit < voxel::SkillUiEntryBase + 6)
+                        actions.skillSelection = *hit - voxel::SkillUiEntryBase;
+                    else if (*hit == voxel::SkillUiClose) actions.closeMenu = true;
+                }
+            }
             if (game.inventoryOpen() && actions.inventoryPointerPressed) {
                 int menuWidth, menuHeight;
                 float menuScaleX, menuScaleY;
@@ -100,9 +116,9 @@ int main(int argc, char** argv)
             }
             game.update(actions, deltaSeconds);
             audio.update(game.encounters(),game.camera.position(),game.camera.forward());
-            const bool holdLantern = game.healthVisible() && !game.health().dead()
+            const bool holdLantern = game.healthVisible() && !game.health().dead() && !game.skillsOpen()
                 && game.equipment.selectedTool() == voxel::Tool::Lantern;
-            const bool holdCompass = game.healthVisible() && !game.health().dead()
+            const bool holdCompass = game.healthVisible() && !game.health().dead() && !game.skillsOpen()
                 && game.equipment.selectedTool() == voxel::Tool::Compass;
             if ((holdLantern || holdCompass) && actions.active)
                 carriedToolTime = std::fmod(carriedToolTime + deltaSeconds, 8.0f);
@@ -123,11 +139,11 @@ int main(int argc, char** argv)
                             !game.rootCrossingActive() && !game.devMode() && !game.levelActive() && !game.monsterPreviewActive(),
                             game.sectionSceneAssets(), game.sectionPickupOffsets(), game.monsters(),
                             game.encounters().projectiles(),
-                            game.healthVisible() && !game.health().dead()
+                            game.healthVisible() && !game.health().dead() && !game.skillsOpen()
                                 && game.equipment.selectedTool() == voxel::Tool::Sword
                                 ? std::optional<float>(game.encounters().swordSwing()) : std::nullopt,
                             game.encounters().hits(),
-                            game.healthVisible() && !game.health().dead()
+                            game.healthVisible() && !game.health().dead() && !game.skillsOpen()
                                 && game.equipment.selectedTool() == voxel::Tool::Pickaxe
                                 ? std::optional<float>(game.mining().swing()) : std::nullopt,
                             holdLantern ? std::optional<float>(carriedToolTime) : std::nullopt,
@@ -183,7 +199,8 @@ int main(int argc, char** argv)
             else if (!game.editorMode() && !game.levelMenuOpen()) hud.drawPlay(game, width, height, scaleY);
             if (game.levelController().open()) hud.drawLevels(game, width, height, scaleY);
             hud.drawInventory(game, width, height, scaleY);
-            hud.drawHealth(game,width,height,scaleY);
+            if (!game.skillsOpen()) hud.drawHealth(game,width,height,scaleY);
+            hud.drawSkills(game,width,height,scaleY);
             if (!game.menuOpen() && (game.editorMode() || input.helpVisible() || !input.captured()))
                 hud.draw(statusText, width, height, scaleY);
             window.present();
