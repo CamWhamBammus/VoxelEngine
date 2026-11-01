@@ -173,13 +173,14 @@ public:
 
     void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false,
                 bool crossingPicker = false, bool devMode = false, bool devFlying = false,
-                bool devTyping = false, bool inventoryModal = false);
+                bool devTyping = false, bool inventoryModal = false, bool skillsModal = false);
     const InputActions& actions() const { return actions_; }
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
     bool helpVisible() const { return help_; }
 
 private:
+    bool wasSkillsModal_ = false;
     struct Buttons {
         bool releaseMouse = false;
         bool toggleMouse = false;

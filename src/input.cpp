@@ -109,7 +109,7 @@ void Input::capture(bool enabled)
 }
 
 void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool modal, bool crossingPicker,
-                   bool devMode, bool devFlying, bool devTyping, bool inventoryModal)
+                   bool devMode, bool devFlying, bool devTyping, bool inventoryModal, bool skillsModal)
 {
     actions_ = {};
     if (modal != wasModal_ || editorMode != wasEditorMode_ || devMode != wasDevMode_
@@ -151,6 +151,36 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     actions_.inventory = !editorMode && !devTyping && (!devMode || !devFlying)
         && (inventoryModal || (captured_ && !modal))
         && pressed(buttons.inventory, previous.inventory);
+    if (skillsModal) {
+        if (captured_) capture(false);
+        actions_.active = true;
+        actions_.closeMenu = pressed(buttons.releaseMouse, previous.releaseMouse);
+        actions_.interact = pressed(buttons.interact, previous.interact);
+        actions_.skillTabStep = int(pressed(buttons.nextMaterial, previous.nextMaterial))
+            - int(pressed(buttons.previousMaterial, previous.previousMaterial));
+        if (pressed(buttons.toggleMouse, previous.toggleMouse)) actions_.skillTabStep = shift ? -1 : 1;
+        for (int i = 0; i < 4; ++i)
+            if (pressed(buttons.tools[i], previous.tools[i])) actions_.skillTab = i;
+        actions_.skillMove = {
+            int(pressed(buttons.menuRight, previous.menuRight)) - int(pressed(buttons.menuLeft, previous.menuLeft)),
+            int(pressed(buttons.menuNext, previous.menuNext)) - int(pressed(buttons.menuPrevious, previous.menuPrevious))};
+        actions_.skillPointerPressed = pressed(buttons.remove, previous.remove);
+        double x, y;
+        int width, height;
+        glfwGetCursorPos(window_, &x, &y);
+        glfwGetWindowSize(window_, &width, &height);
+        actions_.skillPointer = {width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0};
+        scroll_ = 0;
+        hotbarScroll_.reset();
+        pendingText_.clear();
+        removeRepeat_ = placeRepeat_ = 0;
+        wasSkillsModal_ = true;
+        return;
+    }
+    if (wasSkillsModal_) {
+        if (!modal) capture(true);
+        wasSkillsModal_ = false;
+    }
     if (inventoryModal) {
         if (captured_) capture(false);
         actions_.active = true;
