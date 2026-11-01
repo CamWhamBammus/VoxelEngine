@@ -5,6 +5,7 @@
 #include "section_editor.h"
 #include "section_presets.h"
 #include "graphics/held_compass.h"
+#include "graphics/journal_book.h"
 #include "level_editor.h"
 
 #include <algorithm>
@@ -1727,7 +1728,7 @@ void Hud::drawMonsters(const Game& game, int framebufferWidth, int framebufferHe
 
 void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight, float contentScale)
 {
-    if (game.editorMode() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
+    if (game.editorMode() || game.skillsOpen() || framebufferWidth <= 0 || framebufferHeight <= 0) return;
     if (!std::isfinite(contentScale) || contentScale <= 0) contentScale = 1;
     // Preserve the layout on small windows, then apply the display's DPI scale.
     const float minWidth=(game.smithOpen() || game.armoryOpen()) ? 520.0f : game.crossingMenuOpen() ? 620.0f : game.levelActive() ? 776.0f : 460.0f;
@@ -1762,6 +1763,9 @@ void Hud::drawPlay(const Game& game, int framebufferWidth, int framebufferHeight
     }
     if (game.nearArmory() && !game.menuOpen()) {
         quietCentered(drawing,"E  ARMORY",center,height*.5f+30,180,Gold);
+    }
+    if (game.nearSkillTree() && !game.menuOpen()) {
+        quietCentered(drawing,"E  SKILL TREE",center,height*.5f+30,200,Gold);
     }
     if (game.nearExpeditionGate() && !game.menuOpen()) {
         quietCentered(drawing,"E  EXPEDITIONS",center,height*.5f+30,220,Leaf);
@@ -2089,6 +2093,24 @@ std::optional<int> Hud::inventoryClick(const Game& game,int framebufferWidth,int
     for (const auto& hit:hits)
         if (x>=hit.x && x<hit.x+hit.width && y>=hit.y && y<hit.y+hit.height) return hit.action;
     return std::nullopt;
+}
+
+void Hud::drawSkills(const Game& game,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    if (!game.skillsOpen() || framebufferWidth<=0 || framebufferHeight<=0) return;
+    const auto layout=journalLayout(framebufferWidth,framebufferHeight,contentScale);
+    Drawing drawing(layout.width,layout.height,layout.scale);
+    drawing.vertices.reserve(65000);
+    const auto& journal=game.skillJournal();
+    journal::drawBook(drawing,layout,journal.tab,journal.selected);
+    render(drawing,shader_,vao_,buffer_);
+}
+
+std::optional<int> Hud::skillClick(const Game& game,int framebufferWidth,int framebufferHeight,
+                                  float contentScale,float x,float y)
+{
+    if (!game.skillsOpen() || framebufferWidth<=0 || framebufferHeight<=0) return std::nullopt;
+    return journalLayout(framebufferWidth,framebufferHeight,contentScale).hit(x,y);
 }
 
 } // namespace voxel

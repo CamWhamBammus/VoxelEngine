@@ -119,8 +119,8 @@ public:
                 const auto point=glm::mix(glm::vec2(0,19),end,i/5.f);
                 const glm::vec2 side(-std::sin(angle),std::cos(angle));
                 const auto axis=glm::normalize(end-glm::vec2(0,19));
-                leaf(point,point+side*(12-i)+axis*5,2.7f,{.35f+.025f*i,.46f+.02f*i,.14f});
-                leaf(point,point-side*(12-i)+axis*5,2.7f,{.26f+.02f*i,.39f+.02f*i,.10f});
+                leaf(point,point+side*(12.f-i)+axis*5.f,2.7f,{.35f+.025f*i,.46f+.02f*i,.14f});
+                leaf(point,point-side*(12.f-i)+axis*5.f,2.7f,{.26f+.02f*i,.39f+.02f*i,.10f});
             }
         }
     }
