@@ -36,10 +36,10 @@ enum class HubAssetKind {
     RootBridge, RootStump, MossyPlatform, MossyColumn,
     OvergrownArch, RuinedPillar, RuinedWall, RuinSlab,
     ArmorStand, ShieldSign, ArmorerBench,
-    HeartSeed, ChainLantern
+    HeartSeed, ChainLantern, LibraryBookcase, ReadingDesk, ReadingSeat
 };
 
-inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ChainLantern) + 1;
+inline constexpr std::size_t HubAssetCount = static_cast<std::size_t>(HubAssetKind::ReadingSeat) + 1;
 
 inline constexpr int SpawnerMobLimit = 20;
 struct SpawnerSettings {
@@ -117,7 +117,7 @@ constexpr bool isArmoryAsset(HubAssetKind kind)
 
 constexpr bool isHeartwoodAsset(HubAssetKind kind)
 {
-    return kind >= HubAssetKind::HeartSeed && kind <= HubAssetKind::ChainLantern;
+    return kind >= HubAssetKind::HeartSeed && kind <= HubAssetKind::ReadingSeat;
 }
 
 // Ceiling anchor to the center of the suspended lantern's glass chamber.

@@ -112,6 +112,92 @@ void chainLantern(AssetBuilder& out, std::uint32_t variation)
     out.box(p({-.20f,.52f,-.20f}),p({.20f,.59f,.20f}),Block::Slate,Iron);
 }
 
+void standingBook(AssetBuilder& out, glm::vec3 origin, float width, float height,
+                  glm::vec3 cover)
+{
+    const auto p=[&](glm::vec3 v) {return origin+v;};
+    constexpr float depth=.41f;
+    out.box(p({.016f,.018f,0}),p({width-.016f,height-.018f,depth-.028f}),Block::Limestone,{.68f,.62f,.43f});
+    for (const float x:{0.f,width-.024f})
+        out.box(p({x,0,-.014f}),p({x+.024f,height,depth}),Block::Planks,cover);
+    out.box(p({0,0,depth-.035f}),p({width,height,depth+.015f}),Block::Planks,cover);
+    for (const float y:{.06f,height-.09f})
+        out.box(p({.012f,y,depth+.016f}),p({width-.012f,y+.018f,depth+.025f}),Block::Slate,Brass);
+    out.box(p({width*.28f,height*.55f,depth+.016f}),p({width*.72f,height*.68f,depth+.025f}),Block::Limestone,{.68f,.58f,.36f});
+}
+
+void bookcase(AssetBuilder& out, std::uint32_t variation)
+{
+    const auto oak=Oak*(.94f+.03f*float(variation%3));
+    out.box({-1.08f,.08f,-.35f},{1.08f,3.30f,-.25f},Block::Planks,oak*.62f);
+    for (const float x:{-1.12f,.98f}) {
+        bevel(out,{x,0,-.43f},{x+.14f,3.42f,.43f},.04f,Block::Timber,oak);
+        out.box({x+.035f,.25f,.43f},{x+.10f,3.22f,.475f},Block::Timber,oak*1.25f);
+    }
+    for (int shelf=0;shelf<5;++shelf) {
+        const float y=.15f+float(shelf)*.77f;
+        bevel(out,{-1.10f,y,-.37f},{1.10f,y+.12f,.44f},.025f,Block::Planks,oak*1.15f);
+    }
+    bevel(out,{-1.18f,3.32f,-.46f},{1.18f,3.47f,.47f},.055f,Block::Timber,oak*1.15f);
+    bevel(out,{-1.17f,0,-.45f},{1.17f,.16f,.46f},.04f,Block::Timber,oak*.8f);
+    constexpr std::array<glm::vec3,6> covers{{{.26f,.36f,.14f},{.43f,.16f,.12f},
+        {.17f,.29f,.34f},{.42f,.30f,.15f},{.29f,.19f,.36f},{.53f,.39f,.19f}}};
+    for (int shelf=0;shelf<4;++shelf) for (int book=0;book<8;++book) {
+        const auto seed=variation+std::uint32_t(shelf*19+book*7);
+        const float height=.47f+.045f*float(seed%4);
+        const auto origin=glm::vec3(-.95f+float(book)*.235f,.27f+float(shelf)*.77f,-.15f+.02f*float(seed%3));
+        standingBook(out,origin,.18f+.01f*float(seed%3),height,covers[seed%covers.size()]);
+    }
+    // A carved twig crest keeps the case's trim from reading as another crate.
+    for (const float side:{-1.f,1.f}) {
+        out.beam({0,3.48f,.12f},{side*.55f,3.55f,.12f},.07f,Block::RootWood,oak);
+        out.beam({side*.55f,3.55f,.12f},{side*.79f,3.48f,.12f},.055f,Block::RootWood,oak);
+    }
+}
+
+void readingDesk(AssetBuilder& out, std::uint32_t variation)
+{
+    const auto oak=Oak*(.96f+.03f*float(variation%3));
+    for (const float x:{-1.f,1.f}) for (const float z:{-.45f,.45f}) {
+        out.box({x-.07f,0,z-.07f},{x+.07f,1.05f,z+.07f},Block::Timber,oak*.8f);
+        bevel(out,{x-.11f,0,z-.11f},{x+.11f,.13f,z+.11f},.035f,Block::Timber,oak);
+    }
+    for (const float z:{-.45f,.45f}) out.beam({-1,.3f,z},{1,.3f,z},.09f,Block::Timber,oak*.7f);
+    for (int board=0;board<5;++board) {
+        const float x=-1.22f+float(board)*.49f;
+        bevel(out,{x,1.03f,-.65f},{x+.475f,1.18f,.65f},.025f,Block::Planks,oak*(1.02f+.035f*float(board%3)));
+    }
+    out.box({-.74f,.77f,.47f},{.74f,1.03f,.55f},Block::Planks,oak*.8f);
+    out.box({-.08f,.86f,.55f},{.08f,.93f,.59f},Block::Slate,Brass);
+    // The open volume has raised pages, a real spine and a leather cover.
+    out.box({-.58f,1.18f,-.29f},{.38f,1.22f,.40f},Block::Planks,{.29f,.20f,.10f});
+    const glm::vec3 paper{.79f,.72f,.52f};
+    out.quad({-.55f,1.25f,-.26f},{-.55f,1.25f,.37f},{-.10f,1.32f,.37f},{-.10f,1.32f,-.26f},Block::Limestone,paper);
+    out.quad({-.10f,1.32f,-.26f},{-.10f,1.32f,.37f},{.35f,1.25f,.37f},{.35f,1.25f,-.26f},Block::Limestone,paper*.95f);
+    out.box({-.12f,1.22f,-.27f},{-.08f,1.33f,.38f},Block::Planks,oak);
+    for (int line=0;line<6;++line) {
+        const float z=-.17f+float(line)*.077f;
+        out.beam({-.49f,1.261f,z},{-.18f,1.309f,z},.008f,Block::Slate,Iron*.9f);
+        out.beam({-.02f,1.309f,z},{.29f,1.261f,z},.008f,Block::Slate,Iron*.9f);
+    }
+    bevel(out,{.70f,1.18f,-.34f},{.94f,1.43f,-.10f},.05f,Block::Slate,{.10f,.18f,.17f});
+    out.beam({.82f,1.42f,-.22f},{1.02f,1.80f,-.28f},.025f,Block::Timber,{.71f,.63f,.42f});
+    jungle::leaf(out,{.86f,1.49f,-.23f},{1.07f,1.87f,-.29f},.065f,{.67f,.68f,.47f},{0,0,1});
+}
+
+void readingSeat(AssetBuilder& out, std::uint32_t variation)
+{
+    for (const float x:{-.34f,.34f}) for (const float z:{-.31f,.31f})
+        out.box({x-.055f,0,z-.055f},{x+.055f,.57f,z+.055f},Block::Timber,Oak*.8f);
+    bevel(out,{-.44f,.48f,-.42f},{.44f,.64f,.42f},.04f,Block::Planks,Oak);
+    const auto cloth=variation%2 ? glm::vec3(.30f,.19f,.33f) : glm::vec3(.23f,.33f,.14f);
+    bevel(out,{-.36f,.64f,-.34f},{.36f,.73f,.34f},.05f,Block::Planks,cloth);
+    for (const float x:{-.34f,.34f})
+        out.box({x-.06f,.55f,-.39f},{x+.06f,1.40f,-.27f},Block::Timber,Oak);
+    for (const float y:{.89f,1.19f})
+        bevel(out,{-.37f,y,-.41f},{.37f,y+.17f,-.25f},.03f,Block::Planks,Oak*1.1f);
+}
+
 } // namespace
 
 void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
@@ -120,6 +206,9 @@ void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
     switch (asset.kind) {
     case HubAssetKind::HeartSeed: heartSeed(out); break;
     case HubAssetKind::ChainLantern: chainLantern(out,asset.variation); break;
+    case HubAssetKind::LibraryBookcase: bookcase(out,asset.variation); break;
+    case HubAssetKind::ReadingDesk: readingDesk(out,asset.variation); break;
+    case HubAssetKind::ReadingSeat: readingSeat(out,asset.variation); break;
     default: break;
     }
 }
