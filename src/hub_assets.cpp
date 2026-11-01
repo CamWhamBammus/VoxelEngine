@@ -613,7 +613,7 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
         destination.vertices.insert(destination.vertices.end(), mesh.vertices.begin(), mesh.vertices.end());
         for (const auto vertex : mesh.indices) destination.indices.push_back(start + vertex);
         if (asset.kind == HubAssetKind::HeartSeed)
-            dressing.lights.push_back({asset.position + glm::vec3(0,2.65f,0), {1.25f,.69f,.16f},11.0f});
+            dressing.lights.push_back({asset.position + glm::vec3(0,2.915f,0), {1.25f,.69f,.16f},11.0f});
         if (asset.kind == HubAssetKind::SapCluster) {
             constexpr glm::vec3 outward[]{{0,0,1},{1,0,0},{0,0,-1},{-1,0,0}};
             dressing.lights.push_back({asset.position + glm::vec3(0,1.65f,0) + outward[asset.facing&3]*.6f,
@@ -621,7 +621,7 @@ HubDressing buildAssetDressing(std::span<const HubAsset> assets, bool standalone
         }
         if (asset.kind == HubAssetKind::ChainLantern)
             dressing.lights.push_back({asset.position - glm::vec3(0,heartwoodLanternDrop(asset.variation),0),
-                {1.05f,.64f,.30f},10.0f});
+                {1.05f,.64f,.30f},11.0f});
         if (asset.kind == HubAssetKind::HangingLamp)
             dressing.lights.push_back({asset.position, {1.05f,0.57f,0.23f},8.0f});
         if (standaloneLights && (asset.kind == HubAssetKind::LanternCap || asset.kind == HubAssetKind::WallBracket))

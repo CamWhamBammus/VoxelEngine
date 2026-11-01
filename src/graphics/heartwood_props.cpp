@@ -260,6 +260,7 @@ void rootCorbel(AssetBuilder& out, std::uint32_t variation)
 
 void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
 {
+    const auto first=mesh.vertices.size();
     AssetBuilder out(mesh,asset);
     switch (asset.kind) {
     case HubAssetKind::HeartSeed: heartSeed(out,asset.variation); break;
@@ -270,6 +271,16 @@ void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
     case HubAssetKind::SapCluster: sapCluster(out,asset.variation); break;
     case HubAssetKind::RootCorbel: rootCorbel(out,asset.variation); break;
     default: break;
+    }
+    if (asset.kind==HubAssetKind::HeartSeed) {
+        // The centerpiece needs a broad base in the enlarged hall. Transform
+        // normals with the inverse scale so its facets retain correct lighting.
+        constexpr glm::vec3 scale{1.5f,1.1f,1.5f};
+        for (std::size_t i=first;i<mesh.vertices.size();++i) {
+            auto& vertex=mesh.vertices[i];
+            vertex.position=asset.position+(vertex.position-asset.position)*scale;
+            vertex.normal=glm::normalize(vertex.normal/scale);
+        }
     }
 }
 

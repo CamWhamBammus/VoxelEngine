@@ -72,8 +72,15 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
         if (isSolid(world.get(support))&&clearModel(world,asset,true)) assets.push_back(asset);
     };
     const auto ceiling=[&](glm::vec3 position,HubAssetKind kind=HubAssetKind::ChainLantern) {
+        // A gallery includes a two-block fascia below its walking surface.
+        // Find its real underside rather than embedding a chain in that fascia.
+        auto support=glm::ivec3(glm::floor(position+glm::vec3(0,.05f,0)));
+        if (!isSolid(world.get(support))) return;
+        const int lowest=support.y-6;
+        while (support.y>lowest&&isSolid(world.get(support-glm::ivec3(0,1,0)))) --support.y;
+        if (isSolid(world.get(support-glm::ivec3(0,1,0)))) return;
+        position.y=float(support.y);
         HubAsset asset{kind,position,0,seed++};
-        if (!isSolid(world.get(glm::ivec3(glm::floor(position+glm::vec3(0,.05f,0)))))) return;
         // The top plate embeds into the beam; only the hanging part needs air.
         for (const auto& vertex:buildHubAsset(asset).vertices) {
             if (vertex.position.y>=position.y-.07f) continue;

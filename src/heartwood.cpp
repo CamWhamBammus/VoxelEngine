@@ -9,7 +9,7 @@ namespace voxel {
 namespace {
 constexpr HeartwoodLayout Layout{
     {8.5f,9,11.5f}, {8.5f,11.0f,11.5f}, {8.5f,9,16.5f},
-    {2.5f,12.0f,29.5f}, {8.5f,24.0f,-8.5f}
+    {8.5f,11.5f,39.5f}, {6.5f,22.0f,0.5f}
 };
 constexpr std::array<HeartwoodRoom,3> Rooms{{
     {"Root Library", {-13,22,-16}, {1,29,-5}, {-2.5f,22,-2.5f}},
@@ -94,7 +94,7 @@ void shell(World& world)
     for (int y=50;y<=59;++y) {
         const int inset=(y-50)/2;
         for (int z=-20+inset;z<=36-inset;++z) for (int x=-20+inset;x<=36-inset;++x) {
-            if (!footprint(x,z,inset) || footprint(x,z,inset+1)) continue;
+            if (!footprint(x,z,inset) || footprint(x,z,inset+2)) continue;
             world.set({x,y,z},Block::Timber);
         }
     }

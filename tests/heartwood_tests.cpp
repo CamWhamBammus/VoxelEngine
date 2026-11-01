@@ -58,7 +58,7 @@ int main()
     check(glm::length(sight)<6.5f && !raycast(player.eyePosition(),sight,glm::length(sight),
           [&](glm::ivec3 cell) { return world.get(cell); }),"the seed interaction ray is unobstructed");
 
-    for (const int lane : {-14,-12,-10}) {
+    for (int lane=-15;lane<=-9;++lane) {
         check(player.setFeetPosition(world,{lane+.5f,9,28.5f})&&player.grounded(),"main stair foot has room for the player");
         const bool climbed=walk(player,world,{0,0,-1},14);
         check(climbed && std::abs(player.feetPosition().y-22)<.01f,"every main stair lane reaches the first gallery without jumping");

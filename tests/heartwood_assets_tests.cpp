@@ -1,6 +1,7 @@
 #include "asset_collision.h"
 #include "heartwood.h"
 #include "heartwood_assets.h"
+#include "player.h"
 #include "scene.h"
 #include "sections.h"
 
@@ -125,6 +126,43 @@ void hallFurnishing()
     check(open(heartwoodLayout().approach),"the seed can be approached without crossing a prop");
     for (const auto& room:heartwoodRooms())
         check(open(room.entrance),"bookcases and chairs leave upstairs doorways open");
+
+    // Exercise the actual movement sweeps against every final village model,
+    // not merely the new furniture or a single overlap check at the landings.
+    auto allCollision=std::make_shared<AssetCollision>();
+    allCollision->rebuild(planHubAssets(world));
+    Player player;
+    player.setAssetCollision(allCollision);
+    const auto walk=[&](glm::vec3 step,int count) {
+        for (int i=0;i<count;++i) {
+            const auto before=player.feetPosition();
+            player.move(world,step);
+            player.move(world,{0,-1,0});
+            const auto after=player.feetPosition();
+            if (!player.grounded()||std::abs(after.x-before.x-step.x)>.01f
+                ||std::abs(after.z-before.z-step.z)>.01f||std::abs(after.y-before.y)>1.01f) {
+                std::cerr<<"Furnished route blocked at "<<before.x<<','<<before.y<<','<<before.z<<'\n';
+                return false;
+            }
+        }
+        return true;
+    };
+    for (const float x:{-13.5f,-11.5f,-9.5f}) {
+        check(player.setFeetPosition(world,{x,9,28.5f})&&walk({0,0,-1},14)
+            &&std::abs(player.feetPosition().y-22)<.01f,
+            "full asset collision leaves every main-stair lane climbable");
+        check(walk({0,0,1},14)&&std::abs(player.feetPosition().y-9)<.01f,
+            "main stairs remain descendable after adding rails and foliage");
+        check(player.setFeetPosition(world,{x,22,12.5f})&&walk({0,0,-1},15)
+            &&std::abs(player.feetPosition().y-35)<.01f,
+            "the archive staircase stays clear with all final village models");
+        check(walk({0,0,1},15)&&std::abs(player.feetPosition().y-22)<.01f,
+            "players can descend the archive staircase past the new decorations");
+    }
+    for (const auto& room:heartwoodRooms()) {
+        check(player.setFeetPosition(world,room.entrance)&&walk({0,0,-1},4)&&walk({0,0,1},4),
+            "players can enter and leave each furnished room without jumping or squeezing");
+    }
 
     // Deleting a lamp's beam cannot leave its chain suspended in an edited hub.
     const auto lamp=std::find_if(planned.begin(),planned.end(),[](const auto& asset){return asset.kind==HubAssetKind::ChainLantern;});
