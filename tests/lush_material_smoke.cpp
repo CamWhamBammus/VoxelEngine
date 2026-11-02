@@ -88,6 +88,22 @@ void verifyLushMaterials(int width, int height)
             "Glow moss must remain visibly luminous beside ordinary velvet moss");
     require(glm::length(colors[6] - colors[5]) > 10 && glm::length(colors[7] - colors[0]) > 20,
             "Weathered wood and pale calcite must not collapse to existing block colors");
-    std::cout << "Lush materials passed: 12 painted blocks, stable leaf cutouts, visible backing faces\n";
+    world.set({0,6,0},Block::Air);
+    camera.setPosition({.5f,86.5f,4.5f});
+    for (const auto leaf : {Block::Leaves,Block::GlowLeaves,Block::BlossomLeaves}) {
+        world.set({0,86,0},leaf);
+        draw();
+        glm::vec3 pigment(0);
+        std::size_t count = 0;
+        for (std::size_t i=0;i<depth.size();++i) if (depth[i]<.9999f) {
+            pigment += glm::vec3(pixels[i*4],pixels[i*4+1],pixels[i*4+2]);
+            ++count;
+        }
+        require(count>depth.size()/4,"High foliage lost its visible leaf coverage");
+        pigment /= float(count);
+        require(leaf==Block::BlossomLeaves ? pigment.r>pigment.g+8 : pigment.g>pigment.r+12,
+                "Leaf species must retain its green or blossom palette at canopy height");
+    }
+    std::cout << "Lush materials passed: 12 painted blocks, stable cutouts, backing faces and canopy palettes\n";
 }
 } // namespace voxel

@@ -354,15 +354,12 @@ MaterialSurface evaluateMaterial() {
                            mass * 0.55 + leafSeed * 0.45);
         if (materialId == 18)
             pigment = mix(vec3(0.055, 0.32, 0.22), vec3(0.18, 0.65, 0.42), leafSeed);
-        // Preserve the heart tree's broad rose crown and add a pink leaf block
-        // that builders can use at any height in their own gardens.
-        float crown = materialId == 30 ? 1.0 : smoothstep(29.0, 39.0, worldPosition.y);
-        float rose = materialId == 30 ? 1.0
-            : smoothstep(0.22, 0.72, 0.5 + 0.30 * sin(worldPosition.x * 0.065)
-                                       + 0.26 * cos(worldPosition.z * 0.055));
+        // Leaf species, rather than elevation, determines its pigment. A tall
+        // green tree should not turn pink; blossom leaves remain their own block.
+        float crown = materialId == 30 ? 1.0 : 0.0;
         vec3 blossom = mix(vec3(0.27, 0.065, 0.26), vec3(0.77, 0.31, 0.48),
                            clamp(mass * 0.35 + leafSeed * 0.40 + n.y * 0.15 + 0.12, 0.0, 1.0));
-        pigment = mix(pigment, mix(vec3(0.12, 0.34, 0.26), blossom, rose), crown);
+        pigment = mix(pigment, blossom, crown);
         float edge = smoothstep(0.035, 0.21, best);
         color = pigment * (0.70 + edge * 0.28 + leafPoint.y * 0.12);
         // A pale midrib and a few oblique veins make each leaf recognizable.
