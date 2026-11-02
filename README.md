@@ -2,9 +2,9 @@
 
 A voxel game set entirely underground, written in C++20 with OpenGL. The idea is to head out from a cave village, find ore and loot, then come home to upgrade your gear. Deeper expeditions will lead to different cave worlds.
 
-It's still early. You can explore the village, build and play your own levels, mine ore, fight encounters, collect loot, and upgrade tools and armor at the village workshops. Procedural expeditions and the central tree's skill tree aren't built yet.
+It's still early. You can explore the village, build and play your own levels, mine ore, fight encounters, collect loot, and upgrade tools and armor at the village workshops. The central tree has a skill journal you can browse; its abilities and unlock system aren't implemented yet. Procedural expeditions are still planned.
 
-![The underground village, with its central tree, bridges, and water](docs/screenshots/village.png)
+![The central tree hall, with its amber heartseed, blue sap, and upper galleries](docs/screenshots/heartwood-hall.png)
 
 ## Build and run
 
@@ -47,7 +47,7 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | 1–4 or mouse wheel | Select pickaxe, lantern, compass, or sword |
 | Hold left click with pickaxe | Mine the ore block you're aiming at |
 | Left click with sword | Swing at the enemy you're aiming at |
-| E | Use a nearby chest, workshop, or expedition gate |
+| E | Use a nearby chest, workshop, heartseed, or expedition gate |
 | I | Open the 20-slot inventory |
 | R | Return to the village spawn, or the current expedition checkpoint |
 | Escape / Tab | Pause / resume |
@@ -98,6 +98,20 @@ Every upgrade costs **10 of the current material**: Copper to Tin costs 10 coppe
 ![Choosing an armor upgrade and checking its ore cost](docs/screenshots/armor-upgrades.png)
 
 Purchases save immediately. Older profiles retain their inventory, collected loot, and access to previously mineable ores when converted to the new gear tiers. Section playtests restore your real equipment when you return to building.
+
+## Heartwood Hall
+
+Follow the arrival road and cross the bridge into the central tree. The hollow trunk has a wide ground-floor hall, two galleries, and a blue sap vein rising behind the amber heartseed. The staircase on the left leads to the Root Library and Expedition Study; continue up the next flight to reach the Upper Archive. These rooms are places to explore for now.
+
+![The Root Library upstairs, with shelves, reading tables, and hanging lanterns](docs/screenshots/heartwood-library.png)
+
+Stand near the amber seed and press **E** to open the skill journal. Click a tab or a skill card to inspect it. **1–4** select Armor, Tools, Combat, or Exploration; **Tab / Shift+Tab** cycle tabs, and the **arrow keys** select cards. **E / Escape** closes the book.
+
+![The parchment skill journal, showing the Armor tab and Rootbound Leap preview](docs/screenshots/skill-journal.png)
+
+The journal contains placeholder ideas only. Browsing it doesn't grant abilities, spend ore, or change your saved equipment.
+
+The hall's seed, chain lanterns, bookcases, reading desks, chairs, sap clusters, and root supports are also available in the section builder's **Assets** menu. Chain lanterns hang from the ceiling; sap clusters and root supports attach to walls.
 
 ## Creature preview
 
