@@ -892,8 +892,9 @@ void verifyStableWorldLighting(int width, int height)
 {
     // Repeat across horizontal and vertical chunk seams. The upper target is
     // at (15,31,0), while its lamp is at (17,32,3) in both neighboring axes.
-    for (const auto location : std::array<glm::ivec2, 3>{{{0, 0}, {Chunk::Size - 1, 0}, {Chunk::Size - 1, 25}}}) {
+    for (const auto location : std::array<glm::ivec2, 4>{{{0, 0}, {Chunk::Size - 1, 0}, {Chunk::Size - 1, 25}, {0,50}}}) {
         const int originX = location.x;
+        const bool authoredHub = location.y == 50;
         World world;
         for (int y = World::Min.y; y < World::MaxExclusive.y; ++y) {
             for (int z = World::Min.z; z < World::MaxExclusive.z; ++z) {
@@ -903,6 +904,12 @@ void verifyStableWorldLighting(int width, int height)
             }
         }
         const glm::ivec3 origin(originX, location.y, 0);
+        if (authoredHub) {
+            // Identify the authored hub without adding its floor marker or
+            // furniture. The same camera-step test exercises its light curve.
+            world.set({8,38,-11},Block::RootWood);
+            world.set({8,48,9},Block::Timber);
+        }
         const glm::ivec3 lamp = origin + glm::ivec3(2, 7, 3);
         world.set(origin + glm::ivec3(0, 6, 0), Block::Stone);
         world.set(lamp, Block::Lantern);
@@ -957,7 +964,7 @@ void verifyStableWorldLighting(int width, int height)
                 + ", lamp red contribution near=" + std::to_string(nearContribution.x)
                 + ", distant=" + std::to_string(distantContribution.x));
         }
-        if (originX == 0) {
+        if (originX == 0 && !authoredHub) {
             for (const auto position : competitors) world.set(position, Block::Air);
             // All six lanterns are closer to the sampled surface than the
             // lantern, but this wall blocks them. The seventh source must still
@@ -979,7 +986,49 @@ void verifyStableWorldLighting(int width, int height)
             }
         }
     }
-    std::cout << "World lighting passed: camera steps, distant views, chunk neighbors and many sources\n";
+    std::cout << "World lighting passed: camera steps, distant views, hub lighting, chunk neighbors and many sources\n";
+}
+
+void verifyHubLightingTransitions(int width,int height)
+{
+    width=std::min(width,640);height=std::min(height,360);
+    World world;
+    for (int z=-6;z<=7;++z) for (int y=38;y<=45;++y) for (int x=-6;x<=6;++x)
+        world.set({x,y,z},x==-6||x==6||y==38||y==45||z==-6||z==7?Block::Stone:Block::Air);
+    // These remote structural markers enable the real hub treatment, but not
+    // the architectural furnishing plan. The closed room has one actual lamp.
+    world.set({8,38,-11},Block::RootWood);
+    world.set({8,48,9},Block::Timber);
+    world.set({2,41,-3},Block::Lantern);
+    Camera camera;
+    camera.setPosition({.5f,41.6f,4.5f});camera.rotate(35,25);
+    const auto draw=[&](WorldRenderer& renderer,bool dark) {
+        glBindFramebuffer(GL_FRAMEBUFFER,0);
+        glViewport(0,0,width,height);
+        glDisable(GL_SCISSOR_TEST);glDisable(GL_BLEND);
+        renderer.render(world,camera,width,height,false,true,0,false,true,
+                        {},{},{},{},{},{},{},{},dark);
+        std::vector<unsigned char> pixels(static_cast<std::size_t>(width)*height*4);
+        glReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        checkOpenGl();
+        return pixels;
+    };
+    WorldRenderer reused,freshDark;
+    const auto originalHub=draw(reused,false);
+    const auto rebuilds=reused.sceneRebuildCount();
+    const auto switchedDark=draw(reused,true);
+    if (switchedDark!=draw(freshDark,true))
+        throw std::runtime_error("Entering dark cave mode retained the hub's cached light colors or radii");
+    if (draw(reused,false)!=originalHub || draw(freshDark,false)!=originalHub)
+        throw std::runtime_error("Returning to hub lighting retained dark-mode source data");
+    if (reused.sceneRebuildCount()!=rebuilds)
+        throw std::runtime_error("Switching the hub lighting mode rebuilt unchanged scenery");
+    world.set({2,41,-3},Block::Air);
+    const auto unlit=draw(reused,true);
+    for (std::size_t i=0;i<unlit.size();i+=4)
+        if (std::max({unlit[i],unlit[i+1],unlit[i+2]})>1)
+            throw std::runtime_error("The hub treatment leaked ambient light into an unlit dark cave");
+    std::cout<<"Hub lighting transitions passed: cached/fresh agreement, stable meshes and dark isolation\n";
 }
 
 void verifyBlockRelief(int width, int height)
@@ -1482,6 +1531,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyVoxelShapeLighting();
     verifyUndergroundMaterials(width, height);
     verifyStableWorldLighting(width, height);
+    verifyHubLightingTransitions(width,height);
     verifyBlockRelief(width, height);
     verifyHubDressing(width, height);
     verifyWaterRendering(width, height);

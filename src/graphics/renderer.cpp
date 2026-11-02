@@ -135,6 +135,7 @@ uniform vec3 cameraPosition;
 uniform vec3 cameraForward;
 uniform int underground;
 uniform int darkCave;
+uniform int hubScene;
 uniform int cameraInWater;
 uniform int decorative;
 uniform int firstPerson;
@@ -221,6 +222,13 @@ void main() {
             * (0.25 + 0.75 * cone) / (1.0 + 0.035 * cameraDistance * cameraDistance);
         vec3 ambient = mix(vec3(0.05, 0.035, 0.065), vec3(0.045, 0.09, 0.085),
                            surfaceNormal.y * 0.5 + 0.5);
+        // Village lighting stays attached to its architecture. The editor's
+        // camera fill would otherwise flatten wood as the player approaches.
+        if (hubScene != 0) {
+            headlamp = 0.0;
+            ambient = mix(vec3(.028, .025, .023), vec3(.042, .063, .069),
+                          surfaceNormal.y * .5 + .5);
+        }
         // Authored exploration caves are lit only by their actual sources.
         // The usual hub fill and camera light remain available as builder aid.
         if (darkCave != 0) { headlamp = 0.0; ambient = vec3(0.0); }
@@ -259,6 +267,10 @@ void main() {
             float falloff = max(1.0 - distanceToLight / source.w, 0.0);
             vec3 direction = offset / max(distanceToLight, 0.001);
             float facing = max(dot(normal, direction), 0.0);
+            // Broad fixtures softly illuminate grazing faces. Visibility still
+            // comes from the real lamp, so this fill cannot cross a solid wall.
+            if (hubScene != 0 && materialId != 16 && firstPerson == 0)
+                facing = .14 + .86 * facing;
             // The compass dial faces the eyes, so lamps ahead mostly hit its
             // back. A small diffuse wrap keeps its markings readable in a lit
             // room. It still requires a visible source and emits no light.
@@ -268,8 +280,10 @@ void main() {
             // through solid banks or illuminate an otherwise unlit cave.
             if (backlitWater) facing = .2 + .8 * max(-dot(normal, direction), 0.0);
             if (facing <= 0.0) continue;
-            float strength = falloff * falloff
-                * lightVisibility(start, source.xyz, direction, falloff * falloff * facing);
+            float attenuation = hubScene != 0 ? falloff * falloff * (3.0 - 2.0 * falloff)
+                : falloff * falloff;
+            float strength = attenuation
+                * lightVisibility(start, source.xyz, direction, attenuation * facing);
             if (strength <= 0.0) continue;
             pointLight += lightColor * strength * 1.65 * facing;
             // Light transmitted through water is not a reflected glint.
@@ -280,7 +294,11 @@ void main() {
             highlight += lightColor * strength * shine * (1.0 - surface.roughness) * (materialId == 16 ? 0.65 : 0.14);
         }
         float strongest = max(pointLight.r, max(pointLight.g, pointLight.b));
-        light += pointLight / max(1.0, strongest) * mix(0.65, 1.0, ao);
+        // A smooth shoulder keeps overlapping lanterns from becoming a single
+        // flat yellow patch while preserving the gradient between each source.
+        vec3 diffuse = hubScene != 0 ? pointLight * 1.25 / (1.25 + strongest)
+            : pointLight / max(1.0, strongest);
+        light += diffuse * mix(0.65, 1.0, ao);
         lit = color * light + highlight;
         surfaceHighlight = highlight;
         fogColor = mix(vec3(0.012, 0.035, 0.043), vec3(0.025, 0.027, 0.044),
@@ -395,6 +413,10 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
 {
     if (width <= 0 || height <= 0) return;
     underground_ = underground;
+    // hubAssets is also used by standalone material previews. Only the actual
+    // village gets its authored lighting treatment; dark sections stay unlit.
+    const bool hubScene = hubAssets && !darkCave
+        && world.get({8,38,-11}) == Block::RootWood && world.get({8,48,9}) == Block::Timber;
     std::array<bool, World::ChunkCount> rebuild{};
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (meshedWorld_ && world.seed() == meshedWorld_->seed()
@@ -447,7 +469,6 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             relief_[index].upload(surface);
         }
     }
-    std::vector<HubAssetLight> assetLights;
     if (changed) {
         ++sceneRebuildCount_;
         placedAssets_.clear();
@@ -461,7 +482,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         for (std::size_t index = 0; index < assets_.size(); ++index) {
             assets_[index].upload(dressing.meshes[index]);
         }
-        assetLights = std::move(dressing.lights);
+        assetLights_ = std::move(dressing.lights);
     }
     GLint activeTexture = 0, previousTexture = 0, previousLights = 0;
     std::array<GLint, 2> previousSceneTextures{};
@@ -476,7 +497,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     glActiveTexture(GL_TEXTURE0);
     glGetIntegerv(GL_TEXTURE_BINDING_3D, &previousTexture);
     glBindTexture(GL_TEXTURE_3D, occupancy_);
-    if (changed) {
+    if (changed || hubScene != hubLighting_) {
         lights_.clear();
         constexpr auto size = World::MaxExclusive - World::Min;
         std::vector<unsigned char> voxels(size.x * size.y * size.z);
@@ -528,15 +549,24 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
                                 }
                             }
                         }
-                        lights_.push_back({glm::vec3(position) + 0.5f,
+                        glm::vec3 lightColor =
                             block == Block::Lantern ? glm::vec3(1.15f, 0.58f, 0.18f)
                             : block == Block::Crystal ? glm::vec3(0.10f, 0.85f, 1.15f)
                             : block == Block::AmberCrystal ? glm::vec3(1.05f, 0.48f, 0.10f)
                             : block == Block::GlowMoss ? glm::vec3(0.08f, 0.40f, 0.24f)
-                            : position.y > 34 ? glm::vec3(0.38f, 0.14f, 0.29f)
-                                              : glm::vec3(0.08f, 0.48f, 0.31f),
-                            block == Block::Lantern ? 11.0f : block == Block::GlowMoss ? 5.5f
-                            : block == Block::Crystal || block == Block::AmberCrystal ? 8.0f : 7.0f});
+                            : glm::vec3(0.08f, 0.48f, 0.31f);
+                        float radius = block == Block::Lantern ? 11.0f : block == Block::GlowMoss ? 5.5f
+                            : block == Block::Crystal || block == Block::AmberCrystal ? 8.0f : 7.0f;
+                        if (hubScene) {
+                            // Warm glass casts a broad cream-amber light, while
+                            // sap gives the trunk a quieter cool counterlight.
+                            if (block == Block::Lantern) { lightColor = {1.05f,.72f,.40f}; radius = 14.f; }
+                            else if (block == Block::Crystal) { lightColor = {.15f,.65f,.82f}; radius = 12.f; }
+                            else if (block == Block::AmberCrystal) { lightColor = {1.f,.65f,.27f}; radius = 12.f; }
+                            else if (block == Block::GlowMoss) { lightColor *= .75f; radius = 6.5f; }
+                            else { lightColor *= .7f; radius = 8.f; }
+                        }
+                        lights_.push_back({glm::vec3(position) + 0.5f,lightColor,radius});
                     }
                 }
             }
@@ -552,12 +582,20 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
         glPixelStorei(GL_UNPACK_ALIGNMENT, unpackAlignment);
-        for (const auto& light : assetLights) {
-            lights_.push_back({light.position, light.color, light.radius});
+        for (const auto& light : assetLights_) {
+            auto color = light.color;
+            float radius = light.radius;
+            if (hubScene) {
+                const float peak = std::max({color.r,color.g,color.b});
+                color = glm::mix(color,glm::vec3(peak),color.r > color.b * 1.5f ? .23f : .08f);
+                radius = std::min(radius * 1.25f,15.f);
+            }
+            lights_.push_back({light.position,color,radius});
         }
         uploadLights(world);
         meshedWorld_ = world;
         hubAssets_ = hubAssets;
+        hubLighting_ = hubScene;
     }
     glViewport(0, 0, width, height);
     if (underground) postProcess_.begin(width, height);
@@ -591,6 +629,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setVec3("cameraForward", camera.forward());
     shader_.setInt("underground", underground);
     shader_.setInt("darkCave", darkCave && underground);
+    shader_.setInt("hubScene", hubScene && underground);
     shader_.setInt("cameraInWater", cameraInWater);
     shader_.setInt("carriedLantern", carriedLantern);
     auto lanternPosition = camera.position();

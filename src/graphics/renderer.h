@@ -69,7 +69,8 @@ private:
     std::size_t heldCompassTriangles_ = 0;
     std::size_t monsterTriangles_ = 0;
     std::optional<World> meshedWorld_;
-    std::vector<Light> lights_; // Rebuilt only when world contents change.
+    std::vector<Light> lights_; // Rebuilt for world edits or a lighting-mode change.
+    std::vector<HubAssetLight> assetLights_;
     std::array<int, World::ChunkCount> lightOffsets_{}, lightCounts_{};
     GLuint lightTexture_ = 0; // Per-chunk candidates: position/radius, then color.
     GLuint occupancy_ = 0; // Cube=255, stair=200..203, water=127, air/foliage=0; lighting and shoreline queries.
@@ -78,6 +79,7 @@ private:
     std::size_t pickupTriangles_ = 0, sceneRebuildCount_ = 0;
     bool underground_ = false;
     bool hubAssets_ = true;
+    bool hubLighting_ = false;
     std::vector<HubAsset> placedAssets_;
 };
 

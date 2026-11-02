@@ -120,7 +120,7 @@ float visibleLight(vec3 start, vec3 end) {
     vec3 delta = 1.0 / max(abs(ray), vec3(0.000001));
     vec3 next = mix(start - vec3(cell), vec3(cell + 1) - start, greaterThan(ray, vec3(0.0))) * delta;
     next = mix(vec3(1e20), next, greaterThan(abs(ray), vec3(0.000001)));
-    // Sources reach at most eleven blocks: 32 crossings cover every direction.
+    // Sources reach at most fifteen blocks: 32 crossings cover every direction.
     for (int step = 0; step < 32; ++step) {
         if (all(equal(cell, target))) return 1.0;
         if (blocksLight(cell, start, ray)) return 0.0;
