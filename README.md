@@ -101,9 +101,17 @@ Purchases save immediately. Older profiles retain their inventory, collected loo
 
 ## Heartwood Hall
 
-Follow the arrival road and cross the bridge into the central tree. The hollow trunk has a wide ground-floor hall, two galleries, and a blue sap vein rising behind the amber heartseed. The staircase on the left leads to the Root Library and Expedition Study; continue up the next flight to reach the Upper Archive. These rooms are places to explore for now.
+Follow the arrival road and cross the bridge into the central tree. Its roots open into the hall, while the trunk narrows and branches into a high crown beneath the cavern ceiling. Inside, two galleries overlook the amber heartseed and blue sap vein.
 
-![The Root Library upstairs, with shelves, reading tables, and hanging lanterns](docs/screenshots/heartwood-library.png)
+![The tree rising above the village, with room for its branches beneath the cavern roof](docs/screenshots/heartwood-tree.png)
+
+The left staircase reaches a reading alcove and an expedition loft with a relief map and survey scope. Continue upstairs and follow the gallery to the conservatory, with nursery beds, hanging plants, and a potting bench. The landings and room fronts stay open so you can walk between them. These rooms are scenery for now.
+
+Lanterns cast broad amber pools across the wood, while blue sap lights the trunk and galleries. The village lighting stays attached to those sources as you move. Dark expedition caves still need their own lamps or your carried lantern.
+
+![The expedition loft, with a relief map and surveying equipment](docs/screenshots/heartwood-loft.png)
+
+![The upper conservatory, with nursery beds and hanging greenery](docs/screenshots/heartwood-conservatory.png)
 
 Stand near the amber seed and press **E** to open the skill journal. Click a tab or a skill card to inspect it. **1–4** select Armor, Tools, Combat, or Exploration; **Tab / Shift+Tab** cycle tabs, and the **arrow keys** select cards. **E / Escape** closes the book.
 
@@ -111,7 +119,7 @@ Stand near the amber seed and press **E** to open the skill journal. Click a tab
 
 The journal contains placeholder ideas only. Browsing it doesn't grant abilities, spend ore, or change your saved equipment.
 
-The hall's seed, chain lanterns, bookcases, reading desks, chairs, sap clusters, and root supports are also available in the section builder's **Assets** menu. Chain lanterns hang from the ceiling; sap clusters and root supports attach to walls.
+The hall's seed, chain lanterns, bookcases, reading furniture, sap clusters, root supports, relief map, survey instrument, nursery bed, and potting bench are also available in the section builder's **Assets** menu. Chain lanterns hang from the ceiling; sap clusters and root supports attach to walls.
 
 ## Creature preview
 
