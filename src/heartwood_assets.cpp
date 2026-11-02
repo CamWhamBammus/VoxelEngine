@@ -136,7 +136,10 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
     for (const float y:{21.f,34.f}) {
         for (const float x:{-5.5f,21.5f})
             for (const float z:{3.5f,15.5f,25.5f}) ceiling({x,y,z});
-        for (const float x:{-5.5f,21.5f}) ceiling({x,y,31.5f});
+        // Portal lamps already cover the lower front edge; keep these pendants
+        // on the upper gallery, where they reveal the open balcony silhouette.
+        if (y==34.f)
+            for (const float x:{-5.5f,21.5f}) ceiling({x,y,31.5f});
     }
 
     // Fine sap fragments sit proud of the native glowing seam and connect the
@@ -144,6 +147,24 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
     for (int y=11;y<51;y+=4) {
         const float x=(y/4)%2 ? 5.5f : 12.5f;
         wall(HubAssetKind::SapCluster,{x,float(y),-7.0f});
+    }
+
+    // Raised sap at the upper forks emits outside the bark surface. An
+    // embedded voxel source sits behind that plane and cannot wash the trunk.
+    const auto bark=[](Block block) { return block==Block::Timber || block==Block::RootWood; };
+    for (const int y:{55,73,91}) {
+        const int x=8+int(std::round(2.f*std::sin(y*.14f)));
+        for (int z=38;z>=8;--z) if (bark(world.get({x,y,z}))) {
+            wall(HubAssetKind::SapCluster,{float(x)+.5f,float(y),float(z)+1.f});
+            break;
+        }
+    }
+    for (const int y:{64,82}) {
+        const int z=8+int(std::round(2.f*std::cos(y*.12f)));
+        for (int x=30;x>=10;--x) if (bark(world.get({x,y,z}))) {
+            wall(HubAssetKind::SapCluster,{float(x)+1.f,float(y),float(z)+.5f},1);
+            break;
+        }
     }
 
     // Each carved knee meets a full-height tree column beneath the gallery.

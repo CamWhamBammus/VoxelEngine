@@ -441,25 +441,6 @@ void heartTree(World& world)
         canopy(world,b.tip+glm::vec3(0,1,0),b.spread);
         canopy(world,fork+glm::vec3(0,2,0),b.spread*.65f);
     }
-    // Small exposed sap knots carry the hall's cyan light up the real bark.
-    // They replace supported wood rather than hanging lamps in empty space.
-    const auto bark=[](Block block) { return block==Block::Timber || block==Block::RootWood; };
-    for (int y=52;y<=103;++y) {
-        const int band=y%9;
-        if (band>4) continue;
-        const Block sap=band==2||band==3?Block::Crystal:Block::GlowMoss;
-        const int x=8+int(std::round(2.f*std::sin(y*.14f)));
-        for (int z=38;z>=8;--z) if (bark(world.get({x,y,z}))) {
-            world.set({x,y,z},sap);
-            break;
-        }
-        if (y>88) continue;
-        const int z=8+int(std::round(2.f*std::cos(y*.12f)));
-        for (int side=40;side>=10;--side) if (bark(world.get({side,y,z}))) {
-            world.set({side,y,z},sap);
-            break;
-        }
-    }
     // Cool luminous edges and sparse blossom pockets break up the crown while
     // keeping the underlying silhouette green. Lighting is tied to real leaves.
     for (int z=-61;z<=77;++z) for (int x=-70;x<=77;++x) for (int y=92;y<=139;++y) {
