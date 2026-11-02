@@ -8,7 +8,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <functional>
 #include <iostream>
+#include <map>
+#include <queue>
+#include <tuple>
+#include <vector>
 #include <string>
 
 namespace {
@@ -21,7 +26,8 @@ void check(bool condition,const char* message)
 
 constexpr std::array Kinds{HubAssetKind::HeartSeed,HubAssetKind::ChainLantern,
     HubAssetKind::LibraryBookcase,HubAssetKind::ReadingDesk,HubAssetKind::ReadingSeat,
-    HubAssetKind::SapCluster,HubAssetKind::RootCorbel};
+    HubAssetKind::SapCluster,HubAssetKind::RootCorbel,HubAssetKind::ReliefMapTable,
+    HubAssetKind::SurveyInstrument,HubAssetKind::NurseryBed,HubAssetKind::PottingBench};
 
 void modelGeometry()
 {
@@ -93,6 +99,54 @@ void furnitureCollision()
           "a player cannot pass through a reading desk");
 }
 
+// Find the curving arrival avenue using real movement, including its stairs
+// and every final prop. Each search state is a copy of an already-reachable
+// player; no expansion teleports into an otherwise inaccessible landing.
+bool walkFromVillage(Player& player,const World& world)
+{
+    const glm::vec3 destination{8.5f,9,39.5f};
+    if (!player.setFeetPosition(world,VillageSpawn)||!player.grounded()) return false;
+    struct Node { Player player; std::size_t parent; glm::vec3 step; };
+    std::vector<Node> nodes{{player,0,{}}};
+    using Key=std::tuple<int,int,int>;
+    const auto key=[](glm::vec3 p) { return Key{int(std::round(p.x*2)),int(std::round(p.y*2)),int(std::round(p.z*2))}; };
+    std::map<Key,std::size_t> visited{{key(player.feetPosition()),0}};
+    using Candidate=std::pair<float,std::size_t>;
+    std::priority_queue<Candidate,std::vector<Candidate>,std::greater<Candidate>> pending;
+    pending.push({0,0});
+    constexpr glm::vec3 steps[]{{1,0,0},{-1,0,0},{0,0,1},{0,0,-1}};
+    while (!pending.empty()) {
+        const auto current=pending.top().second;
+        pending.pop();
+        const auto before=nodes[current].player.feetPosition();
+        if (glm::distance(before,destination)<.01f) {
+            std::vector<glm::vec3> route;
+            for (auto n=current;n!=0;n=nodes[n].parent) route.push_back(nodes[n].step);
+            for (auto it=route.rbegin();it!=route.rend();++it) {
+                player.move(world,*it);
+                player.move(world,{0,-1,0});
+            }
+            return player.grounded()&&glm::distance(player.feetPosition(),destination)<.01f;
+        }
+        for (const auto step:steps) {
+            Player next=nodes[current].player;
+            next.move(world,step);
+            next.move(world,{0,-1,0});
+            const auto after=next.feetPosition();
+            if (!next.grounded()||std::abs(after.x-before.x-step.x)>.01f
+                ||std::abs(after.z-before.z-step.z)>.01f||std::abs(after.y-before.y)>1.01f
+                ||after.x<-24||after.x>25||after.z<39||after.z>82||after.y<8||after.y>26
+                ||visited.contains(key(after))) continue;
+            const auto index=nodes.size();
+            nodes.push_back({next,current,step});
+            visited.emplace(key(after),index);
+            const auto delta=glm::abs(after-destination);
+            pending.push({delta.x+delta.y+delta.z,index});
+        }
+    }
+    return false;
+}
+
 void hallFurnishing()
 {
     World world;
@@ -105,9 +159,28 @@ void hallFurnishing()
         return std::count_if(planned.begin(),planned.end(),[&](const auto& asset){return asset.kind==kind;});
     };
     check(count(HubAssetKind::HeartSeed)==1,"there is one centerpiece at the skill-journal station");
-    check(count(HubAssetKind::LibraryBookcase)>=12,"both library floors and the study contain modeled shelves");
-    check(count(HubAssetKind::ReadingDesk)==6&&count(HubAssetKind::ReadingSeat)==6,
-          "all three upstairs rooms have reading places");
+    check(count(HubAssetKind::LibraryBookcase)>=4,"the library has its own substantial collection of modeled shelves");
+    check(count(HubAssetKind::ReliefMapTable)==1&&count(HubAssetKind::SurveyInstrument)==1,
+          "the expedition loft has a relief map and a surveying instrument");
+    check(count(HubAssetKind::NurseryBed)>=2&&count(HubAssetKind::PottingBench)==1,
+          "the conservatory has planted nursery beds and a potting bench");
+    for (const auto& asset:planned) {
+        const auto inRoom=[&](HeartwoodRoomKind kind) {
+            const auto rooms=heartwoodRooms();
+            const auto found=std::find_if(rooms.begin(),rooms.end(),[&](const auto& room) { return room.kind==kind; });
+            if (found==rooms.end()) return false;
+            const auto& room=*found;
+            return asset.position.x>=room.minimum.x&&asset.position.x<=room.maximum.x+1
+                &&asset.position.y>=room.minimum.y&&asset.position.y<=room.maximum.y+1
+                &&asset.position.z>=room.minimum.z&&asset.position.z<=room.maximum.z+1;
+        };
+        if (asset.kind==HubAssetKind::LibraryBookcase)
+            check(inRoom(HeartwoodRoomKind::Library),"bookcases belong to the library rather than repeated room copies");
+        if (asset.kind==HubAssetKind::ReliefMapTable||asset.kind==HubAssetKind::SurveyInstrument)
+            check(inRoom(HeartwoodRoomKind::ExpeditionLoft),"expedition furniture stays in the expedition loft");
+        if (asset.kind==HubAssetKind::NurseryBed||asset.kind==HubAssetKind::PottingBench)
+            check(inRoom(HeartwoodRoomKind::Conservatory),"plant-growing furniture belongs to the conservatory");
+    }
     check(count(HubAssetKind::ChainLantern)>=16,"supported pendant lighting spans multiple levels");
     check(count(HubAssetKind::SapCluster)>=5,"raised cyan sap connects the lower hall to its canopy");
     check(count(HubAssetKind::RootCorbel)>=4,"carved supports attach beneath the galleries");
@@ -147,6 +220,38 @@ void hallFurnishing()
         }
         return true;
     };
+    const auto walkTo=[&](glm::vec3 target) {
+        const auto before=player.feetPosition();
+        const auto delta=target-before;
+        if ((std::abs(delta.x)>.01f)&&(std::abs(delta.z)>.01f)) return false;
+        const glm::vec3 step{glm::sign(delta.x),0,glm::sign(delta.z)};
+        const int count=int(std::round(std::max(std::abs(delta.x),std::abs(delta.z))));
+        return walk(step,count)&&glm::distance(player.feetPosition(),target)<.01f;
+    };
+    // One uninterrupted tour catches the old failure: each individual stair
+    // worked after teleporting, but rooms, walls and guards blocked its exits.
+    bool tour=walkFromVillage(player,world);
+    check(tour,"the arrival avenue and south bridge reach the hall with final scenery collision");
+    const glm::vec3 tourStops[]{
+        glm::vec3{8.5f,9,28.5f},{-12.5f,9,28.5f},{-12.5f,22,14.5f},
+        {-17.5f,22,14.5f},{-17.5f,22,-3.5f},{-2.5f,22,-3.5f},
+        {-2.5f,22,-7.5f},{-2.5f,22,-3.5f},{-2.5f,22,-.5f},
+        {26.5f,22,-.5f},{26.5f,22,-5.5f},{26.5f,22,-.5f},
+        {-17.5f,22,-.5f},{-17.5f,22,12.5f},{-12.5f,22,12.5f},
+        {-12.5f,35,-3.5f},{23.5f,35,-3.5f},{23.5f,35,20.5f},
+        {28.5f,35,20.5f},{28.5f,35,16.5f},{28.5f,35,20.5f},
+        {23.5f,35,20.5f},{23.5f,35,-3.5f},{-12.5f,35,-3.5f},
+        {-12.5f,22,12.5f},{-12.5f,22,14.5f},{-12.5f,9,28.5f},
+        {8.5f,9,28.5f},{8.5f,9,39.5f}
+    };
+    for (const auto target:tourStops) {
+        if (!tour) break;
+        tour=walkTo(target);
+        if (!tour) std::cerr<<"Continuous village tour could not reach "
+                           <<target.x<<','<<target.y<<','<<target.z<<'\n';
+    }
+    check(tour,"a single grounded walk visits all three distinct rooms and returns via both flights");
+
     for (int lane=-15;lane<=-9;++lane) {
         const float x=float(lane)+.5f;
         check(player.setFeetPosition(world,{x,9,28.5f})&&walk({0,0,-1},14)
@@ -156,9 +261,9 @@ void hallFurnishing()
             "main stairs remain descendable after adding rails and foliage");
         check(player.setFeetPosition(world,{x,22,12.5f})&&walk({0,0,-1},15)
             &&std::abs(player.feetPosition().y-35)<.01f,
-            "the archive staircase stays clear with all final village models");
+            "the upper staircase stays clear with all final village models");
         check(walk({0,0,1},15)&&std::abs(player.feetPosition().y-22)<.01f,
-            "players can descend the archive staircase past the new decorations");
+            "players can descend the upper staircase past the new decorations");
     }
     for (const auto& room:heartwoodRooms()) {
         check(player.setFeetPosition(world,room.entrance)&&walk({0,0,-1},4)&&walk({0,0,1},4),

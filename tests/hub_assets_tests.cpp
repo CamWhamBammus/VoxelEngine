@@ -702,8 +702,14 @@ void checkBlacksmith(const World& world, const std::vector<HubAsset>& plan)
     World edited=world;
     std::vector<HubAsset> removed;
     int fixtures=0;
+    const std::array workshopAnchors{layout.anvil,layout.forge,layout.workbench,layout.toolRack,layout.sign};
     for (const auto& asset : plan) {
         if (!isBlacksmithAsset(asset.kind)) continue;
+        // The expedition loft also reuses a tool rack. These checks exercise
+        // the arrival workshop's five fixtures and their particular anchors.
+        if (std::none_of(workshopAnchors.begin(),workshopAnchors.end(),[&](glm::vec3 anchor) {
+            return glm::distance(asset.position,anchor)<.001f;
+        })) continue;
         ++fixtures;
         const auto mesh=buildHubAsset(asset);
         check(mesh.indices.size()/3 < 700,"blacksmith fixtures have bounded geometry budgets");

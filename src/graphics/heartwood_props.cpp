@@ -202,6 +202,165 @@ void readingSeat(AssetBuilder& out, std::uint32_t variation)
         bevel(out,{-.37f,y,-.41f},{.37f,y+.17f,-.25f},.03f,Block::Planks,Oak*1.1f);
 }
 
+// A low miniature landscape makes the survey table readable as a map from the
+// doorway. Each contour, river tile and route marker stands above the parchment.
+void reliefMapTable(AssetBuilder& out, std::uint32_t variation)
+{
+    const auto oak=Oak*(.93f+.04f*float(variation%3));
+    for (const float x:{-1.55f,1.55f}) for (const float z:{-.94f,.94f}) {
+        bevel(out,{x-.14f,0,z-.14f},{x+.14f,.19f,z+.14f},.04f,Block::Timber,Bark);
+        out.box({x-.10f,.19f,z-.10f},{x+.10f,1.28f,z+.10f},Block::Timber,oak);
+    }
+    for (const float z:{-.94f,.94f})
+        out.beam({-1.55f,.38f,z},{1.55f,.38f,z},.14f,Block::Timber,oak*.8f);
+    bevel(out,{-2.02f,1.22f,-1.30f},{2.02f,1.43f,1.30f},.065f,Block::Planks,oak);
+    out.box({-1.90f,1.43f,-1.18f},{1.90f,1.465f,1.18f},Block::Limestone,{.72f,.64f,.42f});
+    for (const float z:{-1.24f,1.24f})
+        out.box({-1.98f,1.43f,z-.04f},{1.98f,1.51f,z+.04f},Block::Slate,Brass);
+    for (const float x:{-1.96f,1.96f})
+        out.box({x-.04f,1.43f,-1.24f},{x+.04f,1.51f,1.24f},Block::Slate,Brass);
+    // Separated contour slabs keep readable relief and real lighting, without
+    // becoming another dense block pile in the middle of the room.
+    bevel(out,{-1.57f,1.465f,-.84f},{-.32f,1.60f,.57f},.06f,Block::Moss,{.30f,.40f,.17f});
+    bevel(out,{-1.39f,1.60f,-.69f},{-.55f,1.75f,.30f},.05f,Block::Stone,{.39f,.43f,.29f});
+    bevel(out,{-1.20f,1.75f,-.52f},{-.76f,1.95f,-.05f},.05f,Block::Slate,{.51f,.51f,.39f});
+    bevel(out,{.33f,1.465f,-.34f},{1.59f,1.61f,.86f},.06f,Block::Moss,{.27f,.39f,.17f});
+    bevel(out,{.64f,1.61f,-.12f},{1.38f,1.78f,.64f},.05f,Block::Stone,{.39f,.43f,.29f});
+    for (int reach=0;reach<7;++reach) {
+        const float z=-1.01f+float(reach)*.30f;
+        const float x=std::sin(float(reach)*.84f)*.18f;
+        out.box({x-.105f,1.468f,z},{x+.105f,1.49f,z+.29f},Block::Slate,{.12f,.43f,.44f});
+    }
+    const std::array<glm::vec3,5> route{{{-1.48f,1.62f,.41f},{-.63f,1.62f,.48f},
+        {.12f,1.50f,.61f},{.48f,1.63f,.69f},{1.19f,1.80f,.38f}}};
+    for (const auto point:route)
+        bevel(out,point-glm::vec3(.035f,0,.035f),point+glm::vec3(.035f,.055f,.035f),.012f,Block::Slate,Brass*1.2f);
+    for (const auto flag:std::array<glm::vec3,2>{{{-1.03f,1.95f,-.28f},{1.10f,1.78f,.19f}}}) {
+        out.beam(flag,flag+glm::vec3(0,.49f,0),.034f,Block::Slate,Brass);
+        const auto color=flag.x<0 ? glm::vec3(.56f,.22f,.14f) : glm::vec3(.19f,.39f,.45f);
+        out.quad(flag+glm::vec3(.02f,.25f,0),flag+glm::vec3(.29f,.29f,0),
+                 flag+glm::vec3(.26f,.47f,0),flag+glm::vec3(.02f,.47f,0),Block::Planks,color,true);
+    }
+    // A rolled chart is tied on the near ledge, clear of the terrain.
+    jungle::stem(out,{-1.10f,1.57f,.99f},{-.32f,1.57f,.99f},.075f,.075f,{.76f,.69f,.49f},Block::Limestone);
+    jungle::stem(out,{-.76f,1.57f,.99f},{-.70f,1.57f,.99f},.084f,.084f,Brass,Block::Slate);
+}
+
+void surveyInstrument(AssetBuilder& out, std::uint32_t variation)
+{
+    const auto brass=Brass*(.93f+.04f*float(variation%3));
+    const glm::vec3 pivot{0,1.82f,0};
+    for (int leg=0;leg<3;++leg) {
+        const float a=float(leg)*jungle::Pi*2/3+.3f;
+        const glm::vec3 foot{std::cos(a)*.76f,.045f,std::sin(a)*.76f};
+        jungle::stem(out,foot,pivot,.095f,.065f,Oak);
+        out.box(foot-glm::vec3(.10f,.045f,.10f),foot+glm::vec3(.10f,.055f,.10f),Block::Slate,Iron);
+        jungle::stem(out,glm::mix(foot,pivot,.37f),{0,.96f,0},.028f,.028f,brass,Block::Slate);
+    }
+    jungle::stem(out,{0,1.73f,0},{0,2.04f,0},.21f,.21f,brass,Block::Slate);
+    for (const float x:{-.29f,.29f})
+        out.box({x-.055f,1.97f,-.10f},{x+.055f,2.37f,.10f},Block::Slate,brass*.8f);
+    const glm::vec3 back{0,2.15f,.59f},front{0,2.55f,-1.03f};
+    const auto along=glm::normalize(front-back);
+    jungle::stem(out,back,front,.17f,.25f,brass,Block::Slate);
+    jungle::stem(out,back-along*.25f,back,.09f,.13f,Iron,Block::Slate);
+    for (const float fraction:{.08f,.56f,.93f}) {
+        const auto center=glm::mix(back,front,fraction);
+        const float radius=glm::mix(.17f,.25f,fraction)+.025f;
+        jungle::stem(out,center-along*.045f,center+along*.045f,radius,radius,brass*1.17f,Block::Slate);
+    }
+    jungle::stem(out,front+along*.008f,front+along*.026f,.205f,.205f,{.12f,.42f,.47f},Block::Slate);
+    out.beam({.31f,2.28f,0},{.49f,2.28f,0},.07f,Block::Slate,Iron);
+    jungle::stem(out,{.48f,2.28f,0},{.55f,2.28f,0},.12f,.12f,brass,Block::Slate);
+}
+
+void seedling(AssetBuilder& out, glm::vec3 origin, float height, std::uint32_t seed)
+{
+    const glm::vec3 top=origin+glm::vec3(.06f,height,0);
+    jungle::stem(out,origin,top,.027f,.012f,{.28f,.36f,.12f});
+    for (int leaf=0;leaf<5;++leaf) {
+        const float a=float(leaf)*2.4f+float(seed%5)*.53f;
+        const float h=height*(.26f+.13f*float(leaf));
+        const float reach=height*(.57f-.05f*float(leaf));
+        const auto base=origin+glm::vec3(.06f*h/height,h,0);
+        const auto tip=base+glm::vec3(std::cos(a)*reach,.18f*height,std::sin(a)*reach);
+        jungle::stem(out,base,glm::mix(base,tip,.29f),.014f,.009f,{.29f,.41f,.11f});
+        jungle::leaf(out,glm::mix(base,tip,.17f),tip,.14f*height,
+            {.20f+.02f*float(leaf%3),.43f+.018f*float(seed%3),.11f});
+    }
+}
+
+void flowerPot(AssetBuilder& out, glm::vec3 center, float radius, float height)
+{
+    const glm::vec3 clay{.52f,.26f,.13f};
+    // Hollow rim and recessed soil leave the plant visibly inside a pot.
+    jungle::stem(out,center+glm::vec3(0,.02f,0),center+glm::vec3(0,height-.065f,0),
+                 radius*.70f,radius,clay,Block::Brick);
+    const int sides=8;
+    for (int side=0;side<sides;++side) {
+        const float a=float(side)*jungle::Pi/4,b=float(side+1)*jungle::Pi/4;
+        const auto radial=[&](float angle,float r,float y) {return center+glm::vec3(std::cos(angle)*r,y,std::sin(angle)*r);};
+        out.quad(radial(a,radius,height-.07f),radial(b,radius,height-.07f),
+                 radial(b,radius,height),radial(a,radius,height),Block::Brick,clay*1.10f);
+        out.quad(radial(a,radius,height),radial(b,radius,height),
+                 radial(b,radius*.80f,height),radial(a,radius*.80f,height),Block::Brick,clay*1.25f);
+        out.triangle(center+glm::vec3(0,height-.045f,0),radial(b,radius*.8f,height-.045f),
+                     radial(a,radius*.8f,height-.045f),Block::Dirt,{.19f,.13f,.07f});
+    }
+}
+
+void nurseryBed(AssetBuilder& out, std::uint32_t variation)
+{
+    constexpr glm::vec3 wood{.33f,.25f,.12f};
+    out.box({-1.35f,.08f,-.94f},{1.35f,.45f,.94f},Block::Dirt,{.19f,.14f,.07f});
+    for (const float z:{-1.02f,1.02f})
+        for (int course=0;course<2;++course)
+            bevel(out,{-1.48f,.07f+course*.24f,z-.09f},{1.48f,.30f+course*.24f,z+.09f},.025f,Block::Planks,wood);
+    for (const float x:{-1.44f,1.44f}) {
+        bevel(out,{x-.09f,0,-1.11f},{x+.09f,.62f,1.11f},.035f,Block::Timber,Oak);
+        for (const float z:{-.88f,.88f})
+            out.box({x-.10f,.19f,z-.045f},{x+.10f,.27f,z+.045f},Block::Slate,Iron);
+    }
+    for (int plant=0;plant<6;++plant) {
+        const float x=-.91f+float(plant%3)*.91f,z=plant<3 ? -.43f : .43f;
+        const float height=.70f+.17f*float((plant+variation)%3);
+        seedling(out,{x,.45f,z},height,variation+plant);
+        // A little wooden row label belongs to the bed, not the walking lane.
+        if (plant<3) {
+            out.beam({x,.46f,.82f},{x,.82f,.82f},.035f,Block::Timber,Oak);
+            bevel(out,{x-.12f,.72f,.79f},{x+.12f,.88f,.85f},.015f,Block::Planks,{.63f,.53f,.31f});
+        }
+    }
+}
+
+void pottingBench(AssetBuilder& out, std::uint32_t variation)
+{
+    for (const float x:{-1.25f,1.25f}) for (const float z:{-.51f,.51f})
+        out.box({x-.075f,0,z-.075f},{x+.075f,1.18f,z+.075f},Block::Timber,Oak*.82f);
+    bevel(out,{-1.47f,1.13f,-.72f},{1.47f,1.31f,.72f},.035f,Block::Planks,Oak);
+    bevel(out,{-1.30f,.30f,-.54f},{1.30f,.42f,.54f},.025f,Block::Planks,Oak*.76f);
+    for (const float x:{-1.27f,1.27f})
+        out.box({x-.07f,1.25f,-.64f},{x+.07f,3.22f,-.50f},Block::Timber,Oak);
+    for (const float y:{2.15f,3.10f})
+        bevel(out,{-1.44f,y,-.76f},{1.44f,y+.13f,-.12f},.025f,Block::Planks,Oak);
+    flowerPot(out,{-.85f,1.31f,.10f},.28f,.47f);
+    seedling(out,{-.85f,1.72f,.10f},.93f,variation);
+    flowerPot(out,{.62f,1.31f,.15f},.23f,.35f);
+    for (const float x:{-.90f,-.26f,.44f,1.f})
+        flowerPot(out,{x,2.28f,-.44f},.19f,.32f);
+    for (const float x:{-.84f,.05f,.90f}) {
+        flowerPot(out,{x,3.23f,-.44f},.18f,.31f);
+        seedling(out,{x,3.50f,-.44f},.30f,variation+3);
+    }
+    for (int sack=0;sack<2;++sack)
+        bevel(out,{-1.07f+float(sack)*.77f,.42f,-.36f},{-.44f+float(sack)*.77f,.88f,.37f},.09f,Block::Limestone,{.51f,.45f,.29f});
+    // A hand trowel and packets give the worktop its own purpose.
+    out.beam({.12f,1.35f,.42f},{.45f,1.35f,.42f},.065f,Block::Timber,Oak);
+    out.box({-.16f,1.33f,.31f},{.12f,1.37f,.53f},Block::Slate,{.40f,.44f,.39f});
+    out.box({.94f,1.31f,.14f},{1.28f,1.34f,.52f},Block::Limestone,{.71f,.61f,.38f});
+    out.box({1.04f,1.34f,.25f},{1.16f,1.348f,.39f},Block::Planks,{.27f,.40f,.13f});
+}
+
 void sapCluster(AssetBuilder& out, std::uint32_t variation)
 {
     // The bark backing and thin gold-brown rims hold irregular glowing sap
@@ -270,6 +429,10 @@ void appendHeartwoodProp(MeshData& mesh, const HubAsset& asset)
     case HubAssetKind::ReadingSeat: readingSeat(out,asset.variation); break;
     case HubAssetKind::SapCluster: sapCluster(out,asset.variation); break;
     case HubAssetKind::RootCorbel: rootCorbel(out,asset.variation); break;
+    case HubAssetKind::ReliefMapTable: reliefMapTable(out,asset.variation); break;
+    case HubAssetKind::SurveyInstrument: surveyInstrument(out,asset.variation); break;
+    case HubAssetKind::NurseryBed: nurseryBed(out,asset.variation); break;
+    case HubAssetKind::PottingBench: pottingBench(out,asset.variation); break;
     default: break;
     }
     if (asset.kind==HubAssetKind::HeartSeed) {

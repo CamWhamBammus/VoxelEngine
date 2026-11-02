@@ -95,21 +95,39 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
 
     floor(HubAssetKind::HeartSeed,heartwoodLayout().seed);
 
-    // Shelves line room backs; the middle and doorway stay open for walking.
+    // Each room has a different silhouette and use. Furnish the back and sides
+    // first, keeping the doorway and a generous central walk unobstructed.
     for (const auto& room:heartwoodRooms()) {
         const float y=float(room.minimum.y);
-        for (float x=float(room.minimum.x)+1.5f;x<=float(room.maximum.x)-.8f;x+=2.65f)
-            floor(HubAssetKind::LibraryBookcase,{x,y,float(room.minimum.z)+.65f});
-        for (float z=float(room.minimum.z)+4.0f;z<float(room.maximum.z)-1.5f;z+=2.65f)
-            floor(HubAssetKind::LibraryBookcase,{float(room.minimum.x)+.65f,y,z},1);
-
-        const float middleX=float(room.minimum.x+room.maximum.x)*.5f;
-        const float middleZ=float(room.minimum.z+room.maximum.z)*.5f;
-        floor(HubAssetKind::ReadingDesk,{middleX+.8f,y,middleZ-.2f});
-        floor(HubAssetKind::ReadingSeat,{middleX+.8f,y,middleZ+1.3f},2);
-        floor(HubAssetKind::ReadingDesk,{float(room.maximum.x)-1.9f,y,float(room.minimum.z)+3.5f},3);
-        floor(HubAssetKind::ReadingSeat,{float(room.maximum.x)-3.4f,y,float(room.minimum.z)+3.5f},1);
-        ceiling({middleX+.5f,float(room.maximum.y)+1.0f,middleZ+.5f});
+        const float left=float(room.minimum.x),right=float(room.maximum.x);
+        const float back=float(room.minimum.z),front=float(room.maximum.z);
+        const float middleX=(left+right)*.5f,middleZ=(back+front)*.5f;
+        switch (room.kind) {
+        case HeartwoodRoomKind::Library:
+            for (float x=left+1.5f;x<=right-1.0f;x+=2.65f)
+                floor(HubAssetKind::LibraryBookcase,{x,y,back+.65f});
+            floor(HubAssetKind::LibraryBookcase,{left+.65f,y,back+4.5f},1);
+            floor(HubAssetKind::ReadingDesk,{right-1.5f,y,back+5.8f});
+            floor(HubAssetKind::ReadingSeat,{right-1.5f,y,back+7.3f},2);
+            ceiling({middleX,float(room.maximum.y)+1,middleZ+1.f});
+            break;
+        case HeartwoodRoomKind::ExpeditionLoft:
+            floor(HubAssetKind::ReliefMapTable,{middleX,y,middleZ-.2f});
+            floor(HubAssetKind::SurveyInstrument,{right-1.5f,y,front-2.f},3);
+            wall(HubAssetKind::ToolRack,{middleX,y+.3f,back+.02f});
+            floor(HubAssetKind::CrateStack,{left+1.5f,y,back+2.2f});
+            floor(HubAssetKind::Barrel,{left+2.1f,y,back+4.f});
+            ceiling({middleX,float(room.maximum.y)+1,middleZ+.4f});
+            break;
+        case HeartwoodRoomKind::Conservatory:
+            floor(HubAssetKind::PottingBench,{middleX,y,back+1.8f});
+            floor(HubAssetKind::NurseryBed,{right-2.f,y,back+5.f});
+            floor(HubAssetKind::NurseryBed,{right-2.f,y,front-4.f});
+            ceiling({middleX,float(room.maximum.y)+1,middleZ});
+            ceiling({right-1.5f,float(room.maximum.y)+1,back+5.f},HubAssetKind::HangingFern);
+            ceiling({left+1.f,float(room.maximum.y)+1,front-2.f},HubAssetKind::HangingPlanter);
+            break;
+        }
     }
 
     // Matching hanging lamps on structural beam intersections frame the atrium.
@@ -168,9 +186,6 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
     }
     for (const float x:{-11.5f,28.5f})
         for (const float z:{-.5f,21.5f}) ceiling({x,48,z},HubAssetKind::Vines);
-    for (const auto& room:heartwoodRooms())
-        ceiling({float(room.maximum.x)-1.0f,float(room.maximum.y)+1,
-                 float(room.maximum.z)-1.0f},HubAssetKind::HangingPlanter);
 
     // Continuous waist-high rails fill the gaps between the voxel newel posts.
     // The first gallery's west stair landing remains a broad open threshold.
