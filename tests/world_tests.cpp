@@ -32,7 +32,7 @@ int main()
     constexpr std::size_t layer = World::Width * World::Width;
 
     check(World::Min == glm::ivec3(-112, 0, -112)
-          && World::MaxExclusive == glm::ivec3(128, 96, 128), "world bounds describe the entire chunk grid");
+          && World::MaxExclusive == glm::ivec3(128, 160, 128), "world bounds describe the entire chunk grid");
     for (const int x : {World::Min.x, World::MaxExclusive.x - 1}) {
         for (const int y : {World::Min.y, World::MaxExclusive.y - 1}) {
             for (const int z : {World::Min.z, World::MaxExclusive.z - 1}) {
@@ -58,7 +58,7 @@ int main()
     check(world.takeDirtyChunks().empty(), "taking dirty chunks clears them");
     check(world.origin(0) == glm::ivec3(-112, 0, -112), "first chunk origin");
     check(world.origin(center) == glm::ivec3(0), "center chunk origin");
-    check(world.origin(World::ChunkCount - 1) == glm::ivec3(112, 80, 112), "last chunk origin");
+    check(world.origin(World::ChunkCount - 1) == glm::ivec3(112, 144, 112), "last chunk origin");
 
     check(sizeof(World) < 4096, "world voxel storage lives on the heap rather than the stack");
     check(world.origin(layer) == glm::ivec3(-112, 16, -112), "vertical layers follow each complete horizontal grid");

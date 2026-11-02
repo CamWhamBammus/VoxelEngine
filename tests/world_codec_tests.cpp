@@ -36,7 +36,8 @@ void repairChecksum(std::string& bytes)
 struct PreviousFormat {
     std::uint32_t version, width, height, materials;
 };
-constexpr std::array previousFormats{PreviousFormat{1, 5, 1, 16}, PreviousFormat{2, 9, 4, 20}};
+constexpr std::array previousFormats{PreviousFormat{1, 5, 1, 16}, PreviousFormat{2, 9, 4, 20},
+                                    PreviousFormat{3, 15, 6, voxel::BlockCount}};
 
 std::uint8_t previousMaterial(std::size_t index, std::uint32_t materials)
 {
@@ -103,9 +104,9 @@ int main()
             source.set({high.x - static_cast<int>(value), high.y, high.z}, block);
         }
         const auto bytes = encode(source);
-        check(static_cast<unsigned char>(bytes[8]) == 3 && static_cast<unsigned char>(bytes[20]) == 15
-              && static_cast<unsigned char>(bytes[24]) == 6 && static_cast<unsigned char>(bytes[28]) == 15,
-              "new snapshots write version three with a 15x6x15 chunk grid");
+        check(static_cast<unsigned char>(bytes[8]) == 4 && static_cast<unsigned char>(bytes[20]) == 15
+              && static_cast<unsigned char>(bytes[24]) == 10 && static_cast<unsigned char>(bytes[28]) == 15,
+              "new snapshots write version four with a 15x10x15 chunk grid");
         check(bytes.size() == 36 + voxel::World::ChunkCount * 16 * 16 * 16 + 4, "snapshot must use compact fixed byte layout");
         check(static_cast<std::uint8_t>(bytes[12]) == static_cast<std::uint8_t>(seed)
               && static_cast<std::uint8_t>(bytes[15]) == static_cast<std::uint8_t>(seed >> 24),
@@ -130,7 +131,7 @@ int main()
         check(restored.takeDirtyChunks().empty(), "loaded dirty flags must be consumable");
     }
 
-    // Build both previous formats independently of today's encoder or terrain.
+    // Build all previous formats independently of today's encoder or terrain.
     for (const auto format : previousFormats) {
         const auto legacy = previousSnapshot(format);
         std::istringstream legacyStream(legacy, std::ios::binary);
@@ -138,8 +139,8 @@ int main()
         check(legacyWorld.seed() == 2026, "previous snapshots retain the world seed");
         const voxel::World legacyTerrain(2026);
         const auto migratedBytes = encode(legacyWorld);
-        check(static_cast<unsigned char>(migratedBytes[8]) == 3,
-              "version-one and version-two snapshots upgrade to version three");
+        check(static_cast<unsigned char>(migratedBytes[8]) == 4,
+              "previous snapshots upgrade to version four");
         std::istringstream migratedStream(migratedBytes, std::ios::binary);
         check(voxel::decodeWorld(migratedStream).sameContents(legacyWorld),
               "saving and loading an imported world preserves every migrated voxel");
@@ -171,7 +172,7 @@ int main()
         for (const auto& malformed : {legacy.substr(0, legacy.size() - 1), legacy + '\0'}) {
             check(rejects(malformed), "previous imports reject truncation and trailing data");
         }
-        for (const auto claimedVersion : {1u, 2u, 3u}) {
+        for (const auto claimedVersion : {1u, 2u, 3u, 4u}) {
             if (claimedVersion == format.version) continue;
             auto changed = legacy;
             writeInteger(changed, 8, claimedVersion);
@@ -193,11 +194,11 @@ int main()
                                     std::size_t(35), std::size_t(36), valid.size() - 5, valid.size() - 1}) {
         check(rejects(valid.substr(0, length)), "truncated snapshots must fail");
     }
-    for (const auto previousVersion : {1u, 2u}) {
+    for (const auto previousVersion : {1u, 2u, 3u}) {
         auto changed = valid;
         writeInteger(changed, 8, previousVersion);
         repairChecksum(changed);
-        check(rejects(changed), "previous versions cannot claim version-three dimensions");
+        check(rejects(changed), "previous versions cannot claim version-four dimensions");
     }
     auto changed = valid;
     changed[0] = 'Q';
@@ -208,8 +209,8 @@ int main()
         repairChecksum(changed);
         check(rejects(changed), "hostile version/dimension/payload lengths must fail before allocation");
     }
-    for (const auto version : {1u, 2u, 3u}) {
-        auto header = version == 3 ? valid.substr(0, 36)
+    for (const auto version : {1u, 2u, 3u, 4u}) {
+        auto header = version == 4 ? valid.substr(0, 36)
             : previousSnapshot(previousFormats[version - 1]).substr(0, 36);
         for (const auto offset : {16u, 20u, 24u, 28u, 32u}) {
             auto hostile = header;

@@ -18,7 +18,7 @@ namespace voxel {
 namespace {
 
 constexpr std::array<char, 8> Magic{'V', 'X', 'W', 'O', 'R', 'L', 'D', '\0'};
-constexpr std::uint32_t Version = 3;
+constexpr std::uint32_t Version = 4;
 constexpr std::uint32_t PayloadSize = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size;
 constexpr std::uint32_t ChecksumOffset = 2166136261u;
 
@@ -109,6 +109,7 @@ World decodeWorld(std::istream& input)
     switch (version) {
     case 1: expectedWidth = 5; expectedHeight = 1; break;
     case 2: expectedWidth = 9; expectedHeight = 4; break;
+    case 3: expectedWidth = 15; expectedHeight = 6; break;
     case Version: expectedWidth = World::Width; expectedHeight = World::Height; break;
     default: throw std::runtime_error("Unsupported world snapshot version");
     }
@@ -144,7 +145,7 @@ World decodeWorld(std::istream& input)
     std::size_t cursor = 0;
     const std::size_t chunkCount = width * depth * height;
     for (std::size_t index = 0; index < chunkCount; ++index) {
-        // Older versions stored centered 5x1x5 and 9x4x9 regions. Keep their
+        // Older versions stored smaller centered regions. Keep their
         // coordinates exactly; new chunks retain the seed's generated terrain.
         const int chunkX = static_cast<int>(index % width) - static_cast<int>(width / 2);
         const int chunkZ = static_cast<int>((index / width) % depth) - static_cast<int>(depth / 2);

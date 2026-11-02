@@ -277,7 +277,7 @@ class World {
 public:
     static constexpr int Radius = 7;
     static constexpr int Width = 2 * Radius + 1;
-    static constexpr int Height = 6;
+    static constexpr int Height = 10;
     static constexpr std::size_t ChunkCount = Width * Width * Height;
     static constexpr glm::ivec3 Min{-Radius * Chunk::Size, 0, -Radius * Chunk::Size};
     static constexpr glm::ivec3 MaxExclusive{(Radius + 1) * Chunk::Size, Height * Chunk::Size,
