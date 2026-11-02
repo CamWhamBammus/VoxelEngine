@@ -47,7 +47,11 @@ bool clearModel(const World& world,const HubAsset& asset,bool wall=false)
     for (const auto& vertex:buildHubAsset(asset).vertices) {
         // A thin backing is deliberately embedded in its supporting wall.
         if (wall&&glm::dot(vertex.position-asset.position,normal)<.08f) continue;
-        const auto inside=vertex.position-glm::sign(vertex.position-center)*.001f;
+        auto inside=vertex.position-glm::sign(vertex.position-center)*.001f;
+        // Slender stems have a few millimeters of thickness below their soil
+        // anchor. Keep their base seated without hiding deeper intersections.
+        if (!wall&&vertex.position.y>=asset.position.y-.005f)
+            inside.y=std::max(inside.y,asset.position.y+.001f);
         const auto cell=glm::ivec3(glm::floor(inside));
         if (!World::contains(cell)||isSolid(world.get(cell))) return false;
     }
@@ -138,8 +142,17 @@ std::vector<HubAsset> planHeartwoodAssets(const World& world)
     }};
     for (std::size_t i=0;i<gardenCenters.size();++i) {
         floor(i%2 ? HubAssetKind::MossGarden : HubAssetKind::FernBed,gardenCenters[i]);
+        if (i%2!=0) floor(HubAssetKind::BroadleafClump,gardenCenters[i]);
         floor(HubAssetKind::CrystalFlower,gardenCenters[i]+glm::vec3(.7f,0,.5f));
+        // Small mushrooms grow below the ferns, opposite the crystal flowers.
+        // Keep their complete footprint inside the raised moss planting bed.
+        if (i%2==0)
+            floor(HubAssetKind::Mushrooms,gardenCenters[i]+glm::vec3(-.65f,0,-.55f));
     }
+    // The enlarged island replaces the original reed pockets. Replant its
+    // outer east banks beside the water, clear of the approach and tall plants.
+    floor(HubAssetKind::Reeds,{47.5f,9,19.5f});
+    floor(HubAssetKind::Reeds,{47.5f,9,1.5f});
 
     // The garden layer follows rail edges and beam undersides. No broad leaves
     // are scattered across the stairs, seed approach, or library doors.
