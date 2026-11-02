@@ -143,6 +143,9 @@ constexpr std::array<char, 8> Magic{'V', 'X', 'S', 'E', 'C', 'T', '\0', '\0'};
 constexpr std::uint32_t Version = 6;
 constexpr std::size_t MaxNameLength = 64;
 constexpr std::size_t WorldBytes = World::ChunkCount * Chunk::Size * Chunk::Size * Chunk::Size + 40;
+// Existing sections embed version-three worlds with six vertical chunks.
+// Their container length must pass here before decodeWorld can migrate them.
+constexpr std::size_t PreviousWorldBytes = 15 * 6 * 15 * 16 * 16 * 16 + 40;
 constexpr std::size_t MaxSectionBytes = WorldBytes + SectionMaxAssets * (56 + ChestSlotCount * 8) + 256;
 
 bool validWorld(SectionWorld id)
@@ -386,7 +389,8 @@ ParsedSection read(const std::filesystem::path& path)
         result.assets.push_back(std::move(asset));
     }
     const auto worldSize = reader.integer();
-    if (worldSize != WorldBytes) throw std::runtime_error("Section voxel snapshot has invalid dimensions");
+    if (worldSize != WorldBytes && worldSize != PreviousWorldBytes)
+        throw std::runtime_error("Section voxel snapshot has invalid dimensions");
     result.worldData = reader.take(worldSize);
     if (version >= 5) result.meta.lighting = static_cast<SectionLighting>(reader.integer());
     validate(result.meta, result.assets);

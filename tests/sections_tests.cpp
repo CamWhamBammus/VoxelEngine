@@ -57,6 +57,37 @@ void fixChecksum(std::string& bytes)
     for (std::size_t i = 8; i < bytes.size() - 4; ++i) checksum = (checksum ^ static_cast<unsigned char>(bytes[i])) * 16777619u;
     integer(bytes, bytes.size() - 4, checksum);
 }
+std::string previousWorldSnapshot(const voxel::World& world)
+{
+    // Encode the real 15x6x15 version-three layout independently of today's
+    // encoder. Changing only the outer .vxs version would miss size migration.
+    constexpr int width=15,height=6,chunkSize=16;
+    constexpr std::size_t payloadSize=width*height*width*chunkSize*chunkSize*chunkSize;
+    std::string bytes("VXWORLD\0",8);
+    bytes.resize(payloadSize+40);
+    integer(bytes,8,3);integer(bytes,12,world.seed());integer(bytes,16,chunkSize);
+    integer(bytes,20,width);integer(bytes,24,height);integer(bytes,28,width);
+    integer(bytes,32,payloadSize);
+    std::size_t cursor=36;
+    for (int cy=0;cy<height;++cy) for (int cz=0;cz<width;++cz) for (int cx=0;cx<width;++cx)
+        for (int y=0;y<chunkSize;++y) for (int z=0;z<chunkSize;++z) for (int x=0;x<chunkSize;++x)
+            bytes[cursor++]=static_cast<char>(world.get({(cx-width/2)*chunkSize+x,
+                cy*chunkSize+y,(cz-width/2)*chunkSize+z}));
+    fixChecksum(bytes);
+    return bytes;
+}
+std::string withPreviousWorld(std::string_view current,const voxel::World& world)
+{
+    const auto start=current.find(std::string_view("VXWORLD\0",8));
+    if (start==std::string_view::npos) throw std::runtime_error("Missing fixture world snapshot");
+    const auto snapshot=previousWorldSnapshot(world);
+    std::string bytes(current.substr(0,start));
+    integer(bytes,start-4,static_cast<std::uint32_t>(snapshot.size()));
+    bytes+=snapshot;
+    bytes+=current.substr(current.size()-8); // Current lighting footer and checksum.
+    fixChecksum(bytes);
+    return bytes;
+}
 std::string olderVersion(std::string_view bytes, std::size_t firstAsset, std::span<const voxel::HubAsset> assets,
                          std::uint32_t version)
 {
@@ -313,6 +344,42 @@ int main()
     check(fails([&] { saveSection(world, meta, badAssets, malformed, true); }), "models outside the room cannot be saved");
 
     const auto authoredBytes = readBytes(chestDocument);
+    World legacyWorld=world;
+    legacyWorld.set({111,95,-111},Block::SapphireOre);
+    const auto previousWorldBytes=withPreviousWorld(authoredBytes,legacyWorld);
+    const auto migrationLibrary=temp.path/"previous-world-library";
+    const auto previousDraft=migrationLibrary/"drafts"/"lush-caves"/"old-draft.vxs";
+    std::filesystem::create_directories(previousDraft.parent_path());
+    writeBytes(previousDraft,previousWorldBytes);
+    const auto migratedDraft=loadSection(previousDraft);
+    check(migratedDraft.world.sameContents(legacyWorld)&&migratedDraft.assets==chests
+          &&migratedDraft.meta.spawn==meta.spawn&&migratedDraft.meta.finish==meta.finish
+          &&migratedDraft.meta.checkpoint==meta.checkpoint&&migratedDraft.meta.lighting==meta.lighting,
+          "a real version-three voxel snapshot preserves draft terrain, loot, markers and lighting");
+    check(listSectionDrafts(migrationLibrary).size()==1&&readBytes(previousDraft)==previousWorldBytes,
+          "earlier-height drafts remain listed and loading never rewrites them");
+    const auto previousAccepted=migrationLibrary/"lush-caves"/"parkour"/"old-section.vxs";
+    std::filesystem::create_directories(previousAccepted.parent_path());
+    auto acceptedPrevious=previousWorldBytes;
+    integer(acceptedPrevious,20,1);
+    fixChecksum(acceptedPrevious);
+    writeBytes(previousAccepted,acceptedPrevious);
+    check(listSections(migrationLibrary).size()==1&&loadSection(previousAccepted).meta.tested,
+          "accepted sections from the smaller world remain available for expedition levels");
+    saveSection(migratedDraft.world,migratedDraft.meta,migratedDraft.assets,previousDraft,true);
+    check(readBytes(previousDraft).size()>previousWorldBytes.size()
+          &&loadSection(previousDraft).world.sameContents(legacyWorld)
+          &&loadSection(previousDraft).assets==chests,
+          "resaving an imported section upgrades its world without losing terrain or loot");
+    auto badPrevious=previousWorldBytes;
+    const auto oldSnapshotStart=badPrevious.find(std::string("VXWORLD\0",8));
+    badPrevious[oldSnapshotStart+36]^=1;
+    fixChecksum(badPrevious); // Outer container is sound; the embedded checksum is not.
+    check(rejects(badPrevious),"legacy embedded voxel corruption still fails world checksum validation");
+    badPrevious=previousWorldBytes;
+    integer(badPrevious,oldSnapshotStart+24,10);
+    fixChecksum(badPrevious);
+    check(rejects(badPrevious),"legacy embedded snapshots cannot claim dimensions inconsistent with their version");
     for (const auto& [offset, value] : std::vector<std::pair<std::size_t, std::uint32_t>>{
              {firstAsset + 24, ChestSlotCount + 1}, {firstAsset + 24, 0xffffffffu},
              {firstAsset + 28, static_cast<std::uint32_t>(ItemId::Count)},
