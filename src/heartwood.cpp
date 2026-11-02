@@ -12,9 +12,9 @@ constexpr HeartwoodLayout Layout{
     {8.5f,11.5f,39.5f}, {6.5f,22.0f,0.5f}
 };
 constexpr std::array<HeartwoodRoom,3> Rooms{{
-    {"Root Library", {-13,22,-16}, {1,29,-5}, {-2.5f,22,-2.5f}},
-    {"Expedition Study", {20,22,-16}, {33,29,-4}, {26.5f,22,-1.5f}},
-    {"Upper Archive", {-13,35,-16}, {1,42,-5}, {-2.5f,35,-2.5f}}
+    {HeartwoodRoomKind::Library, "Root Library", {-6,22,-16}, {2,29,-7}, {-2.5f,22,-3.5f}},
+    {HeartwoodRoomKind::ExpeditionLoft, "Expedition Loft", {20,22,-16}, {32,29,-5}, {26.5f,22,-1.5f}},
+    {HeartwoodRoomKind::Conservatory, "Canopy Conservatory", {25,35,1}, {33,43,17}, {28.5f,35,20.5f}}
 }};
 
 void box(World& world, glm::ivec3 low, glm::ivec3 high, Block block)
@@ -37,7 +37,7 @@ void foundation(World& world)
         if (!footprint(x,z,-3)) continue;
         box(world,{x,1,z},{x,7,z},Block::Stone);
         world.set({x,8,z},footprint(x,z)?Block::AgedPlanks:Block::Path);
-        if (footprint(x,z)) box(world,{x,9,z},{x,61,z},Block::Air);
+        if (footprint(x,z)) box(world,{x,9,z},{x,77,z},Block::Air);
     }
     // Fitted stone surrounds the golden seed. Timber bands connect the doors.
     box(world,{-2,8,2},{18,8,22},Block::Path);
@@ -53,15 +53,25 @@ void foundation(World& world)
 
 void shell(World& world)
 {
+    // Broad living buttresses below become a narrower bole above the galleries.
+    // Vertical bark ribs replace the horizontal bands that made the old hall
+    // read as a square building with a flat roof.
     for (int z=-20;z<=36;++z) for (int x=-20;x<=36;++x) {
         if (!footprint(x,z)) continue;
-        const int rib=(std::abs(x*7+z*3)%7==0)?2:0;
-        for (int y=9;y<=54+rib;++y) {
-            const int taper=y>45?2:y>30?1:0;
-            if (!footprint(x,z,taper) || footprint(x,z,taper+3)) continue;
-            const bool band=y==20||y==33||y==47||y==53;
-            const bool bark=(std::abs(x+z)%4==0);
-            world.set({x,y,z},band?Block::Timber:bark?Block::RootWood:Block::Timber);
+        for (int y=9;y<=49;++y) {
+            const int taper=y>42?2:y>30?1:0;
+            const int rib=(std::abs(x*7+z*3)%9<2)?1:0;
+            if (!footprint(x,z,taper) || footprint(x,z,taper+2+rib)) continue;
+            const bool bark=(std::abs(x*3-z*5+(y/13))%7<2);
+            const auto material=bark?Block::RootWood:Block::Timber;
+            world.set({x,y,z},material);
+            // At a chamfer, a deeper bark rib can otherwise touch the shell
+            // only diagonally. Bond its inner edge to the solid wall behind it.
+            if (rib && footprint(x,z,taper+2)) {
+                const bool alongX=std::abs(x-8)>=std::abs(z-8);
+                world.set({x+(alongX?(x<8?-1:1):0),y,
+                           z+(alongX?0:(z<8?-1:1))},material);
+            }
         }
     }
     // Tall open arches frame the water and districts on all four sides.
@@ -69,14 +79,12 @@ void shell(World& world)
     box(world,{30,9,-1},{37,35,27},Block::Air);
     box(world,{-21,9,1},{-15,19,15},Block::Air);
     box(world,{3,9,-21},{13,19,-15},Block::Air);
-    // Stepped shoulders make the openings part of a living timber arch.
     for (int step=0;step<8;++step) {
         box(world,{-11+step,35+step,31},{-11+step,44,34},Block::Timber);
         box(world,{27-step,35+step,31},{27-step,44,34},Block::Timber);
         box(world,{31,28+step,-1+step},{34,36,-1+step},Block::Timber);
         box(world,{31,28+step,27-step},{34,36,27-step},Block::Timber);
     }
-    // Inner columns carry the balconies, with broad rooted stone feet.
     for (const auto p : std::array<glm::ivec3,6>{{
         {-17,0,-17},{3,0,-17},{18,0,-17},{33,0,-17},
         {-17,0,28},{33,0,28}
@@ -90,15 +98,30 @@ void shell(World& world)
                     world.set({p.x+dx,y,p.z+dz},Block::RootWood);
         }
     }
-    // Crossed roof ribs support every high hanging lantern and the canopy.
+    // Open timber ribs carry the lanterns. Above them the trunk continues into
+    // a tall irregular vault instead of ending at the gallery roofline.
     for (const int x : {-12,8,28}) box(world,{x,48,-18},{x+1,49,34},Block::Timber);
     for (const int z : {-13,9,29}) box(world,{-18,48,z},{34,49,z+1},Block::Timber);
-    for (int y=50;y<=59;++y) {
-        const int inset=2+(y-50)/2;
-        for (int z=-20+inset;z<=36-inset;++z) for (int x=-20+inset;x<=36-inset;++x) {
-            if (!footprint(x,z,inset) || footprint(x,z,inset+2)) continue;
-            world.set({x,y,z},Block::Timber);
+    for (int y=50;y<=76;++y) {
+        const float rise=float(y-50)/26.f;
+        const float centerX=8.f+2.f*rise,centerZ=8.f-rise;
+        const float radiusX=27.f-13.f*rise,radiusZ=26.f-12.f*rise;
+        for (int z=-21;z<=37;++z) for (int x=-21;x<=37;++x) {
+            const float dx=(float(x)-centerX)/radiusX,dz=(float(z)-centerZ)/radiusZ;
+            const float angle=std::atan2(dz,dx);
+            const float bark=.035f*std::sin(angle*7.f+rise*.8f);
+            const float distance=std::sqrt(dx*dx+dz*dz);
+            if (distance>1.f+bark || distance<.83f+bark) continue;
+            const bool seam=std::sin(angle*11.f+rise*1.8f)>.6f;
+            world.set({x,y,z},seam?Block::RootWood:Block::Timber);
         }
+    }
+    // Branch-shaped haunches rise toward the neck, visible through the atrium.
+    for (const int side : {-1,1}) for (int rise=0;rise<=20;++rise) {
+        const int x=8+side*(23-rise/2);
+        const int z=8+side*(21-rise/2);
+        box(world,{x-1,48+rise,-10},{x+1,49+rise,-8},Block::RootWood);
+        box(world,{-2,48+rise,z-1},{0,49+rise,z+1},Block::RootWood);
     }
 }
 
@@ -170,34 +193,77 @@ void stairs(World& world)
 
 void rooms(World& world)
 {
+    // Rooms occupy alcoves around the promenade. Their whole fronts remain
+    // open; neither flight ends at a room wall or requires threading a door.
     for (const auto& room : Rooms) {
         const auto low=room.minimum,high=room.maximum;
         const int floor=low.y-1;
         box(world,{low.x-1,floor,low.z-1},{high.x+1,floor,high.z+1},Block::AgedPlanks);
         box(world,low,high,Block::Air);
-        box(world,{low.x-1,low.y,low.z-1},{high.x+1,high.y,low.z-1},Block::AgedPlanks);
-        box(world,{low.x-1,low.y,high.z+1},{high.x+1,high.y,high.z+1},Block::AgedPlanks);
-        box(world,{low.x-1,low.y,low.z-1},{low.x-1,high.y,high.z+1},Block::AgedPlanks);
-        box(world,{high.x+1,low.y,low.z-1},{high.x+1,high.y,high.z+1},Block::AgedPlanks);
-        box(world,{low.x-1,high.y+1,low.z-1},{high.x+1,high.y+1,high.z+1},Block::Timber);
-        for (const int x : {low.x-1,high.x+1}) for (const int z : {low.z-1,high.z+1})
-            box(world,{x,low.y,z},{x,high.y,z},Block::Timber);
-        for (int x=low.x+2;x<high.x;x+=4) {
-            box(world,{x,low.y,low.z-1},{x,high.y,low.z-1},Block::Timber);
-            box(world,{x,low.y,high.z+1},{x,high.y,high.z+1},Block::Timber);
-        }
-        // Wide door frames keep future furniture away from the approach.
-        const int door=int(std::floor(room.entrance.x));
-        box(world,{door-1,low.y,high.z+1},{door+2,low.y+5,high.z+1},Block::Air);
-        box(world,{door-2,low.y,high.z+1},{door-2,low.y+6,high.z+1},Block::Timber);
-        box(world,{door+3,low.y,high.z+1},{door+3,low.y+6,high.z+1},Block::Timber);
-        box(world,{door-2,low.y+6,high.z+1},{door+3,low.y+6,high.z+1},Block::Timber);
-        // An open reading window looks across the hall from either room.
-        const int windowX=door<8?high.x-1:low.x+1;
-        box(world,{windowX,low.y+2,high.z+1},{windowX+1,low.y+4,high.z+1},Block::Air);
-        for (const int x : {low.x+1,high.x-1}) {
-            world.set({x,low.y+4,low.z-1},Block::Lantern);
-            world.set({x,low.y+5,low.z-1},Block::Timber);
+        box(world,{low.x,low.y,high.z+1},{high.x,high.y,high.z+1},Block::Air);
+        if (room.kind==HeartwoodRoomKind::Library) {
+            // A recessed, low timber reading alcove with a curved lintel and
+            // one solid side for books, opening onto the broad landing.
+            box(world,{low.x-1,low.y,low.z-1},{high.x+1,high.y,low.z-1},Block::AgedPlanks);
+            box(world,{low.x-1,low.y,low.z-1},{low.x-1,high.y,high.z},Block::RootWood);
+            box(world,{high.x+1,low.y,low.z-1},{high.x+1,high.y,high.z},Block::RootWood);
+            box(world,{low.x-1,high.y+1,low.z-1},{high.x+1,high.y+1,high.z+1},Block::Timber);
+            for (int step=0;step<3;++step) {
+                box(world,{low.x+step,low.y+5+step,high.z+1},
+                    {low.x+step,high.y+1,high.z+1},Block::RootWood);
+                box(world,{high.x-step,low.y+5+step,high.z+1},
+                    {high.x-step,high.y+1,high.z+1},Block::RootWood);
+            }
+            for (const int x : {low.x+1,high.x-1}) world.set({x,low.y+5,low.z-1},Block::Lantern);
+        } else if (room.kind==HeartwoodRoomKind::ExpeditionLoft) {
+            // A wide map loft uses a pitched awning, exposed rafters and open
+            // side windows. It has a different outline from the reading nook.
+            box(world,{low.x-1,low.y,low.z-1},{high.x+1,high.y,low.z-1},Block::RootWood);
+            for (const int x : {low.x-1,high.x+1}) {
+                box(world,{x,low.y,low.z},{x,low.y+1,high.z},Block::MossBrick);
+                for (const int z : {low.z,high.z}) box(world,{x,low.y,z},{x,high.y+1,z},Block::Timber);
+            }
+            const int center=(low.x+high.x)/2;
+            for (int x=low.x-1;x<=high.x+1;++x) {
+                const int top=high.y+1+(6-std::min(6,std::abs(x-center)))/3;
+                box(world,{x,top,low.z-1},{x,top,high.z+1},Block::AgedPlanks);
+            }
+            box(world,{center,high.y+1,low.z-1},{center,high.y+1,high.z+1},Block::Timber);
+            for (const int z : {low.z+1,high.z-1})
+                box(world,{low.x-1,high.y+1,z},{high.x+1,high.y+1,z},Block::Timber);
+            world.set({low.x+1,low.y+5,low.z-1},Block::Lantern);
+            world.set({high.x-1,low.y+5,low.z-1},Block::Lantern);
+            // The survey telescope looks through the full thickness of the
+            // trunk, across the water toward the eastern village terraces.
+            box(world,{high.x+1,low.y+2,low.z+4},{37,high.y-1,high.z-1},Block::Air);
+            for (const int z : {low.z+3,high.z})
+                box(world,{high.x+1,low.y,z},{high.x+1,high.y+1,z},Block::Timber);
+            box(world,{high.x+1,low.y+1,low.z+3},{high.x+1,low.y+1,high.z},Block::Timber);
+            box(world,{high.x+1,high.y,low.z+3},{high.x+1,high.y,high.z},Block::Timber);
+        } else {
+            // The upper garden is a screened pergola beside an open tree
+            // window, not another enclosed study stacked over the library.
+            box(world,{low.x-1,low.y,low.z-1},{high.x+1,high.y,high.z+1},Block::Air);
+            box(world,{high.x+1,low.y+2,low.z+1},{37,high.y-1,high.z-1},Block::Air);
+            for (const int x : {low.x-1,high.x+1}) {
+                for (const int z : {low.z-1,high.z+1})
+                    box(world,{x,low.y,z},{x,high.y+1,z},Block::RootWood);
+                box(world,{x,high.y+1,low.z-1},{x,high.y+1,high.z+1},Block::Timber);
+            }
+            for (int z=low.z-1;z<=high.z+1;z+=3)
+                box(world,{low.x-1,high.y+1,z},{high.x+1,high.y+1,z},Block::Timber);
+            // A long central beam anchors pendant lamps and trailing plants.
+            const int center=(low.x+high.x)/2;
+            box(world,{center,high.y+1,low.z-1},{center,high.y+1,high.z+1},Block::Timber);
+            box(world,{high.x,low.y,low.z},{high.x,low.y,high.z},Block::MossBrick);
+            box(world,{low.x,low.y,low.z},{high.x,low.y,low.z},Block::MossBrick);
+            // The window lamps hang from short brackets on full timber posts.
+            // Their supports continue into the gallery and pergola frame.
+            for (const int z : {low.z+2,high.z-2}) {
+                box(world,{high.x+2,floor,z},{high.x+2,high.y+1,z},Block::Timber);
+                world.set({high.x+1,low.y+5,z},Block::Timber);
+                world.set({high.x+1,low.y+4,z},Block::Lantern);
+            }
         }
     }
 }
@@ -267,6 +333,21 @@ void walkingClearance(World& world)
         box(world,{-15,flight.y+1,flight.z+1},{-9,flight.y+4,flight.z+1},Block::Air);
         box(world,{-15,flight.y+14,flight.z-13},{-9,flight.y+17,flight.z-13},Block::Air);
     }
+    // A continuous western promenade passes beside the rising second flight.
+    // Its broad landing also lets players turn toward the open library front.
+    box(world,{-19,21,-7},{-17,21,14},Block::AgedPlanks);
+    box(world,{-19,22,-7},{-17,28,14},Block::Air);
+    box(world,{-19,21,-4},{32,21,0},Block::AgedPlanks);
+    box(world,{-19,22,-4},{32,28,0},Block::Air);
+    // The upper flight emerges into a wide balcony, with the garden reached
+    // along a separate promenade instead of walking through another room.
+    box(world,{-16,34,-4},{32,34,-2},Block::AgedPlanks);
+    box(world,{-8,34,-1},{32,34,0},Block::AgedPlanks);
+    box(world,{-16,35,-4},{32,41,0},Block::Air);
+    box(world,{22,34,0},{23,34,21},Block::AgedPlanks);
+    box(world,{22,35,0},{23,41,21},Block::Air);
+    box(world,{22,34,19},{33,34,22},Block::AgedPlanks);
+    box(world,{22,35,19},{33,41,22},Block::Air);
     box(world,{3,9,37},{13,15,39},Block::Air);
     box(world,{3,9,-23},{13,15,-21},Block::Air);
     box(world,{-23,9,3},{-21,15,13},Block::Air);

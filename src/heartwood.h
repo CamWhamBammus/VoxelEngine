@@ -12,9 +12,12 @@ inline constexpr int HeartwoodFloor = 8;
 inline constexpr int HeartwoodGalleryFloor = 21;
 inline constexpr int HeartwoodUpperFloor = 34;
 inline constexpr glm::ivec3 HeartwoodMinimum{-20, 8, -20};
-inline constexpr glm::ivec3 HeartwoodMaximum{36, 58, 36};
+inline constexpr glm::ivec3 HeartwoodMaximum{36, 76, 36};
+
+enum class HeartwoodRoomKind { Library, ExpeditionLoft, Conservatory };
 
 struct HeartwoodRoom {
+    HeartwoodRoomKind kind;
     std::string_view name;
     glm::ivec3 minimum, maximum; // Clear interior, including its standing floor.
     glm::vec3 entrance;

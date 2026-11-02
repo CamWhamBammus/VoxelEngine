@@ -350,15 +350,15 @@ int main()
                             visible |= world.get(position + side) == Block::Air;
                         exposed[static_cast<std::size_t>(block)] += visible;
                     }
-                    if (std::abs(x - 8) > 45 || std::abs(z - 8) > 45) continue;
-                    if (block == Block::Timber && y >= 20) {
+                    if (std::abs(x - 8) > 70 || std::abs(z - 8) > 70) continue;
+                    if ((block == Block::Timber||block == Block::RootWood) && y >= 20) {
                         highestWood = std::max(highestWood, y);
-                        if (y >= 24) {
+                        if (y >= 90) {
                             branches[0] += x < 0; branches[1] += x > 18;
                             branches[2] += z < 0; branches[3] += z > 18;
                         }
                     }
-                    if ((block == Block::Leaves || block == Block::GlowLeaves) && y >= 44) {
+                    if (voxel::isLeafBlock(block) && y >= 80) {
                         ++crownLeaves;
                         highestCanopy = std::max(highestCanopy, y);
                         canopyLow = glm::min(canopyLow, position);
@@ -387,12 +387,41 @@ int main()
               "authored roads and swimming exits use substantial flights of real stair blocks");
         check(highestWater >= 25, "falling water reaches far above the lake surface");
         check(world.get({8, 15, 8}) == Block::Air && isSolid(world.get({8,15,-11}))
-              && highestWood >= 58 && highestCanopy >= 78,
+              && highestWood >= 110 && highestCanopy >= 130,
               "the heart tree has a hollow hall, a rooted sap wall, and a tall crown");
+        check(highestCanopy-voxel::HeartwoodFloor>=2*(voxel::HeartwoodMaximum.x-voxel::HeartwoodMinimum.x),
+              "the living tree is at least twice as tall as its broad hall base");
         check(crownLeaves >= 5000 && canopyHigh.x - canopyLow.x >= 65 && canopyHigh.z - canopyLow.z >= 65,
               "the central canopy spreads broadly above the village");
         check(std::all_of(branches.begin(), branches.end(), [](int count) { return count >= 10; }),
-              "large tree branches spread in all four directions");
+              "high tree branches spread in all four directions above the hall");
+        int crownColumns=0;
+        bool crownClear=true;
+        int tightestGap=8;
+        glm::ivec3 closestRoof{};
+        for (int z=canopyLow.z;z<=canopyHigh.z;++z) for (int x=canopyLow.x;x<=canopyHigh.x;++x) {
+            int top=-1;
+            for (int y=highestCanopy;y>=80;--y) {
+                const auto block=world.get({x,y,z});
+                if (voxel::isLeafBlock(block)) {top=y;break;}
+            }
+            if (top<0) continue;
+            ++crownColumns;
+            for (int gap=1;gap<=8;++gap) {
+                const auto block=world.get({x,top+gap,z});
+                // Branches may protrude through their own leaves. Cavern rock
+                // must not flatten the tree against the ceiling again.
+                if (block==Block::Air||block==Block::Timber||block==Block::RootWood) continue;
+                crownClear=false;
+                if (gap-1<tightestGap) {tightestGap=gap-1;closestRoof={x,top+gap,z};}
+                break;
+            }
+        }
+        if (!crownClear)
+            std::cerr<<"Seed "<<seed<<" crown has only "<<tightestGap<<" clear blocks beneath roof at "
+                     <<coordinate(closestRoof)<<'\n';
+        check(crownColumns>=1000&&crownClear,
+              "at least eight blocks separate the leafy crown from the cavern roof");
         for (const auto ore : {Block::CoalOre, Block::CopperOre, Block::IronOre, Block::Crystal})
             check(exposed[static_cast<std::size_t>(ore)] >= 5, std::string(voxel::blockName(ore)) + " remains visibly exposed");
 

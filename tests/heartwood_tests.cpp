@@ -66,9 +66,19 @@ int main()
               "the main stairs can also be descended without a drop");
         check(player.setFeetPosition(world,{lane+.5f,22,12.5f})&&player.grounded(),"upper stair foot meets the gallery");
         check(walk(player,world,{0,0,-1},15)&&std::abs(player.feetPosition().y-35)<.01f,
-              "the second stair reaches the archive landing");
+              "the second stair reaches the upper promenade");
+        check(walk(player,world,{0,0,-1},3),
+              "every upper stair lane has a deep landing beyond its final tread");
     }
-    check(heartwoodRooms().size()==3,"the tree has a library, study, and upstairs archive");
+    // The first floor needs a bypass around the upper flight, so visiting its
+    // rooms never requires climbing the next staircase or squeezing past a wall.
+    check(player.setFeetPosition(world,{-17.5f,22,14.5f})&&walk(player,world,{0,0,-1},18),
+          "the west gallery connects the lower landing to its room corridor");
+    for (int y : {22,35}) {
+        check(player.setFeetPosition(world,{-12.5f,float(y),-3.5f})&&walk(player,world,{1,0,0},36),
+              "the rear promenade joins both sides of each gallery");
+    }
+    check(heartwoodRooms().size()==3,"the tree has a library, expedition loft, and conservatory");
     for (const auto& room : heartwoodRooms()) {
         check(player.setFeetPosition(world,room.entrance)&&player.grounded(),std::string(room.name)+" has an open, supported entrance");
         check(walk(player,world,{0,0,-1},4),std::string(room.name)+" can be entered through its actual doorway");

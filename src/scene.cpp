@@ -174,8 +174,8 @@ void landscape(World& world)
             const float distance = ellipse(x,z,Center,{108,104});
             const float lobes = .095f*std::sin(x*.051f+z*.021f)
                               + .065f*std::sin(z*.079f-x*.041f);
-            const int ceiling = std::clamp(72+int(14*std::max(0.0f,1-distance))
-                +int(5*std::sin(x*.055f)*std::cos(z*.067f)),65,91);
+            const int ceiling = std::clamp(94+int(60*std::clamp((1-distance)/.60f,0.0f,1.0f))
+                +int(4*std::sin(x*.035f)*std::cos(z*.047f)),90,154);
             const int ground = terrainHeight(x,z);
             const bool basin = lake(x,z);
             const int bed = basin ? lakebed(x,z) : 5;
@@ -404,33 +404,71 @@ void canopy(World& world,glm::vec3 center,glm::vec3 radius)
 void heartTree(World& world)
 {
     buildHeartwood(world);
-    // The rebuilt trunk is a fifty-seven-block hall. Large, connected boughs
-    // grow above its roof instead of occupying the rooms and walking routes.
-    struct Bough { glm::vec3 base,elbow,tip,spread; };
-    for (const auto& b : std::array<Bough,8>{{
-        {{-14,53,8},{-25,61,9},{-30,68,2},{15,7,14}},
-        {{30,53,8},{41,61,14},{45,69,21},{14,8,14}},
-        {{8,54,-15},{0,62,-24},{-6,70,-30},{15,8,14}},
-        {{8,54,31},{10,61,40},{18,70,47},{14,8,13}},
-        {{-9,53,27},{-15,64,29},{-21,72,34},{14,8,13}},
-        {{25,54,-8},{30,65,-17},{35,72,-22},{15,7,14}},
-        {{8,56,-9},{-6,66,2},{-12,76,-6},{19,7,17}},
-        {{8,57,9},{9,69,14},{11,78,13},{20,7,18}},
-    }}) {
-        branch(world,b.base,b.elbow,3.5f,2.2f);
-        branch(world,b.elbow,b.tip,2.2f,.75f);
-        branch(world,b.elbow,b.tip+glm::vec3(-5,1,6),1.4f,.5f);
-        canopy(world,b.tip+glm::vec3(0,3,0),b.spread);
-        canopy(world,glm::mix(b.elbow,b.tip,.65f)+glm::vec3(0,5,0),b.spread*.72f);
+    // The room-sized root flare narrows into a long living trunk before the
+    // crown opens. Leave the center hollow so the atrium sees up into it.
+    for (int y=74;y<=115;++y) {
+        const float t=float(y-74)/41.f;
+        const glm::vec2 center{8.f-7.f*t+2.f*std::sin(t*3.f),8.f+4.f*t};
+        const float radius=15.f-10.f*t;
+        for (int z=-13;z<=32;++z) for (int x=-14;x<=30;++x) {
+            const auto delta=glm::vec2(x,z)-center;
+            const float angle=std::atan2(delta.y,delta.x);
+            const float ridge=1.1f*std::sin(angle*7.f+y*.035f)+.5f*std::sin(angle*11.f-y*.055f);
+            const float distance=glm::length(delta*glm::vec2(1.f,.92f));
+            if (distance>radius+ridge) continue;
+            if (y<103 && distance<radius-3.f+ridge*.3f) continue;
+            world.set({x,y,z},std::sin(angle*7.f+y*.035f)>.35f?Block::RootWood:Block::Timber);
+        }
     }
-    canopy(world,{-3,72,7},{23,10,22});
-    canopy(world,{12,67,17},{24,8,22});
-    canopy(world,{-6,66,-9},{20,8,20});
-    for (int z=-44;z<=62;++z) for (int x=-46;x<=60;++x) for (int y=57;y<=89;++y) {
+    // Forks climb for several stories before spreading. Their leaf clusters
+    // overlap at the tips, leaving visible wood and air between major limbs.
+    struct Bough { glm::vec3 base,elbow,tip,spread; float width; };
+    for (const auto& b : std::array<Bough,9>{{
+        {{-11,66,8},{-23,83,9},{-41,102,5},{19,9,17},5.5f},
+        {{27,66,8},{36,84,13},{50,106,23},{20,10,18},5.5f},
+        {{8,67,-11},{2,87,-22},{-8,112,-37},{20,10,18},5.f},
+        {{8,67,28},{11,84,38},{25,105,51},{20,9,17},5.f},
+        {{-4,82,19},{-19,100,30},{-29,118,38},{20,10,18},4.5f},
+        {{18,83,-3},{31,102,-18},{38,121,-26},{20,9,18},4.5f},
+        {{4,98,10},{-8,112,2},{-15,124,-5},{20,9,19},4.f},
+        {{3,104,12},{7,117,19},{12,126,23},{21,9,19},3.5f},
+        {{1,109,10},{1,122,10},{2,128,8},{18,7,16},3.f},
+    }}) {
+        branch(world,b.base,b.elbow,b.width,b.width*.58f);
+        branch(world,b.elbow,b.tip,b.width*.58f,.85f);
+        const auto fork=b.tip+glm::vec3(-8,-3,7);
+        branch(world,glm::mix(b.elbow,b.tip,.48f),fork,b.width*.38f,.6f);
+        canopy(world,b.tip+glm::vec3(0,1,0),b.spread);
+        canopy(world,fork+glm::vec3(0,2,0),b.spread*.65f);
+    }
+    // Small exposed sap knots carry the hall's cyan light up the real bark.
+    // They replace supported wood rather than hanging lamps in empty space.
+    const auto bark=[](Block block) { return block==Block::Timber || block==Block::RootWood; };
+    for (int y=52;y<=103;++y) {
+        const int band=y%9;
+        if (band>4) continue;
+        const Block sap=band==2||band==3?Block::Crystal:Block::GlowMoss;
+        const int x=8+int(std::round(2.f*std::sin(y*.14f)));
+        for (int z=38;z>=8;--z) if (bark(world.get({x,y,z}))) {
+            world.set({x,y,z},sap);
+            break;
+        }
+        if (y>88) continue;
+        const int z=8+int(std::round(2.f*std::cos(y*.12f)));
+        for (int side=40;side>=10;--side) if (bark(world.get({side,y,z}))) {
+            world.set({side,y,z},sap);
+            break;
+        }
+    }
+    // Cool luminous edges and sparse blossom pockets break up the crown while
+    // keeping the underlying silhouette green. Lighting is tied to real leaves.
+    for (int z=-61;z<=77;++z) for (int x=-70;x<=77;++x) for (int y=92;y<=139;++y) {
         if (world.get({x,y,z})!=Block::Leaves) continue;
-        if (hash((x+48)/7+y/6,(z+48)/7,world.seed())%7==0
-            && (world.get({x,y-1,z})==Block::Air || world.get({x,y+1,z})==Block::Air))
-            world.set({x,y,z},Block::GlowLeaves);
+        const auto patch=hash((x+80)/9+y/8,(z+80)/9,world.seed());
+        if (world.get({x,y-1,z})==Block::Air || world.get({x,y+1,z})==Block::Air) {
+            if (patch%9==0) world.set({x,y,z},Block::GlowLeaves);
+            else if (patch%17==0) world.set({x,y,z},Block::BlossomLeaves);
+        }
     }
 }
 
