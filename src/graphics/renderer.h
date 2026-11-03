@@ -25,6 +25,8 @@ class WorldRenderer {
 public:
     WorldRenderer();
     ~WorldRenderer();
+    void setRenderScale(float scale) { postProcess_.setRenderScale(scale); }
+    void setSamples(int samples) { postProcess_.setSamples(samples); }
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
                 bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false,
                 bool hubAssets = true, std::span<const HubAsset> placedAssets = {},

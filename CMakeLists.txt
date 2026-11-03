@@ -103,6 +103,7 @@ if(VOXEL_BUILD_APP)
         src/graphics/opengl.cpp
         src/graphics/post_process.cpp
         src/graphics/renderer.cpp
+        src/graphics/benchmark.cpp
         src/graphics/hud.cpp
         src/graphics/palette_previews.cpp
         tests/graphics_smoke.cpp
