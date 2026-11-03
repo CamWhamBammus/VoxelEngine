@@ -6,6 +6,8 @@
 #include "mesh.h"
 
 #include <cstddef>
+#include <map>
+#include <string>
 
 namespace voxel {
 
@@ -27,7 +29,11 @@ public:
     void setVec3(const char* name, const glm::vec3& value) const;
 
 private:
+    GLint uniformLocation(const char* name) const;
     GLuint program_ = 0;
+    // Names are owned because array uniforms are often built with temporary
+    // strings. Transparent lookup avoids allocating on repeated draws.
+    mutable std::map<std::string, GLint, std::less<>> uniformLocations_;
 };
 
 // Owns vertex/index buffers and the vertex array that describes their layout.

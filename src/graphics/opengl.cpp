@@ -117,24 +117,34 @@ void Shader::use() const
     glUseProgram(program_);
 }
 
+GLint Shader::uniformLocation(const char* name) const
+{
+    if (!name) throw std::invalid_argument("Uniform name must not be null.");
+    const auto found = uniformLocations_.find(name);
+    if (found != uniformLocations_.end()) return found->second;
+    const GLint location = glGetUniformLocation(program_, name);
+    uniformLocations_.emplace(name, location); // Cache missing/optimized-out uniforms (-1), too.
+    return location;
+}
+
 void Shader::setInt(const char* name, int value) const
 {
-    glUniform1i(glGetUniformLocation(program_, name), value);
+    glUniform1i(uniformLocation(name), value);
 }
 
 void Shader::setFloat(const char* name, float value) const
 {
-    glUniform1f(glGetUniformLocation(program_, name), value);
+    glUniform1f(uniformLocation(name), value);
 }
 
 void Shader::setMat4(const char* name, const glm::mat4& value) const
 {
-    glUniformMatrix4fv(glGetUniformLocation(program_, name), 1, GL_FALSE, glm::value_ptr(value));
+    glUniformMatrix4fv(uniformLocation(name), 1, GL_FALSE, glm::value_ptr(value));
 }
 
 void Shader::setVec3(const char* name, const glm::vec3& value) const
 {
-    glUniform3fv(glGetUniformLocation(program_, name), 1, glm::value_ptr(value));
+    glUniform3fv(uniformLocation(name), 1, glm::value_ptr(value));
 }
 
 static_assert(std::is_standard_layout_v<MeshVertex>);
