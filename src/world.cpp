@@ -1,11 +1,26 @@
 #include "world.h"
 
+#include <atomic>
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <optional>
 #include <stdexcept>
 
 namespace voxel {
+namespace {
+std::atomic<std::uint64_t> nextChunkRevision{1};
+
+std::uint64_t newChunkRevision() noexcept
+{
+    const auto revision = nextChunkRevision.fetch_add(1, std::memory_order_relaxed);
+    // Never reuse zero (the initial all-air token), even after exhausting the
+    // 64-bit sequence. Relaxed ordering only allocates identities; callers must
+    // still synchronize access to voxel data if editing from multiple threads.
+    if (revision == 0) std::terminate();
+    return revision;
+}
+} // namespace
 
 Block Chunk::get(int x, int y, int z) const noexcept
 {
@@ -17,7 +32,11 @@ bool Chunk::set(int x, int y, int z, Block block) noexcept
     if (!inBounds(x, y, z) || !isValidBlock(block)) {
         return false;
     }
-    blocks_[index(x, y, z)] = block;
+    auto& current = blocks_[index(x, y, z)];
+    if (current != block) {
+        current = block;
+        revision_ = newChunkRevision();
+    }
     return true;
 }
 

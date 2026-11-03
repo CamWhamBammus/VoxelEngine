@@ -244,7 +244,12 @@ inline glm::vec3 blockColor(Block block) noexcept
 class Chunk {
 public:
     static constexpr int Size = 16;
-    bool operator==(const Chunk&) const = default;
+    // Revisions are cache tokens, not contents: undoing an edit can restore
+    // identical blocks while retaining a different revision.
+    bool operator==(const Chunk& other) const { return blocks_ == other.blocks_; }
+    // Copies retain the token. Every real write gets a unique token across
+    // chunks and worlds, so equal edit counts on divergent copies cannot alias.
+    std::uint64_t revision() const noexcept { return revision_; }
 
     static constexpr bool inBounds(int x, int y, int z) noexcept
     {
@@ -262,6 +267,7 @@ private:
     }
 
     std::array<Block, Size * Size * Size> blocks_{};
+    std::uint64_t revision_ = 0;
 };
 
 // Highest solid voxel's world Y coordinate, in the inclusive range [4, 13].
