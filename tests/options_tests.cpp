@@ -12,7 +12,8 @@ int main()
     };
     const auto defaults = voxel::parseOptions({});
     check(defaults.seed == 1337 && defaults.editReach == 8 && !defaults.smokeTest && !defaults.worldExplicit
-          && !defaults.editor && defaults.rootCrossing == -1, "default options start a fresh game");
+          && !defaults.editor && defaults.rootCrossing == -1 && !defaults.benchmark
+          && defaults.renderScale == 1.0f && defaults.msaa == 4, "default options start a fresh game at native resolution");
     const std::vector<std::string_view> complete{
         "--editor", "--seed", "4294967295", "--world", "my world.vxl", "--screenshot", "capture.ppm"};
     const auto parsed = voxel::parseOptions(complete);
@@ -31,7 +32,12 @@ int main()
             {"--root-crossing", "3", "--world", "saved.vxl"},
             {"--editor", "--world", "saved.vxl", "--root-crossing", "3"},
             {"--reach"}, {"--reach", "0"}, {"--reach", "65"}, {"--reach", "-1"},
-            {"--reach", "1.5"}, {"--reach", "NaN"}, {"--reach", "999999999999"}}) {
+            {"--reach", "1.5"}, {"--reach", "NaN"}, {"--reach", "999999999999"},
+            {"--render-scale"}, {"--render-scale", "0.49"}, {"--render-scale", "1.01"},
+            {"--render-scale", "NaN"}, {"--render-scale", "inf"}, {"--render-scale", "-inf"},
+            {"--render-scale", "0.75tail"}, {"--render-scale", " 0.75"}, {"--render-scale", "0.75 "},
+            {"--render-scale", "1e999"}, {"--msaa"}, {"--msaa", "1"}, {"--msaa", "8"},
+            {"--msaa", "-1"}, {"--msaa", "2.0"}, {"--msaa", "2tail"}}) {
         bool rejected = false;
         try { voxel::parseOptions(args); } catch (const std::invalid_argument&) { rejected = true; }
         check(rejected, "malformed options must fail before starting graphics or touching saves");
@@ -41,6 +47,18 @@ int main()
     check(flags.seed == 0 && flags.smokeTest && flags.help, "zero seed and flags work");
     const std::vector<std::string_view> shortHelp{"-h"};
     check(voxel::parseOptions(shortHelp).help, "-h opens command-line help");
+    for (const auto scale : {"0.5", "0.75", "1"}) {
+        const std::vector<std::string_view> args{"--render-scale", scale};
+        check(voxel::parseOptions(args).renderScale == std::stof(scale), "render scale accepts endpoints and intermediate sizes");
+    }
+    for (const auto samples : {"0", "2", "4"}) {
+        const std::vector<std::string_view> args{"--msaa", samples};
+        check(voxel::parseOptions(args).msaa == std::stoi(samples), "MSAA accepts off and supported quality levels");
+    }
+    const std::vector<std::string_view> benchmark{"--benchmark", "--render-scale", "0.75", "--msaa", "0"};
+    const auto measured = voxel::parseOptions(benchmark);
+    check(measured.benchmark && measured.progressPath.empty() && measured.renderScale == 0.75f && measured.msaa == 0,
+          "benchmark keeps graphics settings and never opens the player profile");
     for (const auto limit : {"1", "64"}) {
         const std::vector<std::string_view> reach{"--reach", limit};
         check(voxel::parseOptions(reach).editReach == std::stoi(limit), "reach accepts both range limits");

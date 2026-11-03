@@ -36,6 +36,9 @@ struct Options {
     int editReach = 8;
     bool seedExplicit = false;
     bool smokeTest = false;
+    bool benchmark = false;
+    float renderScale = 1.0f;
+    int msaa = 4;
     bool help = false;
     bool worldExplicit = false;
     std::string screenshot;
@@ -53,6 +56,9 @@ inline constexpr const char* Usage =
     "  --seed N           Generate terrain from an unsigned 32-bit seed (default: 1337).\n"
     "  --world path.vxl   Choose the save file (default: world.vxl).\n"
     "  --reach N          Editor reach in blocks, 1 to 64 (default: 8).\n"
+    "  --render-scale N   World resolution, 0.5 to 1 (default: 1); UI stays sharp.\n"
+    "  --msaa N           Antialiasing samples: 0, 2, or 4 (default: 4).\n"
+    "  --benchmark        Measure fixed village views without loading game progress.\n"
     "  --smoke-test       Check rendering in a hidden window, then exit.\n"
     "  --screenshot path.ppm\n"
     "                     Run the smoke test and write a rendered image.\n"

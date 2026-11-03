@@ -8,6 +8,7 @@
 #include <charconv>
 #include <cmath>
 #include <limits>
+#include <locale>
 #include <stdexcept>
 #include <filesystem>
 #include <iomanip>
@@ -34,6 +35,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
         else if (argument == "--dev") options.dev = true;
         else if (argument == "--level-creator") options.levelCreator = true;
         else if (argument == "--smoke-test") options.smokeTest = true;
+        else if (argument == "--benchmark") options.benchmark = true;
         else if (argument == "--seed") {
             options.seedExplicit = true;
             const auto seed = value();
@@ -56,6 +58,24 @@ Options parseOptions(std::span<const std::string_view> arguments)
             if (result.ec != std::errc{} || result.ptr != reach.data() + reach.size()
                 || options.editReach < 1 || options.editReach > 64) {
                 throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
+            }
+        } else if (argument == "--render-scale") {
+            const auto scale = value();
+            // Apple's C++20 library does not provide floating-point from_chars.
+            // A classic locale keeps decimal settings independent of system locale.
+            std::istringstream number{std::string(scale)};
+            number.imbue(std::locale::classic());
+            number >> std::noskipws >> options.renderScale;
+            if (!number || !number.eof()
+                || !std::isfinite(options.renderScale) || options.renderScale < 0.5f || options.renderScale > 1.0f) {
+                throw std::invalid_argument("Render scale must be a number from 0.5 to 1");
+            }
+        } else if (argument == "--msaa") {
+            const auto samples = value();
+            const auto result = std::from_chars(samples.data(), samples.data() + samples.size(), options.msaa);
+            if (result.ec != std::errc{} || result.ptr != samples.data() + samples.size()
+                || (options.msaa != 0 && options.msaa != 2 && options.msaa != 4)) {
+                throw std::invalid_argument("MSAA must be 0, 2, or 4");
             }
         } else if (argument == "--world") {
             options.worldPath = value();
@@ -83,7 +103,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
     if (options.worldExplicit && !options.editor && !options.help) {
         throw std::invalid_argument("Use --editor with --world; game runs start with fresh terrain");
     }
-    if (!options.editor && !options.smokeTest && !options.help) options.progressPath = "progress.vxp";
+    if (!options.editor && !options.smokeTest && !options.benchmark && !options.help) options.progressPath = "progress.vxp";
     return options;
 }
 
