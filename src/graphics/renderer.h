@@ -2,6 +2,8 @@
 
 #include "graphics/opengl.h"
 #include "graphics/post_process.h"
+#include "graphics/light_grid.h"
+#include "graphics/detail_lod.h"
 #include "graphics/held_compass.h"
 #include "world.h"
 #include "editing.h"
@@ -27,6 +29,8 @@ public:
     ~WorldRenderer();
     void setRenderScale(float scale) { postProcess_.setRenderScale(scale); }
     void setSamples(int samples) { postProcess_.setSamples(samples); }
+    // Reference path for comparing the spatial light lookup against every source.
+    void setLightGridEnabled(bool enabled) { lightGridEnabled_ = enabled; }
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
                 bool underground = false, float timeSeconds = 0.0f, bool carriedLantern = false,
                 bool hubAssets = true, std::span<const HubAsset> placedAssets = {},
@@ -46,7 +50,6 @@ public:
     std::size_t sceneRebuildCount() const { return sceneRebuildCount_; }
 
 private:
-    struct Light { glm::vec3 position; glm::vec3 color; float radius; };
     void uploadLights(const World& world);
     Shader shader_;
     PostProcess postProcess_;
@@ -54,6 +57,7 @@ private:
     std::array<GpuMesh, World::ChunkCount> water_; // Drawn after the opaque scene snapshot.
     std::array<GpuMesh, World::ChunkCount> details_;
     std::array<GpuMesh, World::ChunkCount> relief_;
+    std::array<std::array<DetailLodRange,DetailLodBandCount>,World::ChunkCount> detailRanges_{}, reliefRanges_{};
     std::array<GpuMesh, World::ChunkCount> assets_;
     std::array<GpuMesh, ItemCount> pickups_; // Local meshes; animated with per-draw transforms.
     std::array<std::vector<std::unique_ptr<GpuMesh>>,3> monsters_; // Uploaded once per joint.
@@ -71,10 +75,10 @@ private:
     std::size_t heldCompassTriangles_ = 0;
     std::size_t monsterTriangles_ = 0;
     std::optional<World> meshedWorld_;
-    std::vector<Light> lights_; // Rebuilt for world edits or a lighting-mode change.
+    std::vector<PointLight> lights_; // Rebuilt for world edits or a lighting-mode change.
     std::vector<HubAssetLight> assetLights_;
-    std::array<int, World::ChunkCount> lightOffsets_{}, lightCounts_{};
-    GLuint lightTexture_ = 0; // Per-chunk candidates: position/radius, then color.
+    GLuint lightTexture_ = 0; // Global source position/radius, then color.
+    GLuint lightRanges_ = 0, lightIndices_ = 0; // Fixed four-block spatial bins.
     GLuint occupancy_ = 0; // Cube=255, stair=200..203, water=127, air/foliage=0; lighting and shoreline queries.
     std::size_t visibleChunks_ = 0;
     std::size_t drawnTriangles_ = 0;
@@ -82,6 +86,7 @@ private:
     bool underground_ = false;
     bool hubAssets_ = true;
     bool hubLighting_ = false;
+    bool lightGridEnabled_ = true;
     std::vector<HubAsset> placedAssets_;
 };
 

@@ -6,6 +6,7 @@
 #include "graphics/materials.h"
 #include "graphics/water.h"
 #include "graphics/voxel_lighting.h"
+#include "graphics/light_shadows.h"
 #include "hub_assets.h"
 #include "block_shapes.h"
 #include "sections.h"
@@ -148,16 +149,19 @@ uniform vec3 carriedLanternPosition;
 uniform int monsterCount;
 uniform vec3 monsterFeet[3];
 uniform int lightCount;
-uniform int lightOffset;
+uniform int lightGridEnabled;
+uniform usampler3D lightRanges;
+uniform usampler2D lightIndices;
+uniform vec3 lightGridMinimum;
 uniform sampler2D lightSources;
 uniform sampler3D occupancy;
 uniform vec3 worldMinimum;
 out vec4 fragmentColor;
 
-)glsl") + materialShader + R"glsl(
+)glsl") + materialShader + detailLodShader + R"glsl(
 
 vec4 lightData(int index, int part) {
-    int address = (lightOffset + index) * 2 + part;
+    int address = index * 2 + part;
     int width = textureSize(lightSources, 0).x;
     return texelFetch(lightSources, ivec2(address % width, address / width), 0);
 }
@@ -181,6 +185,7 @@ float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) 
 )glsl" + waterShader + R"glsl(
 
 void main() {
+    if (discardDistantDetail(worldPosition,cameraPosition)) discard;
     if (decorative == 5) {
         float haze = smoothstep(35.0, 100.0, length(cameraPosition-worldPosition)) * .6;
         fragmentColor = vec4(surfaceColor * activationGlow * (1.0-haze), clamp(activationGlow,0.0,1.0)*(1.0-haze));
@@ -254,7 +259,16 @@ void main() {
         // Every source that reaches this surface contributes. A nearest-light
         // cap would cause visible boundaries wherever the source ranking swaps,
         // even if the ranking were based on world position instead of the camera.
-        for (int i = 0; i < lightCount; ++i) {
+        ivec3 lightCell = ivec3(floor((lightPosition - lightGridMinimum) / 4.0));
+        ivec3 gridSize = textureSize(lightRanges, 0);
+        bool inGrid = lightGridEnabled != 0 && all(greaterThanEqual(lightCell, ivec3(0)))
+            && all(lessThan(lightCell, gridSize));
+        uvec2 range = inGrid ? texelFetch(lightRanges, lightCell, 0).rg : uvec2(0, uint(lightCount));
+        int indexWidth = textureSize(lightIndices, 0).x;
+        for (uint candidate = 0u; candidate < range.y; ++candidate) {
+            uint address = range.x + candidate;
+            int i = inGrid ? int(texelFetch(lightIndices,
+                ivec2(int(address) % indexWidth, int(address) / indexWidth), 0).r) : int(candidate);
             vec4 source = lightData(i, 0);
             vec3 offset = source.xyz - lightPosition;
             float distanceSquared = dot(offset, offset);
@@ -262,7 +276,8 @@ void main() {
             bool backlitWater = materialId == 16 && behindSurface;
             if (distanceSquared >= source.w * source.w
                 || (firstPerson != 2 && materialId != 16 && behindSurface)) continue;
-            vec3 lightColor = lightData(i, 1).rgb;
+            vec4 lighting = lightData(i, 1);
+            vec3 lightColor = lighting.rgb;
             float distanceToLight = sqrt(distanceSquared);
             float falloff = max(1.0 - distanceToLight / source.w, 0.0);
             vec3 direction = offset / max(distanceToLight, 0.001);
@@ -283,7 +298,7 @@ void main() {
             float attenuation = hubScene != 0 ? falloff * falloff * (3.0 - 2.0 * falloff)
                 : falloff * falloff;
             float strength = attenuation
-                * lightVisibility(start, source.xyz, direction, attenuation * facing);
+                * (lighting.a > .5 ? 1.0 : lightVisibility(start, source.xyz, direction, attenuation * facing));
             if (strength <= 0.0) continue;
             pointLight += lightColor * strength * 1.65 * facing;
             // Light transmitted through water is not a reflected glint.
@@ -350,9 +365,13 @@ WorldRenderer::WorldRenderer() : shader_(worldVertexShader, worldFragmentShader.
 {
     glGenTextures(1, &occupancy_);
     glGenTextures(1, &lightTexture_);
-    if (!occupancy_ || !lightTexture_) {
+    glGenTextures(1, &lightRanges_);
+    glGenTextures(1, &lightIndices_);
+    if (!occupancy_ || !lightTexture_ || !lightRanges_ || !lightIndices_) {
         glDeleteTextures(1, &occupancy_);
         glDeleteTextures(1, &lightTexture_);
+        glDeleteTextures(1, &lightRanges_);
+        glDeleteTextures(1, &lightIndices_);
         throw std::runtime_error("Failed to allocate voxel lighting textures");
     }
 }
@@ -361,40 +380,55 @@ WorldRenderer::~WorldRenderer()
 {
     glDeleteTextures(1, &occupancy_);
     glDeleteTextures(1, &lightTexture_);
+    glDeleteTextures(1, &lightRanges_);
+    glDeleteTextures(1, &lightIndices_);
 }
 
 void WorldRenderer::uploadLights(const World& world)
 {
+    auto grid = buildLightGrid(lights_);
+    // These sources have no possible blocker anywhere in their influence.
+    // Recompute only with scene/light edits; moving the camera cannot change it.
+    const auto clear = unoccludedLightSources(world,lights_);
     std::vector<glm::vec4> data;
-    for (std::size_t index = 0; index < World::ChunkCount; ++index) {
-        // Models can reach beyond their owning chunk. Include every source
-        // touching their full bounds; never truncate a chunk's light list.
-        const float margin = assets_[index].indexCount() ? HubAssetMargin : 1.0f;
-        const glm::vec3 minimum = glm::vec3(world.origin(index)) - margin;
-        const glm::vec3 maximum = minimum + float(Chunk::Size) + 2.0f * margin;
-        lightOffsets_[index] = static_cast<int>(data.size() / 2);
-        for (const auto& light : lights_) {
-            const auto delta = light.position - glm::clamp(light.position, minimum, maximum);
-            if (glm::dot(delta, delta) >= light.radius * light.radius) continue;
-            data.emplace_back(light.position, light.radius);
-            data.emplace_back(light.color, 0.0f);
-        }
-        lightCounts_[index] = static_cast<int>(data.size() / 2) - lightOffsets_[index];
+    data.reserve(lights_.size()*2);
+    for (std::size_t i=0;i<lights_.size();++i) {
+        const auto& light=lights_[i];
+        data.emplace_back(light.position,light.radius);
+        data.emplace_back(light.color,float(clear[i]));
     }
-    // A packed image avoids a fixed shader uniform limit when players place
-    // more lights. Two texels hold one candidate; rows only affect storage.
-    GLint maximumSize = 0;
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maximumSize);
-    const int width = std::min(1024, maximumSize);
-    const int height = std::max(1, static_cast<int>((data.size() + width - 1) / width));
-    if (height > maximumSize) throw std::runtime_error("Too many voxel light candidates for the GPU");
-    data.resize(static_cast<std::size_t>(width) * height, glm::vec4(0));
+    GLint maximumSize=0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE,&maximumSize);
+    const int width=std::min(1024,maximumSize);
+    const auto rows=[&](std::size_t count) {
+        const auto height=std::max<std::size_t>(1,(count+width-1)/width);
+        if (height>static_cast<std::size_t>(maximumSize))
+            throw std::runtime_error("Too many voxel light candidates for the GPU");
+        return static_cast<int>(height);
+    };
+    const auto filtering=[](GLenum target) {
+        glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+        glTexParameteri(target,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        glTexParameteri(target,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+        glTexParameteri(target,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+    };
+    const int sourceRows=rows(data.size()),indexRows=rows(grid.indices.size());
+    data.resize(static_cast<std::size_t>(width)*sourceRows,glm::vec4(0));
+    grid.indices.resize(static_cast<std::size_t>(width)*indexRows,0);
     glActiveTexture(GL_TEXTURE1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_RGBA, GL_FLOAT, data.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D,lightTexture_);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA32F,width,sourceRows,0,GL_RGBA,GL_FLOAT,data.data());
+    filtering(GL_TEXTURE_2D);
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_3D,lightRanges_);
+    glTexImage3D(GL_TEXTURE_3D,0,GL_RG32UI,grid.dimensions.x,grid.dimensions.y,grid.dimensions.z,
+                 0,GL_RG_INTEGER,GL_UNSIGNED_INT,grid.ranges.data());
+    filtering(GL_TEXTURE_3D);
+    glTexParameteri(GL_TEXTURE_3D,GL_TEXTURE_WRAP_R,GL_CLAMP_TO_EDGE);
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D,lightIndices_);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_R32UI,width,indexRows,0,GL_RED_INTEGER,GL_UNSIGNED_INT,grid.indices.data());
+    filtering(GL_TEXTURE_2D);
     glActiveTexture(GL_TEXTURE0);
 }
 
@@ -420,7 +454,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     std::array<bool, World::ChunkCount> rebuild{};
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         if (meshedWorld_ && world.seed() == meshedWorld_->seed()
-            && world.chunk(index) == meshedWorld_->chunk(index)) continue;
+            && world.chunk(index).revision() == meshedWorld_->chunk(index).revision()) continue;
         rebuild[index] = true;
         // Neighbor faces can change too. Comparing chunk contents also handles
         // switching worlds or assigning a saved world to the same object.
@@ -460,13 +494,17 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             const auto water = splitWaterMesh(opaque);
             meshes_[index].upload(opaque);
             water_[index].upload(water);
-            details_[index].upload(buildCaveDetails(world, index));
+            auto dressing = partitionDetailLod(buildCaveDetails(world,index),DetailLodKind::Cave);
+            detailRanges_[index] = dressing.ranges;
+            details_[index].upload(dressing.mesh);
             changed = true;
         }
         if (rebuild[index] || pavingChanged[index]) {
             auto surface = buildBlockRelief(world, index);
             hideCoveredPaving(surface, covers);
-            relief_[index].upload(surface);
+            auto relief = partitionDetailLod(std::move(surface),DetailLodKind::Relief);
+            reliefRanges_[index] = relief.ranges;
+            relief_[index].upload(relief.mesh);
         }
     }
     if (changed) {
@@ -484,9 +522,15 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         }
         assetLights_ = std::move(dressing.lights);
     }
-    GLint activeTexture = 0, previousTexture = 0, previousLights = 0;
+    GLint activeTexture = 0, previousTexture = 0, previousLights = 0, previousRanges = 0, previousIndices = 0;
     std::array<GLint, 2> previousSceneTextures{};
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+    glActiveTexture(GL_TEXTURE4);
+    glGetIntegerv(GL_TEXTURE_BINDING_3D,&previousRanges);
+    glBindTexture(GL_TEXTURE_3D,lightRanges_);
+    glActiveTexture(GL_TEXTURE5);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D,&previousIndices);
+    glBindTexture(GL_TEXTURE_2D,lightIndices_);
     for (int unit = 2; unit <= 3; ++unit) {
         glActiveTexture(GL_TEXTURE0 + unit);
         glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousSceneTextures[unit - 2]);
@@ -664,10 +708,38 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setFloat("timeSeconds", std::isfinite(timeSeconds) ? timeSeconds : 0.0f);
     shader_.setInt("occupancy", 0);
     shader_.setInt("lightSources", 1);
+    shader_.setInt("lightRanges",4);
+    shader_.setInt("lightIndices",5);
+    shader_.setVec3("lightGridMinimum",glm::vec3(World::Min)-HubAssetMargin);
+    shader_.setInt("lightCount",underground ? static_cast<int>(lights_.size()) : 0);
+    shader_.setInt("lightGridEnabled",lightGridEnabled_);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
     visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
     heldSwordTriangles_ = heldPickaxeTriangles_ = heldLanternTriangles_ = heldCompassTriangles_ = 0;
     std::vector<std::size_t> visibleWater;
+    shader_.setFloat("detailFadeStart",0);
+    shader_.setFloat("detailFadeEnd",0);
+    const auto drawDetails = [&](std::size_t index,const GpuMesh& mesh,
+                                 const auto& ranges,DetailLodKind kind) {
+        if (!hubScene) {
+            mesh.draw();
+            drawnTriangles_ += mesh.indexCount()/3;
+            return;
+        }
+        const auto minimum=glm::vec3(world.origin(index))-glm::vec3(1);
+        const auto maximum=glm::vec3(world.origin(index))+glm::vec3(Chunk::Size+1);
+        for (std::size_t band=0;band<ranges.size();++band) {
+            const auto& range=ranges[band];
+            const auto fade=detailLodFade(kind,band);
+            if (!range.indexCount || !detailLodVisible(eye,minimum,maximum,fade)) continue;
+            shader_.setFloat("detailFadeStart",fade.start);
+            shader_.setFloat("detailFadeEnd",fade.end);
+            mesh.drawRange(range.firstIndex,range.indexCount);
+            drawnTriangles_ += range.indexCount/3;
+        }
+        shader_.setFloat("detailFadeStart",0);
+        shader_.setFloat("detailFadeEnd",0);
+    };
     for (std::size_t index = 0; index < meshes_.size(); ++index) {
         const glm::vec3 minimum(world.origin(index));
         const bool hasDetails = details_[index].indexCount() != 0 || relief_[index].indexCount() != 0;
@@ -677,13 +749,11 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
              && !(underground && (hasDetails || hasAssets)))
             || !frustum.intersects(minimum - margin, minimum + glm::vec3(Chunk::Size + margin))) continue;
         if (water_[index].indexCount() != 0) visibleWater.push_back(index);
-        shader_.setInt("lightOffset", lightOffsets_[index]);
-        shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
+
         // Draw raised faces first so their depth can hide the block paint below.
         if (underground && relief_[index].indexCount() != 0) {
             shader_.setInt("decorative", 2);
-            relief_[index].draw();
-            drawnTriangles_ += relief_[index].indexCount() / 3;
+            drawDetails(index,relief_[index],reliefRanges_[index],DetailLodKind::Relief);
             shader_.setInt("decorative", 0);
         }
         meshes_[index].draw();
@@ -691,8 +761,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         drawnTriangles_ += meshes_[index].indexCount() / 3;
         if (underground && (details_[index].indexCount() != 0 || hasAssets)) {
             shader_.setInt("decorative", 1);
-            details_[index].draw();
-            drawnTriangles_ += details_[index].indexCount() / 3;
+            drawDetails(index,details_[index],detailRanges_[index],DetailLodKind::Cave);
             assets_[index].draw();
             drawnTriangles_ += assets_[index].indexCount() / 3;
             shader_.setInt("decorative", 0);
@@ -711,11 +780,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
             const auto offset = index < pickupOffsets.size() ? pickupOffsets[index] : glm::vec3(0);
             const auto [minimum,maximum] = pickupVisualBounds(asset);
             if (!frustum.intersects(minimum+offset,maximum+offset)) continue;
-            const auto cell = glm::clamp(glm::ivec3(glm::floor(asset.position+offset)),World::Min,World::MaxExclusive-1)-World::Min;
-            const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
-                + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
-            shader_.setInt("lightOffset", lightOffsets_[chunk]);
-            shader_.setInt("lightCount", lightCounts_[chunk]);
+
             shader_.setMat4("model", glm::translate(glm::mat4(1),offset)*pickupTransform(asset,timeSeconds));
             mesh->draw();
             drawnTriangles_ += mesh->indexCount()/3;
@@ -736,11 +801,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         }
         for (const auto& mesh : meshes) monsterTriangles_ += mesh->indexCount()/3;
         if (!frustum.intersects(monster.position-glm::vec3(4,1,4), monster.position+glm::vec3(4,5,4))) continue;
-        const auto cell = glm::clamp(glm::ivec3(glm::floor(monster.position)),World::Min,World::MaxExclusive-1)-World::Min;
-        const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
-            + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
-        shader_.setInt("lightOffset",lightOffsets_[chunk]);
-        shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+
         shader_.setFloat("monsterHit",std::isfinite(monster.hitReaction)
             ? std::clamp(monster.hitReaction,0.0f,1.0f) : 0.0f);
         const auto matrices = monsterMatrices(monster);
@@ -765,11 +826,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         if (kind >= hitChips_.size()) continue;
         auto& chip = hitChips_[kind];
         if (!chip.indexCount()) chip.upload(buildHitChip(hit.kind));
-        const auto cell = glm::clamp(glm::ivec3(glm::floor(hit.position)),World::Min,World::MaxExclusive-1)-World::Min;
-        const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
-            + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
-        shader_.setInt("lightOffset",lightOffsets_[chunk]);
-        shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+
         auto direction = glm::vec3(hit.direction.x,0,hit.direction.z);
         const float length = glm::length(direction);
         direction = std::isfinite(length) && length > .001f ? direction/length : glm::vec3(0,0,1);
@@ -883,8 +940,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         // transmission without alpha-sorting adjacent chunks or waterfalls.
         glDisable(GL_CULL_FACE);
         for (const auto index : visibleWater) {
-            shader_.setInt("lightOffset", lightOffsets_[index]);
-            shader_.setInt("lightCount", underground ? lightCounts_[index] : 0);
+
             water_[index].draw();
             drawnTriangles_ += water_[index].indexCount() / 3;
         }
@@ -918,11 +974,7 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         shader_.setInt("decorative",3);
         shader_.setInt("firstPerson",showCompass ? 2 : 1);
         shader_.setInt("refractiveWater",0);
-        const auto cell = glm::clamp(glm::ivec3(glm::floor(eye)),World::Min,World::MaxExclusive-1)-World::Min;
-        const auto chunk = static_cast<std::size_t>(cell.x/Chunk::Size
-            + World::Width*(cell.z/Chunk::Size+World::Width*(cell.y/Chunk::Size)));
-        shader_.setInt("lightOffset",lightOffsets_[chunk]);
-        shader_.setInt("lightCount",underground ? lightCounts_[chunk] : 0);
+
         // Keep ordinary depth ordering between the tool, handle and glove,
         // while reserving a near band so scenery cannot cut off the hand.
         // The rest of the scene depth remains intact for selection overlays.
@@ -963,6 +1015,10 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     glBindTexture(GL_TEXTURE_3D, static_cast<GLuint>(previousTexture));
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousLights));
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_3D,static_cast<GLuint>(previousRanges));
+    glActiveTexture(GL_TEXTURE5);
+    glBindTexture(GL_TEXTURE_2D,static_cast<GLuint>(previousIndices));
     glActiveTexture(static_cast<GLenum>(activeTexture));
 }
 

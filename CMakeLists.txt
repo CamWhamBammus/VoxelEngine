@@ -68,6 +68,9 @@ add_library(VoxelCore
     src/mesh.cpp
     src/graphics/cave_details.cpp
     src/graphics/block_relief.cpp
+    src/graphics/light_grid.cpp
+    src/graphics/light_shadows.cpp
+    src/graphics/detail_lod.cpp
     src/graphics/built_surface_relief.cpp
     src/graphics/hub_props.cpp
     src/graphics/hub_foliage.cpp
@@ -107,6 +110,8 @@ if(VOXEL_BUILD_APP)
         src/graphics/hud.cpp
         src/graphics/palette_previews.cpp
         tests/graphics_smoke.cpp
+        tests/render_scale_smoke.cpp
+        tests/light_grid_smoke.cpp
         tests/water_graphics_smoke.cpp
         tests/hud_play_smoke.cpp
         tests/held_sword_smoke.cpp
@@ -141,7 +146,7 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
     foreach(test_name IN ITEMS
-        chunk mesh terrain camera world raycast editor options equipment world_codec ore_blocks
+        chunk mesh terrain camera world raycast editor options equipment world_codec ore_blocks light_grid detail_lod chunk_revision light_shadows
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
         root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools

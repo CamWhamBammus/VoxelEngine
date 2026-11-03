@@ -1,4 +1,6 @@
 #include "graphics_smoke.h"
+#include "render_scale_smoke.h"
+#include "light_grid_smoke.h"
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
 #include "held_sword_smoke.h"
@@ -1523,6 +1525,7 @@ int runGraphicsSmokeTest(const Options& options)
     std::cout << "OpenGL: " << glGetString(GL_VERSION) << '\n';
     verifyGpuResources();
     verifyPostProcessing();
+    verifyRenderScale();
     int width, height;
     window.framebufferSize(width, height);
     verifyCrosshair(width, height);
@@ -1532,6 +1535,7 @@ int runGraphicsSmokeTest(const Options& options)
     verifyUndergroundMaterials(width, height);
     verifyStableWorldLighting(width, height);
     verifyHubLightingTransitions(width,height);
+    verifyLightGridRendering();
     verifyBlockRelief(width, height);
     verifyHubDressing(width, height);
     verifyWaterRendering(width, height);
@@ -1564,6 +1568,8 @@ int runGraphicsSmokeTest(const Options& options)
     WorldRenderer renderer;
     Overlay overlay;
     Hud hud;
+    renderer.setRenderScale(options.renderScale);
+    renderer.setSamples(options.msaa);
     bool frameVerified = false;
     for (int frame = 0; frame < 3 && !window.shouldClose(); ++frame) {
         glfwPollEvents();
