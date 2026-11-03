@@ -2,6 +2,7 @@
 #include "audio.h"
 #include "input.h"
 #include "graphics/window.h"
+#include "graphics/benchmark.h"
 #include "graphics/renderer.h"
 #include "graphics/hud.h"
 #include "graphics/journal_layout.h"
@@ -33,12 +34,15 @@ int main(int argc, char** argv)
 
     try {
         if (options.smokeTest) return voxel::runGraphicsSmokeTest(options);
+        if (options.benchmark) return voxel::runRenderBenchmark(options);
 
         // 2. Create the game and its window. GPU objects must die before the window.
         voxel::Game game(options);
         voxel::Window window;
         voxel::Input input(window.handle());
         voxel::WorldRenderer renderer;
+        renderer.setRenderScale(options.renderScale);
+        renderer.setSamples(options.msaa);
         voxel::Overlay selection;
         voxel::Hud hud;
         voxel::EncounterAudio audio;
