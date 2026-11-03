@@ -213,6 +213,20 @@ void GpuMesh::draw() const
     glBindVertexArray(0);
 }
 
+void GpuMesh::drawRange(std::size_t firstIndex, std::size_t count) const
+{
+    const auto available = static_cast<std::size_t>(indexCount_);
+    if (firstIndex > available || count > available - firstIndex)
+        throw std::out_of_range("Mesh draw range exceeds its index buffer.");
+    if (firstIndex % 3 != 0 || count % 3 != 0)
+        throw std::invalid_argument("Mesh draw ranges must contain complete triangles.");
+    if (count == 0) return;
+    glBindVertexArray(vao_);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(count), GL_UNSIGNED_INT,
+                   reinterpret_cast<const void*>(firstIndex * sizeof(std::uint32_t)));
+    glBindVertexArray(0);
+}
+
 std::size_t GpuMesh::indexCount() const
 {
     return static_cast<std::size_t>(indexCount_);

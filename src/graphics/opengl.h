@@ -43,6 +43,9 @@ public:
 
     void upload(const MeshData& mesh);
     void draw() const;
+    // Draw complete triangles from the existing index buffer without uploading
+    // another mesh. Invalid or non-triangle-aligned ranges throw before GL use.
+    void drawRange(std::size_t firstIndex, std::size_t count) const;
     std::size_t indexCount() const;
 
 private:
