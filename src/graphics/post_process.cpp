@@ -1,6 +1,7 @@
 #include "graphics/post_process.h"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -195,6 +196,15 @@ void PostProcess::resize(int width, int height)
     height_ = height;
 }
 
+void PostProcess::setRenderScale(float scale)
+{
+    if (!std::isfinite(scale) || scale < 0.5f || scale > 1.0f) {
+        throw std::invalid_argument("Render scale must be a number from 0.5 to 1");
+    }
+    if (active_) throw std::logic_error("Cannot change render scale during a frame");
+    renderScale_ = scale;
+}
+
 void PostProcess::begin(int width, int height)
 {
     if (active_) throw std::logic_error("Post-processing frame already begun");
@@ -222,9 +232,12 @@ void PostProcess::begin(int width, int height)
     active_ = true;
     try {
         glActiveTexture(GL_TEXTURE0);
-        resize(width, height);
+        outputWidth_ = width;
+        outputHeight_ = height;
+        resize(std::max(1, static_cast<int>(std::lround(static_cast<double>(width) * renderScale_))),
+               std::max(1, static_cast<int>(std::lround(static_cast<double>(height) * renderScale_))));
         glBindFramebuffer(GL_FRAMEBUFFER, scene_);
-        glViewport(0, 0, width, height);
+        glViewport(0, 0, width_, height_);
         glEnable(GL_MULTISAMPLE);
         glDisable(GL_FRAMEBUFFER_SRGB);
         glDisable(GL_BLEND);
@@ -284,7 +297,7 @@ void PostProcess::finish()
     }
 
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(drawFrame_));
-    glViewport(0, 0, width_, height_);
+    glViewport(0, 0, outputWidth_, outputHeight_);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_ALWAYS);
     glDepthMask(GL_TRUE);

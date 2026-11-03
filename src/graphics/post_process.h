@@ -16,12 +16,17 @@ public:
     PostProcess(const PostProcess&) = delete;
     PostProcess& operator=(const PostProcess&) = delete;
 
+    // Scale only the world target. finish() restores color and depth at the
+    // requested output size so selection outlines and UI keep native detail.
+    void setRenderScale(float scale);
     void begin(int width, int height);
     // Snapshot opaque color and depth before drawing water into the same scene.
     // Textures remain unchanged until the next capture, finish, or resize.
     void captureScene();
     GLuint sceneColor() const noexcept { return color_; }
     GLuint sceneDepth() const noexcept { return depth_; }
+    int sceneWidth() const noexcept { return width_; }
+    int sceneHeight() const noexcept { return height_; }
     void finish();
 
 private:
@@ -34,6 +39,8 @@ private:
     GLuint multisampleColor_ = 0, multisampleDepth_ = 0, vao_ = 0;
     std::array<GLuint, 2> bloomFrames_{}, bloomColors_{};
     int width_ = 0, height_ = 0, bloomWidth_ = 0, bloomHeight_ = 0;
+    int outputWidth_ = 0, outputHeight_ = 0;
+    float renderScale_ = 1.0f;
     bool active_ = false;
 
     // Only state touched by this pass is saved. Texture units 0–2 are private
