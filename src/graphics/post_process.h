@@ -19,6 +19,7 @@ public:
     // Scale only the world target. finish() restores color and depth at the
     // requested output size so selection outlines and UI keep native detail.
     void setRenderScale(float scale);
+    void setSamples(int samples);
     void begin(int width, int height);
     // Snapshot opaque color and depth before drawing water into the same scene.
     // Textures remain unchanged until the next capture, finish, or resize.
@@ -36,11 +37,12 @@ private:
 
     Shader extract_, blur_, composite_;
     GLuint scene_ = 0, resolved_ = 0, color_ = 0, depth_ = 0;
-    GLuint multisampleColor_ = 0, multisampleDepth_ = 0, vao_ = 0;
+    GLuint sceneColorBuffer_ = 0, sceneDepthBuffer_ = 0, vao_ = 0;
     std::array<GLuint, 2> bloomFrames_{}, bloomColors_{};
     int width_ = 0, height_ = 0, bloomWidth_ = 0, bloomHeight_ = 0;
     int outputWidth_ = 0, outputHeight_ = 0;
     float renderScale_ = 1.0f;
+    int requestedSamples_ = 4, allocatedSamples_ = -1, actualSamples_ = 0;
     bool active_ = false;
 
     // Only state touched by this pass is saved. Texture units 0–2 are private

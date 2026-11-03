@@ -124,10 +124,10 @@ PostProcess::PostProcess()
     glGenTextures(1, &color_);
     glGenTextures(1, &depth_);
     glGenTextures(2, bloomColors_.data());
-    glGenRenderbuffers(1, &multisampleColor_);
-    glGenRenderbuffers(1, &multisampleDepth_);
+    glGenRenderbuffers(1, &sceneColorBuffer_);
+    glGenRenderbuffers(1, &sceneDepthBuffer_);
     glGenVertexArrays(1, &vao_);
-    if (!scene_ || !resolved_ || !color_ || !depth_ || !multisampleColor_ || !multisampleDepth_
+    if (!scene_ || !resolved_ || !color_ || !depth_ || !sceneColorBuffer_ || !sceneDepthBuffer_
         || !vao_ || !bloomFrames_[0] || !bloomFrames_[1] || !bloomColors_[0] || !bloomColors_[1]) {
         release();
         throw std::runtime_error("Failed to allocate post-processing resources");
@@ -148,14 +148,14 @@ void PostProcess::release()
     glDeleteTextures(1, &color_);
     glDeleteTextures(1, &depth_);
     glDeleteTextures(2, bloomColors_.data());
-    glDeleteRenderbuffers(1, &multisampleColor_);
-    glDeleteRenderbuffers(1, &multisampleDepth_);
+    glDeleteRenderbuffers(1, &sceneColorBuffer_);
+    glDeleteRenderbuffers(1, &sceneDepthBuffer_);
     glDeleteVertexArrays(1, &vao_);
 }
 
 void PostProcess::resize(int width, int height)
 {
-    if (width == width_ && height == height_) return;
+    if (width == width_ && height == height_ && allocatedSamples_ == requestedSamples_) return;
     GLint maxSize = 0, maxTextureSize = 0, maxSamples = 0;
     glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &maxSize);
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &maxTextureSize);
@@ -163,18 +163,21 @@ void PostProcess::resize(int width, int height)
         throw std::invalid_argument("HDR framebuffer dimensions exceed the GPU limit");
     }
     glGetIntegerv(GL_MAX_SAMPLES, &maxSamples);
-    const int samples = std::min(4, maxSamples);
+    const int samples = requestedSamples_ >= 4 && maxSamples >= 4 ? 4
+        : requestedSamples_ >= 2 && maxSamples >= 2 ? 2 : 0;
     // If allocation fails partway through, force a complete retry next time.
     width_ = height_ = 0;
     glBindFramebuffer(GL_FRAMEBUFFER, scene_);
-    glBindRenderbuffer(GL_RENDERBUFFER, multisampleColor_);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA16F, width, height);
+    glBindRenderbuffer(GL_RENDERBUFFER, sceneColorBuffer_);
+    if (samples) glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_RGBA16F, width, height);
+    else glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA16F, width, height);
     allocationSucceeded();
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, multisampleColor_);
-    glBindRenderbuffer(GL_RENDERBUFFER, multisampleDepth_);
-    glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT24, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, sceneColorBuffer_);
+    glBindRenderbuffer(GL_RENDERBUFFER, sceneDepthBuffer_);
+    if (samples) glRenderbufferStorageMultisample(GL_RENDERBUFFER, samples, GL_DEPTH_COMPONENT24, width, height);
+    else glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, width, height);
     allocationSucceeded();
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, multisampleDepth_);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sceneDepthBuffer_);
     completeFramebuffer();
 
     glBindFramebuffer(GL_FRAMEBUFFER, resolved_);
@@ -194,6 +197,17 @@ void PostProcess::resize(int width, int height)
     }
     width_ = width;
     height_ = height;
+    allocatedSamples_ = requestedSamples_;
+    actualSamples_ = samples;
+}
+
+void PostProcess::setSamples(int samples)
+{
+    if (samples != 0 && samples != 2 && samples != 4) {
+        throw std::invalid_argument("MSAA must be 0, 2, or 4");
+    }
+    if (active_) throw std::logic_error("Cannot change MSAA during a frame");
+    requestedSamples_ = samples;
 }
 
 void PostProcess::setRenderScale(float scale)
@@ -238,7 +252,7 @@ void PostProcess::begin(int width, int height)
                std::max(1, static_cast<int>(std::lround(static_cast<double>(height) * renderScale_))));
         glBindFramebuffer(GL_FRAMEBUFFER, scene_);
         glViewport(0, 0, width_, height_);
-        glEnable(GL_MULTISAMPLE);
+        enabled(GL_MULTISAMPLE, actualSamples_ != 0);
         glDisable(GL_FRAMEBUFFER_SRGB);
         glDisable(GL_BLEND);
         glDisable(GL_SCISSOR_TEST);
