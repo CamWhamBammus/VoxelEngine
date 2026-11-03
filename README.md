@@ -33,6 +33,16 @@ cmake --build build --parallel
 
 After pulling changes, run the build command again. `./build/VoxelEngine --help` lists the launch options.
 
+For a lighter laptop setting:
+
+```sh
+./build/VoxelEngine --render-scale 0.75 --msaa 2
+```
+
+This renders the cave scene at 75% resolution and uses two antialiasing samples. Menus and the HUD stay at full resolution. The defaults are `--render-scale 1 --msaa 4`; `--msaa 0` turns antialiasing off. These settings apply for that launch.
+
+Run `./build/VoxelEngine --benchmark` to measure the same four village views. It also accepts the graphics settings above and doesn't load or change your progress. [Performance measurements and renderer notes](docs/performance.md) explain what the numbers cover.
+
 Encounter starts have a positional chime when OpenAL is available. macOS includes it; the Ubuntu command above installs it. The game also builds and runs without audio.
 
 ## Playing
