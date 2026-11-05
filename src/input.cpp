@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <utility>
 
 namespace voxel {
 namespace {
@@ -19,6 +20,33 @@ bool pressed(bool down, bool previouslyDown)
 Input::Input(GLFWwindow* window) : window_(window)
 {
     glfwSetWindowUserPointer(window_, this);
+    // Preserve short presses that begin and end between rendered frames. The
+    // graphics menu must remain usable even when the current quality is slow.
+    glfwSetKeyCallback(window_, [](GLFWwindow* window, int key, int, int action, int) {
+        auto* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
+        if (!input || action != GLFW_PRESS || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) return;
+        auto& presses = input->pausePresses_;
+        switch (key) {
+        case GLFW_KEY_ESCAPE: presses.back = true; break;
+        case GLFW_KEY_TAB: presses.resume = true; break;
+        case GLFW_KEY_ENTER: case GLFW_KEY_KP_ENTER: presses.activate = true; break;
+        case GLFW_KEY_UP: presses.up = true; break;
+        case GLFW_KEY_DOWN: presses.down = true; break;
+        case GLFW_KEY_LEFT: presses.left = true; break;
+        case GLFW_KEY_RIGHT: presses.right = true; break;
+        }
+    });
+    glfwSetMouseButtonCallback(window_, [](GLFWwindow* window, int button, int action, int) {
+        auto* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
+        if (!input || button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS
+            || !glfwGetWindowAttrib(window, GLFW_FOCUSED)) return;
+        double x, y;
+        int width, height;
+        glfwGetCursorPos(window, &x, &y);
+        glfwGetWindowSize(window, &width, &height);
+        input->pausePresses_.click = true;
+        input->pausePresses_.pointer = {width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0};
+    });
     glfwSetScrollCallback(window_, [](GLFWwindow* window, double, double y) {
         auto* input = static_cast<Input*>(glfwGetWindowUserPointer(window));
         if (input && input->captured_ && glfwGetWindowAttrib(window, GLFW_FOCUSED)) {
@@ -35,6 +63,8 @@ Input::Input(GLFWwindow* window) : window_(window)
 
 Input::~Input()
 {
+    glfwSetKeyCallback(window_, nullptr);
+    glfwSetMouseButtonCallback(window_, nullptr);
     glfwSetScrollCallback(window_, nullptr);
     glfwSetCharCallback(window_, nullptr);
     glfwSetWindowUserPointer(window_, nullptr);
@@ -113,6 +143,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
                    bool pauseModal)
 {
     actions_ = {};
+    const auto pausePresses = std::exchange(pausePresses_, {});
     if (modal != wasModal_ || editorMode != wasEditorMode_ || devMode != wasDevMode_
         || devFlying != wasDevFlying_) {
         scroll_ = 0;
@@ -150,18 +181,19 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
     // shortcut. Its clicks must never mine a block or swing a tool underneath.
     if (pauseModal) {
         if (captured_) capture(false);
-        actions_.pauseBack = pressed(buttons.releaseMouse, previous.releaseMouse);
-        actions_.pauseResume = pressed(buttons.toggleMouse, previous.toggleMouse);
-        actions_.pauseActivate = pressed(buttons.upgrade, previous.upgrade);
+        actions_.pauseBack = pausePresses.back;
+        actions_.pauseResume = pausePresses.resume;
+        actions_.pauseActivate = pausePresses.activate;
         actions_.pauseMove = {
-            int(pressed(buttons.menuRight, previous.menuRight)) - int(pressed(buttons.menuLeft, previous.menuLeft)),
-            int(pressed(buttons.menuNext, previous.menuNext)) - int(pressed(buttons.menuPrevious, previous.menuPrevious))};
-        actions_.pausePointerPressed = pressed(buttons.remove, previous.remove);
+            int(pausePresses.right) - int(pausePresses.left),
+            int(pausePresses.down) - int(pausePresses.up)};
+        actions_.pausePointerPressed = pausePresses.click;
         double x, y;
         int width, height;
         glfwGetCursorPos(window_, &x, &y);
         glfwGetWindowSize(window_, &width, &height);
-        actions_.pausePointer = {width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0};
+        actions_.pausePointer = pausePresses.click ? pausePresses.pointer
+            : glm::vec2(width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0);
         actions_.pausePointerMoved = x != cursorX_ || y != cursorY_;
         cursorX_ = x;
         cursorY_ = y;
@@ -181,8 +213,7 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         // Consume the transition frame, including held keys and pointer motion.
         return;
     }
-    if (!modal && (pressed(buttons.releaseMouse, previous.releaseMouse)
-        || (captured_ && pressed(buttons.toggleMouse, previous.toggleMouse)))) {
+    if (!modal && (pausePresses.back || (captured_ && pausePresses.resume))) {
         capture(false);
         actions_.pause = true;
         pendingText_.clear();

@@ -185,6 +185,11 @@ public:
     bool helpVisible() const { return help_; }
 
 private:
+    struct PausePresses {
+        bool back = false, resume = false, activate = false;
+        bool up = false, down = false, left = false, right = false, click = false;
+        glm::vec2 pointer{0};
+    } pausePresses_;
     bool wasPauseModal_ = false;
     bool wasSkillsModal_ = false;
     bool suppressJournalClick_ = false;
