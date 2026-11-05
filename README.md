@@ -33,13 +33,17 @@ cmake --build build --parallel
 
 After pulling changes, run the build command again. `./build/VoxelEngine --help` lists the launch options.
 
-For a lighter laptop setting:
+Press **Escape → Graphics** to change quality while playing. Start with **Medium** on a laptop, then adjust render scale, antialiasing, lighting, and detail distance. Fullscreen, VSync, and a frame limit are there too. Click **Apply** to use and save your choices; **Back** discards unfinished changes. You can use the mouse or arrow keys and Enter.
+
+Preferences save to `graphics.cfg` in the folder you launch from. They are separate from your progress and sections. For a one-launch override:
 
 ```sh
 ./build/VoxelEngine --render-scale 0.75 --msaa 2
 ```
 
-This renders the cave scene at 75% resolution and uses two antialiasing samples. Menus and the HUD stay at full resolution. The defaults are `--render-scale 1 --msaa 4`; `--msaa 0` turns antialiasing off. These settings apply for that launch.
+This renders the cave scene at 75% resolution and uses two antialiasing samples. Menus and the HUD stay at full resolution. The flags override those saved choices for this launch; they become saved choices only if you press Apply. Use `./build/VoxelEngine --reset-graphics` to start with default, windowed settings if you need to recover a bad configuration.
+
+![The graphics menu, with quality presets and display controls](docs/screenshots/graphics-settings.png)
 
 Run `./build/VoxelEngine --benchmark` to measure the same four village views. It also accepts the graphics settings above and doesn't load or change your progress. [Performance measurements and renderer notes](docs/performance.md) explain what the numbers cover.
 
@@ -60,7 +64,7 @@ You start in the village. The blacksmith is southwest of the central tree, marke
 | E | Use a nearby chest, workshop, heartseed, or expedition gate |
 | I | Open the 20-slot inventory |
 | R | Return to the village spawn, or the current expedition checkpoint |
-| Escape / Tab | Pause / resume |
+| Escape / Tab | Open Pause; resume from Pause |
 | H / Q | Toggle controls / quit |
 
 You walk up stairs automatically. Full blocks need a jump. Select the lantern with **2** to carry it in your hand; its glowing cage sways gently and lights your surroundings. Press **3** to hold the brass compass. Its red needle turns toward the current section's End as you move and look around, and updates when the next section loads. It works in **F8** playtests too; in the village it points toward the central tree.

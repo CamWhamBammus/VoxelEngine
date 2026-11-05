@@ -10,6 +10,24 @@ Shallow relief and automatic cave dressing fade in three distance bands in the h
 
 Chunk revision tokens replace the full-world byte comparison on unchanged frames. Shader uniform locations are cached too. Copies, undo, reloads, and edits still invalidate the right meshes.
 
+## Graphics menu
+
+Press Escape, then Graphics. Changes wait for Apply; Back or Tab discards adjustments you haven't applied. The world pauses while the menu is open. Apply writes `graphics.cfg` in the launch directory. A failed write leaves the previous file intact, shows a message, and keeps the new choices for the current session; Apply can retry the save.
+
+| Preset | Render scale | Antialiasing | Lighting | Hub detail |
+| --- | ---: | --- | --- | --- |
+| Low | 65% | Off | Low | Near |
+| Medium | 85% | 2× | Medium | Medium |
+| High | 100% | 4× | High | Far |
+
+Presets leave fullscreen, VSync, and the frame limit alone. Adjusting an individual quality control shows Custom until it matches a preset again. Defaults restores all original choices, including windowed mode and VSync, after Apply.
+
+Lighting quality changes the number of shadow samples, from one to three. It keeps every light source and still checks walls on Low. Unlit caves remain black. Detail distance changes only the village's shallow surface relief and automatic cave dressing; buildings, parkour obstacles, authored section geometry, and collision remain intact.
+
+The frame limit offers Unlimited, 30, 60, 90, 120, or 144 FPS. It accounts for rendering and display synchronization before waiting, so VSync and the cap don't each add a full frame of delay. A limit is a maximum, not a target the hardware is guaranteed to reach. VSync can impose a lower limit.
+
+`--render-scale` and `--msaa` override the matching saved preferences for one launch. Applying from the menu saves those values too. `--reset-graphics` ignores saved preferences without overwriting them; Apply saves the recovered choices. Smoke tests and benchmarks bypass preferences entirely.
+
 ## Measurements
 
 Measured on November 3, 2026 with an Apple M4 Pro, a Release build, seed 1337, and a 2560 × 1440 output. Each fixed view gets four warmup frames and sixteen measured frames. Times below are medians in milliseconds; lower is better. Frames wait for GPU completion. The benchmark excludes gameplay updates, HUD drawing, and display synchronization.
@@ -34,4 +52,4 @@ cmake --build build --parallel
 
 The command reports GPU name, resolution, median and 95th-percentile frame time, submitted triangles, visible chunks, and scenery rebuild count. It constructs a fresh village without reading or writing player progress, sections, or levels. Compare matching views and output resolutions, and run GPU-heavy programs separately.
 
-`--render-scale` accepts 0.5 through 1. The scene color and depth are scaled together, then resolved to the native window before drawing outlines and the HUD. `--msaa` accepts 0, 2, or 4. Both default to full quality, and neither changes saved terrain or gameplay.
+`--render-scale` accepts 0.5 through 1. The scene color and depth are scaled together, then resolved to the native window before drawing outlines and the HUD. `--msaa` accepts 0, 2, or 4. Benchmarks default to full quality regardless of saved preferences; neither option changes saved terrain or gameplay.
