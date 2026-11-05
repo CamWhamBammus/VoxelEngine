@@ -397,6 +397,13 @@ void WorldRenderer::setLightingQuality(LightingQuality quality)
     lightingQuality_ = quality;
 }
 
+void WorldRenderer::setDetailDistance(DetailDistance distance)
+{
+    if (distance != DetailDistance::Near && distance != DetailDistance::Medium && distance != DetailDistance::Far)
+        throw std::invalid_argument("Unknown detail distance");
+    detailDistance_ = distance;
+}
+
 void WorldRenderer::uploadLights(const World& world)
 {
     auto grid = buildLightGrid(lights_);
@@ -745,7 +752,14 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
         const auto maximum=glm::vec3(world.origin(index))+glm::vec3(Chunk::Size+1);
         for (std::size_t band=0;band<ranges.size();++band) {
             const auto& range=ranges[band];
-            const auto fade=detailLodFade(kind,band);
+            auto fade=detailLodFade(kind,band);
+            // Only the village's decorative surfaces fade sooner. Structural
+            // blocks, stair shapes, placed assets and authored sections retain
+            // their original geometry, visibility, and collision at every tier.
+            const float distanceScale = detailDistance_ == DetailDistance::Near ? .5f
+                : detailDistance_ == DetailDistance::Medium ? .75f : 1.f;
+            fade.start *= distanceScale;
+            fade.end *= distanceScale;
             if (!range.indexCount || !detailLodVisible(eye,minimum,maximum,fade)) continue;
             shader_.setFloat("detailFadeStart",fade.start);
             shader_.setFloat("detailFadeEnd",fade.end);

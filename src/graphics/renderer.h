@@ -31,6 +31,7 @@ public:
     void setRenderScale(float scale) { postProcess_.setRenderScale(scale); }
     void setSamples(int samples) { postProcess_.setSamples(samples); }
     void setLightingQuality(LightingQuality quality);
+    void setDetailDistance(DetailDistance distance);
     // Reference path for comparing the spatial light lookup against every source.
     void setLightGridEnabled(bool enabled) { lightGridEnabled_ = enabled; }
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
@@ -90,6 +91,7 @@ private:
     bool hubLighting_ = false;
     bool lightGridEnabled_ = true;
     LightingQuality lightingQuality_ = LightingQuality::High;
+    DetailDistance detailDistance_ = DetailDistance::Far;
     std::vector<HubAsset> placedAssets_;
 };
 
