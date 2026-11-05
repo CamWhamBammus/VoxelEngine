@@ -17,6 +17,10 @@ class Camera;
 // One-frame requests passed to Game, reset at the start of every input update.
 struct InputActions {
     bool active = false; // Focused with the mouse captured; otherwise the game pauses.
+    bool pause = false, pauseBack = false, pauseResume = false, pauseActivate = false;
+    glm::ivec2 pauseMove{0};
+    bool pausePointerPressed = false;
+    glm::vec2 pausePointer{0};
     glm::vec2 movement{0.0f}; // Right/left and forward/back, independent of camera pitch.
     bool jump = false; // Held: jump on land, rise continuously in water.
     bool descend = false; // Held Ctrl: dive in water; ignored on land.
@@ -173,13 +177,15 @@ public:
 
     void update(Camera& camera, float deltaSeconds, bool editorMode = true, bool modal = false,
                 bool crossingPicker = false, bool devMode = false, bool devFlying = false,
-                bool devTyping = false, bool inventoryModal = false, bool skillsModal = false);
+                bool devTyping = false, bool inventoryModal = false, bool skillsModal = false,
+                bool pauseModal = false);
     const InputActions& actions() const { return actions_; }
     bool captured() const { return captured_; }
     bool wireframe() const { return wireframe_; }
     bool helpVisible() const { return help_; }
 
 private:
+    bool wasPauseModal_ = false;
     bool wasSkillsModal_ = false;
     bool suppressJournalClick_ = false;
     struct Buttons {

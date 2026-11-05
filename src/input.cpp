@@ -109,7 +109,8 @@ void Input::capture(bool enabled)
 }
 
 void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool modal, bool crossingPicker,
-                   bool devMode, bool devFlying, bool devTyping, bool inventoryModal, bool skillsModal)
+                   bool devMode, bool devFlying, bool devTyping, bool inventoryModal, bool skillsModal,
+                   bool pauseModal)
 {
     actions_ = {};
     if (modal != wasModal_ || editorMode != wasEditorMode_ || devMode != wasDevMode_
@@ -137,14 +138,54 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
          buttons.menuPrevious, buttons.menuNext, buttons.pasteRaise, buttons.pasteLower},
         focused && captured_ && devMode && devFlying && !modal && !modifier);
 
-    if (!devMode && keyDown(GLFW_KEY_Q)) glfwSetWindowShouldClose(window_, GLFW_TRUE);
     if (!focused) {
         if (captured_) capture(false);
+        actions_.pause = !pauseModal;
         scroll_ = 0;
         hotbarScroll_.reset();
         pendingText_.clear();
         return;
     }
+    // The pause screen owns input before any editor, combat, or inventory
+    // shortcut. Its clicks must never mine a block or swing a tool underneath.
+    if (pauseModal) {
+        if (captured_) capture(false);
+        actions_.pauseBack = pressed(buttons.releaseMouse, previous.releaseMouse);
+        actions_.pauseResume = pressed(buttons.toggleMouse, previous.toggleMouse);
+        actions_.pauseActivate = pressed(buttons.upgrade, previous.upgrade);
+        actions_.pauseMove = {
+            int(pressed(buttons.menuRight, previous.menuRight)) - int(pressed(buttons.menuLeft, previous.menuLeft)),
+            int(pressed(buttons.menuNext, previous.menuNext)) - int(pressed(buttons.menuPrevious, previous.menuPrevious))};
+        actions_.pausePointerPressed = pressed(buttons.remove, previous.remove);
+        double x, y;
+        int width, height;
+        glfwGetCursorPos(window_, &x, &y);
+        glfwGetWindowSize(window_, &width, &height);
+        actions_.pausePointer = {width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0};
+        scroll_ = 0;
+        hotbarScroll_.reset();
+        pendingText_.clear();
+        removeRepeat_ = placeRepeat_ = 0;
+        wasPauseModal_ = true;
+        return;
+    }
+    if (wasPauseModal_) {
+        capture(!modal);
+        wasPauseModal_ = false;
+        suppressJournalClick_ = buttons.remove;
+        suppressDevMouse_ = true;
+        pendingText_.clear();
+        // Consume the transition frame, including held keys and pointer motion.
+        return;
+    }
+    if (!modal && (pressed(buttons.releaseMouse, previous.releaseMouse)
+        || (captured_ && pressed(buttons.toggleMouse, previous.toggleMouse)))) {
+        capture(false);
+        actions_.pause = true;
+        pendingText_.clear();
+        return;
+    }
+    if (!devMode && keyDown(GLFW_KEY_Q)) glfwSetWindowShouldClose(window_, GLFW_TRUE);
     actions_.monsterPreview = !editorMode && pressed(buttons.monsterPreview, previous.monsterPreview);
     actions_.devToggle = !editorMode && pressed(buttons.devToggle, previous.devToggle);
     actions_.levelCreator = !editorMode && pressed(buttons.levelCreator, previous.levelCreator);
