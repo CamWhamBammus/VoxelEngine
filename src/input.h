@@ -19,7 +19,7 @@ struct InputActions {
     bool active = false; // Focused with the mouse captured; otherwise the game pauses.
     bool pause = false, pauseBack = false, pauseResume = false, pauseActivate = false;
     glm::ivec2 pauseMove{0};
-    bool pausePointerPressed = false;
+    bool pausePointerPressed = false, pausePointerMoved = false;
     glm::vec2 pausePointer{0};
     glm::vec2 movement{0.0f}; // Right/left and forward/back, independent of camera pitch.
     bool jump = false; // Held: jump on land, rise continuously in water.

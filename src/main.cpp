@@ -107,14 +107,17 @@ int main(int argc, char** argv)
                     pause.moveSelection(actions.pauseMove.y);
                     pause.changeSelected(actions.pauseMove.x);
                     if (actions.pauseActivate) command = pause.activateSelected();
-                    else if (actions.pausePointerPressed) {
+                    else if (actions.pausePointerPressed || actions.pausePointerMoved) {
                         int menuWidth, menuHeight;
                         float menuScaleX, menuScaleY;
                         window.framebufferSize(menuWidth, menuHeight);
                         glfwGetWindowContentScale(window.handle(), &menuScaleX, &menuScaleY);
                         const auto hit = voxel::Hud::pauseClick(pause, menuWidth, menuHeight, menuScaleY,
                             actions.pausePointer.x * menuWidth, actions.pausePointer.y * menuHeight);
-                        if (hit) command = pause.dispatch(*hit);
+                        if (hit) {
+                            if (actions.pausePointerPressed) command = pause.dispatch(*hit);
+                            else if (actions.pauseMove == glm::ivec2(0)) pause.selectAction(*hit);
+                        }
                     }
                 }
                 if (command == voxel::PauseCommand::Quit) glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);

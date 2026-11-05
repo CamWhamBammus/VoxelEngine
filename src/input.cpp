@@ -162,6 +162,9 @@ void Input::update(Camera& camera, float deltaSeconds, bool editorMode, bool mod
         glfwGetCursorPos(window_, &x, &y);
         glfwGetWindowSize(window_, &width, &height);
         actions_.pausePointer = {width > 0 ? float(x / width) : 0, height > 0 ? float(y / height) : 0};
+        actions_.pausePointerMoved = x != cursorX_ || y != cursorY_;
+        cursorX_ = x;
+        cursorY_ = y;
         scroll_ = 0;
         hotbarScroll_.reset();
         pendingText_.clear();
