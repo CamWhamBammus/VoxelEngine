@@ -26,6 +26,8 @@ public:
     void close();
     void openGraphics();
     void moveSelection(int direction);
+    // Hover follows visible controls without activating them or changing feedback.
+    void selectAction(int action);
     void changeSelected(int direction);
     PauseCommand activateSelected();
     PauseCommand dispatch(int action);

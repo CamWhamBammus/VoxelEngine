@@ -55,6 +55,27 @@ void PauseMenu::moveSelection(int direction)
     selected_ = (selected_ + (direction > 0 ? 1 : count - 1)) % count;
 }
 
+void PauseMenu::selectAction(int action)
+{
+    if (screen_ == PauseScreen::Home) {
+        switch (action) {
+        case PauseUiResume: selected_ = 0; break;
+        case PauseUiGraphics: selected_ = 1; break;
+        case PauseUiQuit: selected_ = 2; break;
+        }
+    } else if (screen_ == PauseScreen::Graphics) {
+        if (action >= PauseUiRowBase && action < PauseUiRowBase + 8)
+            selected_ = action - PauseUiRowBase;
+        else if (action >= PauseUiDecreaseBase && action < PauseUiDecreaseBase + 8)
+            selected_ = action - PauseUiDecreaseBase;
+        else if (action >= PauseUiIncreaseBase && action < PauseUiIncreaseBase + 8)
+            selected_ = action - PauseUiIncreaseBase;
+        else if (action == PauseUiDefaults) selected_ = 8;
+        else if (action == PauseUiBack) selected_ = 9;
+        else if (action == PauseUiApply) selected_ = 10;
+    }
+}
+
 void PauseMenu::changeSelected(int direction)
 {
     if (screen_ != PauseScreen::Graphics || !direction || selected_ >= 8) return;

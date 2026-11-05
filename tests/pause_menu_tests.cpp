@@ -187,5 +187,62 @@ int main()
         stable.moveSelection(std::numeric_limits<int>::max());
         check(stable.selected() == 0, "Extreme positive navigation remains in bounds");
     }
+
+    PauseMenu hover(custom);
+    hover.open();
+    hover.completeApply(custom, "Saved");
+    const std::array homeActions{PauseUiResume, PauseUiGraphics, PauseUiQuit};
+    for (int row = 0; row < 3; ++row) {
+        hover.selectAction(homeActions[row]);
+        check(hover.selected() == row && hover.screen() == PauseScreen::Home
+              && hover.settings() == custom && hover.draft() == custom && hover.message() == "Saved",
+              "Hover selects each home button without activating it or clearing feedback");
+    }
+    for (const int action : {PauseUiBack, PauseUiApply, PauseUiDefaults, PauseUiRowBase,
+                            PauseUiDecreaseBase, PauseUiIncreaseBase, -1, 0, std::numeric_limits<int>::max()}) {
+        hover.selectAction(action);
+        check(hover.selected() == 2 && hover.screen() == PauseScreen::Home && hover.message() == "Saved",
+              "Home hover ignores graphics controls and invalid actions");
+    }
+    hover.openGraphics();
+    hover.completeApply(custom, "Applied, but settings could not be saved.");
+    for (int row = 0; row < 8; ++row) {
+        for (const int base : {PauseUiRowBase, PauseUiDecreaseBase, PauseUiIncreaseBase}) {
+            hover.selectAction(base + row);
+            check(hover.selected() == row && hover.screen() == PauseScreen::Graphics
+                  && hover.draft() == custom && hover.settings() == custom
+                  && hover.message() == "Applied, but settings could not be saved.",
+                  "Hovering a label, value, or arrow selects its row without changing settings or errors");
+        }
+    }
+    const std::array footerActions{PauseUiDefaults, PauseUiBack, PauseUiApply};
+    for (int button = 0; button < 3; ++button) {
+        hover.selectAction(footerActions[button]);
+        check(hover.selected() == button + 8 && hover.screen() == PauseScreen::Graphics
+              && hover.draft() == custom && hover.message() == "Applied, but settings could not be saved.",
+              "Hovering footer buttons never resets, leaves, or applies the page");
+    }
+    for (const int action : {PauseUiResume, PauseUiGraphics, PauseUiQuit, 108, 208, 308, -1, 0,
+                            std::numeric_limits<int>::max()}) {
+        hover.selectAction(action);
+        check(hover.selected() == 10 && hover.screen() == PauseScreen::Graphics,
+              "Graphics hover ignores hidden home buttons and invalid controls");
+    }
+    hover.selectAction(PauseUiIncreaseBase + 1);
+    hover.changeSelected(1);
+    const auto hoveredDraft = hover.draft();
+    hover.selectAction(PauseUiBack);
+    check(hover.dirty() && hover.draft() == hoveredDraft && hover.settings() == custom,
+          "Hovering Back preserves pending changes until the player activates it");
+    hover.selectAction(PauseUiRowBase + 2);
+    check(hover.activateSelected() == PauseCommand::None && hover.draft().msaa == 0,
+          "Keyboard activation follows the most recently hovered row");
+    hover.close();
+    for (const int action : {PauseUiResume, PauseUiGraphics, PauseUiQuit, PauseUiBack, PauseUiApply,
+                            PauseUiDefaults, PauseUiRowBase, PauseUiDecreaseBase, PauseUiIncreaseBase}) {
+        hover.selectAction(action);
+        check(hover.selected() == 0 && hover.screen() == PauseScreen::Closed && hover.draft() == custom,
+              "A closed menu ignores stale hover actions");
+    }
     return failures ? 1 : 0;
 }
