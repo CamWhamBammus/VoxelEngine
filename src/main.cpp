@@ -1,6 +1,8 @@
 #include "game.h"
 #include "audio.h"
 #include "input.h"
+#include "pause_menu.h"
+#include "graphics/frame_limiter.h"
 #include "graphics/window.h"
 #include "graphics/benchmark.h"
 #include "graphics/renderer.h"
@@ -10,10 +12,12 @@
 
 #include <GLFW/glfw3.h>
 #include <cmath>
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <thread>
 #include <vector>
 
 int main(int argc, char** argv)
@@ -36,17 +40,32 @@ int main(int argc, char** argv)
         if (options.smokeTest) return voxel::runGraphicsSmokeTest(options);
         if (options.benchmark) return voxel::runRenderBenchmark(options);
 
+        const auto preferences = options.resetGraphics ? voxel::GraphicsSettingsRead{}
+            : voxel::readGraphicsSettings("graphics.cfg");
+        if (!preferences.message.empty()) std::cerr << preferences.message << '\n';
+        auto graphics = voxel::startupGraphicsSettings(options, preferences.settings);
+
         // 2. Create the game and its window. GPU objects must die before the window.
         voxel::Game game(options);
         voxel::Window window;
         voxel::Input input(window.handle());
         voxel::WorldRenderer renderer;
-        renderer.setRenderScale(options.renderScale);
-        renderer.setSamples(options.msaa);
+        const auto applyGraphics = [&](voxel::GraphicsSettings settings) {
+            renderer.setRenderScale(settings.renderScale);
+            renderer.setSamples(settings.msaa);
+            renderer.setLightingQuality(settings.lighting);
+            renderer.setDetailDistance(settings.detail);
+            window.setFullscreen(settings.fullscreen);
+            settings.fullscreen = window.fullscreen();
+            window.setVsync(settings.vsync);
+            return settings;
+        };
+        graphics = applyGraphics(graphics);
+        voxel::PauseMenu pause(graphics);
         voxel::Overlay selection;
         voxel::Hud hud;
         voxel::EncounterAudio audio;
-        std::cout << game.status << "\nH: controls | Q: quit\n";
+        std::cout << game.status << "\nEsc: pause and graphics | H: controls | Q: quit\n";
 
         double previousTime = glfwGetTime();
         double sampleStart = previousTime;
@@ -62,6 +81,7 @@ int main(int argc, char** argv)
                 if (!game.saveAuthoringDraft()) {
                     // Keep the document alive so a failed save can be corrected.
                     std::cerr << (game.devMode() ? game.sectionEditor().message() : game.levelController().message()) << '\n';
+                    pause.completeApply(pause.settings(), "Could not save your draft. Return to the editor to retry.");
                     glfwSetWindowShouldClose(window.handle(), GLFW_FALSE);
                 } else break;
             }
@@ -70,11 +90,45 @@ int main(int argc, char** argv)
             const float deltaSeconds = static_cast<float>(now - previousTime);
             previousTime = now;
 
+            const bool wasPaused = pause.screen() != voxel::PauseScreen::Closed;
             input.update(game.camera, deltaSeconds, game.editorMode(), game.menuOpen(), game.crossingMenuOpen(),
                          game.devMode() || game.levelMenuOpen(), game.devFlying(),
                          (game.devMode() && game.sectionEditor().typing())
-                             || game.levelController().typing(), game.inventoryOpen(), game.skillsOpen());
+                             || game.levelController().typing(), game.inventoryOpen(), game.skillsOpen(), wasPaused);
             auto actions = input.actions();
+            if (actions.pause) pause.open();
+            const bool pauseFrame = wasPaused || actions.pause;
+            if (pauseFrame) {
+                voxel::PauseCommand command = voxel::PauseCommand::None;
+                if (actions.pauseResume) command = pause.dispatch(voxel::PauseUiResume);
+                else if (actions.pauseBack) command = pause.dispatch(pause.screen() == voxel::PauseScreen::Graphics
+                    ? voxel::PauseUiBack : voxel::PauseUiResume);
+                else {
+                    pause.moveSelection(actions.pauseMove.y);
+                    pause.changeSelected(actions.pauseMove.x);
+                    if (actions.pauseActivate) command = pause.activateSelected();
+                    else if (actions.pausePointerPressed) {
+                        int menuWidth, menuHeight;
+                        float menuScaleX, menuScaleY;
+                        window.framebufferSize(menuWidth, menuHeight);
+                        glfwGetWindowContentScale(window.handle(), &menuScaleX, &menuScaleY);
+                        const auto hit = voxel::Hud::pauseClick(pause, menuWidth, menuHeight, menuScaleY,
+                            actions.pausePointer.x * menuWidth, actions.pausePointer.y * menuHeight);
+                        if (hit) command = pause.dispatch(*hit);
+                    }
+                }
+                if (command == voxel::PauseCommand::Quit) glfwSetWindowShouldClose(window.handle(), GLFW_TRUE);
+                else if (command == voxel::PauseCommand::Apply) {
+                    const bool wantedFullscreen = pause.draft().fullscreen;
+                    graphics = applyGraphics(pause.draft());
+                    std::string saveMessage;
+                    const bool saved = voxel::saveGraphicsSettings("graphics.cfg", graphics, saveMessage);
+                    if (!saved) std::cerr << saveMessage << '\n';
+                    pause.completeApply(graphics, !saved ? "Applied for this session; could not save graphics.cfg."
+                        : wantedFullscreen != graphics.fullscreen ? "Saved. Fullscreen is unavailable on this display."
+                        : "Settings saved.");
+                }
+            }
             if (game.skillsOpen() && actions.skillPointerPressed) {
                 int menuWidth, menuHeight;
                 float menuScaleX, menuScaleY;
@@ -118,8 +172,10 @@ int main(int argc, char** argv)
                     : voxel::Hud::sectionClick(game, menuWidth, menuHeight, menuScaleY,
                         actions.devPointer.x * menuWidth, actions.devPointer.y * menuHeight);
             }
-            game.update(actions, deltaSeconds);
-            audio.update(game.encounters(),game.camera.position(),game.camera.forward());
+            if (!pauseFrame) {
+                game.update(actions, deltaSeconds);
+                audio.update(game.encounters(),game.camera.position(),game.camera.forward());
+            }
             const bool holdLantern = game.healthVisible() && !game.health().dead() && !game.skillsOpen()
                 && game.equipment.selectedTool() == voxel::Tool::Lantern;
             const bool holdCompass = game.healthVisible() && !game.health().dead() && !game.skillsOpen()
@@ -155,21 +211,21 @@ int main(int argc, char** argv)
                             game.equipment.swordTier, game.equipment.pickaxeTier);
             float scaleX, scaleY;
             glfwGetWindowContentScale(window.handle(), &scaleX, &scaleY);
-            if (input.captured() && !game.menuOpen()) {
+            if (!pauseFrame && input.captured() && !game.menuOpen()) {
                 selection.draw(game.target, viewCamera, width, height, scaleY,
                                game.target ? game.world.get(game.target->position) : voxel::Block::Air);
             }
-            if (game.devMode() && game.sectionEditor().hasSection() && !game.devMenuOpen())
+            if (!pauseFrame && game.devMode() && game.sectionEditor().hasSection() && !game.devMenuOpen())
                 selection.drawSection(game.sectionEditor().meta(), game.sectionEditor().placementPreview(),
                                       game.devFlying() ? game.sectionEditor().targetedAsset() : std::nullopt,
                                       viewCamera, width, height, static_cast<float>(now));
-            if (game.devFlying() && !game.devMenuOpen()) {
+            if (!pauseFrame && game.devFlying() && !game.devMenuOpen()) {
                 selection.drawBuildTools(game.sectionEditor(), viewCamera, width, height,
                                          static_cast<float>(now));
                 selection.drawSpawnerLinks(game.sectionEditor(), viewCamera, width, height,
                                            static_cast<float>(now));
             }
-            if (game.levelActive() && !game.levelMenuOpen())
+            if (!pauseFrame && game.levelActive() && !game.levelMenuOpen())
                 selection.drawSection(game.levelController().meta(), {}, {}, viewCamera, width, height,
                                       static_cast<float>(now));
 
@@ -196,6 +252,9 @@ int main(int argc, char** argv)
                     sampleFrames = 0;
                 }
             }
+            if (pause.screen() != voxel::PauseScreen::Closed) {
+                hud.drawPause(pause, width, height, scaleY);
+            } else {
             hud.drawCombat(game,width,height,scaleY);
             hud.drawMining(game,width,height,scaleY);
             if (game.monsterPreviewActive()) hud.drawMonsters(game, width, height, scaleY);
@@ -207,7 +266,10 @@ int main(int argc, char** argv)
             hud.drawSkills(game,width,height,scaleY);
             if (!game.menuOpen() && (game.editorMode() || input.helpVisible() || !input.captured()))
                 hud.draw(statusText, width, height, scaleY);
+            }
             window.present();
+            const double wait = voxel::frameSleepSeconds(now, glfwGetTime(), pause.settings().fpsLimit);
+            if (wait > 0) std::this_thread::sleep_for(std::chrono::duration<double>(wait));
         }
         return EXIT_SUCCESS;
     } catch (const std::exception& error) {
