@@ -6,7 +6,9 @@
 #include "section_presets.h"
 #include "graphics/held_compass.h"
 #include "graphics/journal_book.h"
+#include "graphics/graphics_menu_layout.h"
 #include "level_editor.h"
+#include "pause_menu.h"
 
 #include <algorithm>
 #include <array>
@@ -2111,6 +2113,139 @@ std::optional<int> Hud::skillClick(const Game& game,int framebufferWidth,int fra
 {
     if (!game.skillsOpen() || framebufferWidth<=0 || framebufferHeight<=0) return std::nullopt;
     return journalLayout(framebufferWidth,framebufferHeight,contentScale).hit(x,y);
+}
+
+void Hud::drawPause(const PauseMenu& menu,int framebufferWidth,int framebufferHeight,float contentScale)
+{
+    const auto layout=pauseMenuLayout(menu.screen(),framebufferWidth,framebufferHeight,contentScale);
+    if(layout.scale<=0) return;
+    Drawing out(layout.width,layout.height,layout.scale);
+    const auto panel=layout.panel;
+    const float x=panel.x,y=panel.y;
+    const bool graphics=menu.screen()==PauseScreen::Graphics;
+    out.quad(0,0,layout.width,layout.height,{.012f,.017f,.014f,.64f});
+    out.frame(x-5,y+3,panel.width+10,panel.height+7,{.015f,.012f,.008f,.45f},
+              {.015f,.012f,.008f,.45f},5);
+    out.frame(x,y,panel.width,panel.height,{.32f,.28f,.19f,1},Panel,4);
+    out.quad(x+1,y+1,panel.width-2,2,{.51f,.40f,.23f,1});
+    out.text(graphics?"GRAPHICS":"PAUSED",x+28,y+29,3,Cream);
+    out.quad(x+28,y+75,panel.width-56,1,Edge);
+
+    const auto button=[&](const GraphicsMenuControl& control,std::string_view label,bool primary=false) {
+        const auto r=control.rect;
+        const bool selected=menu.selected()==control.selection;
+        out.frame(r.x,r.y,r.width,r.height,selected?Gold:Edge,
+                  selected?Selected:primary?glm::vec4(.13f,.18f,.12f,1):Canvas,3);
+        out.centered(label,r.x+r.width*.5f,r.y+(r.height-7*out.fontPixel(2))*.5f,2,
+                     selected?Gold:primary?Leaf:Cream);
+    };
+    if(!graphics) {
+        constexpr std::array<std::string_view,3> labels{"RESUME","GRAPHICS","QUIT"};
+        for(const auto& control:layout.controls) button(control,labels[control.selection]);
+        out.centered("ESC / TAB  RESUME",x+panel.width*.5f,y+294,1.3f,Muted);
+        render(out,shader_,vao_,buffer_);
+        return;
+    }
+
+    const auto& settings=menu.draft();
+    const auto presetName=[](GraphicsPreset preset)->std::string_view {
+        switch(preset) {
+        case GraphicsPreset::Low:return "LOW";
+        case GraphicsPreset::Medium:return "MEDIUM";
+        case GraphicsPreset::High:return "HIGH";
+        case GraphicsPreset::Custom:return "CUSTOM";
+        }
+        return "CUSTOM";
+    };
+    const auto lightingName=[](LightingQuality quality)->std::string_view {
+        switch(quality) {
+        case LightingQuality::Low:return "LOW";
+        case LightingQuality::Medium:return "MEDIUM";
+        case LightingQuality::High:return "HIGH";
+        }
+        return "HIGH";
+    };
+    const auto detailName=[](DetailDistance distance)->std::string_view {
+        switch(distance) {
+        case DetailDistance::Near:return "NEAR";
+        case DetailDistance::Medium:return "MEDIUM";
+        case DetailDistance::Far:return "FAR";
+        }
+        return "FAR";
+    };
+    const std::array<std::string,8> values{{std::string(presetName(graphicsPreset(settings))),
+        std::to_string(int(std::lround(settings.renderScale*100)))+"%",
+        settings.msaa?std::to_string(settings.msaa)+"X":"OFF",
+        std::string(lightingName(settings.lighting)),std::string(detailName(settings.detail)),
+        settings.fullscreen?"ON":"OFF",settings.vsync?"ON":"OFF",
+        settings.fpsLimit?std::to_string(settings.fpsLimit)+" FPS":"UNLIMITED"}};
+    constexpr std::array<std::string_view,8> labels{{"QUALITY PRESET","RENDER SCALE","ANTIALIASING",
+        "LIGHTING","DETAIL DISTANCE","FULLSCREEN","VSYNC","FRAME LIMIT"}};
+    constexpr std::array<std::string_view,11> descriptions{{
+        "Changes scene quality together. Display settings stay as you set them.",
+        "Lower resolution improves performance. Menus stay sharp.",
+        "Smooths jagged edges. Lower settings use less graphics power.",
+        "Adjusts shadow softness and cost. Light sources remain visible.",
+        "Changes distant surface detail in the hub. Buildings stay visible.",
+        "Uses the full display. Turning this off restores your window.",
+        "Syncs frames to your display to prevent screen tearing.",
+        "Limits rendering speed. VSync may set a lower limit.",
+        "Restores the default choices. Apply to use them.",
+        "Returns to Pause and discards unapplied changes.",
+        "Applies these choices now and saves them for next time."}};
+    for(int row=0;row<8;++row) {
+        const auto r=layout.row(row);
+        const bool selected=menu.selected()==row;
+        if(selected) {
+            out.quad(r.x,r.y,r.width,r.height,Selected);
+            out.quad(r.x,r.y,2,r.height,Gold);
+        } else out.quad(r.x,r.y+r.height-1,r.width,1,{.19f,.19f,.15f,.6f});
+        out.text(labels[row],r.x+12,r.y+(r.height-7*out.fontPixel(2))*.5f,2,selected?Cream:Muted);
+    }
+    for(const auto& control:layout.controls) {
+        const auto r=control.rect;
+        if(control.action>=PauseUiRowBase && control.action<PauseUiRowBase+8) continue;
+        if(control.selection>=8) {
+            const auto label=control.action==PauseUiDefaults?"RESET DEFAULTS":
+                             control.action==PauseUiBack?"BACK":"APPLY";
+            button(control,label,control.action==PauseUiApply);
+            continue;
+        }
+        const bool selected=menu.selected()==control.selection;
+        const bool arrow=r.width==36;
+        const auto label=arrow?(control.action>=PauseUiIncreaseBase?">":"<"):
+                               std::string_view(values[control.selection]);
+        if(arrow) out.frame(r.x+3,r.y+3,r.width-6,r.height-6,selected?Edge:glm::vec4(.19f,.18f,.14f,1),
+                           selected?Selected:Panel,2);
+        out.centered(label,r.x+r.width*.5f,r.y+(r.height-7*out.fontPixel(2))*.5f,2,
+                     selected?Gold:arrow?Muted:Cream);
+    }
+    const auto paragraph=[&](std::string_view text,float top,glm::vec4 color,int maximumLines) {
+        const float pixel=out.fontPixel(1.3f);
+        const auto capacity=std::size_t((panel.width-64)/(6*pixel));
+        for(int line=0;line<maximumLines && !text.empty();++line) {
+            std::size_t length=std::min(text.size(),capacity);
+            if(length<text.size()) {
+                const auto space=text.rfind(' ',length);
+                if(space!=std::string_view::npos && space>0) length=space;
+            }
+            out.text(text.substr(0,length),x+32,top+line*(7*pixel+5),pixel,color);
+            text.remove_prefix(length);
+            while(!text.empty() && text.front()==' ') text.remove_prefix(1);
+        }
+    };
+    paragraph(descriptions[std::clamp(menu.selected(),0,10)],y+461,Muted,2);
+    if(!menu.message().empty()) paragraph(menu.message(),y+507,Cream,2);
+    else paragraph(menu.dirty()?"UNAPPLIED CHANGES":"CHANGES TAKE EFFECT WHEN YOU APPLY",y+507,
+                   menu.dirty()?Gold:Muted,1);
+    out.centered("ARROWS  CHANGE     ENTER  SELECT     ESC  BACK",x+panel.width*.5f,y+609,1.3f,Muted);
+    render(out,shader_,vao_,buffer_);
+}
+
+std::optional<int> Hud::pauseClick(const PauseMenu& menu,int framebufferWidth,int framebufferHeight,
+                                  float contentScale,float x,float y)
+{
+    return pauseMenuLayout(menu.screen(),framebufferWidth,framebufferHeight,contentScale).hit(x,y);
 }
 
 } // namespace voxel

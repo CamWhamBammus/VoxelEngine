@@ -8,6 +8,7 @@
 
 namespace voxel {
 class Game;
+class PauseMenu;
 
 inline constexpr int InventoryUiSlotBase = 0;
 inline constexpr int InventoryUiLootBase = 100;
@@ -57,6 +58,11 @@ public:
     void drawSkills(const Game& game, int framebufferWidth, int framebufferHeight,
                     float contentScale = 1.0f);
     static std::optional<int> skillClick(const Game& game, int framebufferWidth,
+                                        int framebufferHeight, float contentScale,
+                                        float x, float y);
+    void drawPause(const PauseMenu& menu, int framebufferWidth, int framebufferHeight,
+                   float contentScale = 1.0f);
+    static std::optional<int> pauseClick(const PauseMenu& menu, int framebufferWidth,
                                         int framebufferHeight, float contentScale,
                                         float x, float y);
 
