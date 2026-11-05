@@ -58,7 +58,6 @@ void applyGraphicsPreset(GraphicsSettings& settings, GraphicsPreset preset)
 
 GraphicsPreset graphicsPreset(const GraphicsSettings& settings)
 {
-    if (!validGraphicsSettings(settings)) return GraphicsPreset::Custom;
     for (const auto preset : {GraphicsPreset::Low, GraphicsPreset::Medium, GraphicsPreset::High}) {
         auto expected = settings;
         applyGraphicsPreset(expected, preset);
