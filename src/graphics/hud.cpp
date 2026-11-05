@@ -2142,7 +2142,7 @@ void Hud::drawPause(const PauseMenu& menu,int framebufferWidth,int framebufferHe
     if(!graphics) {
         constexpr std::array<std::string_view,3> labels{"RESUME","GRAPHICS","QUIT"};
         for(const auto& control:layout.controls) button(control,labels[control.selection]);
-        out.centered("ESC / TAB  RESUME",x+panel.width*.5f,y+294,1.3f,Muted);
+        out.centered("ESC / TAB  RESUME",x+panel.width*.5f,y+294,1.5f,Muted);
         render(out,shader_,vao_,buffer_);
         return;
     }
@@ -2206,7 +2206,7 @@ void Hud::drawPause(const PauseMenu& menu,int framebufferWidth,int framebufferHe
         const auto r=control.rect;
         if(control.action>=PauseUiRowBase && control.action<PauseUiRowBase+8) continue;
         if(control.selection>=8) {
-            const auto label=control.action==PauseUiDefaults?"RESET DEFAULTS":
+            const auto label=control.action==PauseUiDefaults?"DEFAULTS":
                              control.action==PauseUiBack?"BACK":"APPLY";
             button(control,label,control.action==PauseUiApply);
             continue;
@@ -2221,7 +2221,7 @@ void Hud::drawPause(const PauseMenu& menu,int framebufferWidth,int framebufferHe
                      selected?Gold:arrow?Muted:Cream);
     }
     const auto paragraph=[&](std::string_view text,float top,glm::vec4 color,int maximumLines) {
-        const float pixel=out.fontPixel(1.3f);
+        const float pixel=out.fontPixel(1.5f);
         const auto capacity=std::size_t((panel.width-64)/(6*pixel));
         for(int line=0;line<maximumLines && !text.empty();++line) {
             std::size_t length=std::min(text.size(),capacity);
@@ -2238,7 +2238,8 @@ void Hud::drawPause(const PauseMenu& menu,int framebufferWidth,int framebufferHe
     if(!menu.message().empty()) paragraph(menu.message(),y+507,Cream,2);
     else paragraph(menu.dirty()?"UNAPPLIED CHANGES":"CHANGES TAKE EFFECT WHEN YOU APPLY",y+507,
                    menu.dirty()?Gold:Muted,1);
-    out.centered("ARROWS  CHANGE     ENTER  SELECT     ESC  BACK",x+panel.width*.5f,y+609,1.3f,Muted);
+    out.centered(panel.width*layout.scale<300?"ARROWS CHANGE / ESC BACK":
+                 "ARROWS  CHANGE     ENTER  SELECT     ESC  BACK",x+panel.width*.5f,y+609,1.5f,Muted);
     render(out,shader_,vao_,buffer_);
 }
 
