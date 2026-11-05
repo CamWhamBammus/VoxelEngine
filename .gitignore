@@ -6,6 +6,8 @@ build-*/
 *.vxs
 *.vlevel
 .voxel-progress-*
+graphics.cfg
+.voxel-graphics-*
 cmake-build-*/
 
 # CMake generated files

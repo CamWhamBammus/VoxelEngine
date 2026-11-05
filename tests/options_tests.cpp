@@ -11,6 +11,25 @@ int main()
         if (!ok) { std::cerr << message << '\n'; ++failures; }
     };
     const auto defaults = voxel::parseOptions({});
+    voxel::GraphicsSettings saved;
+    voxel::applyGraphicsPreset(saved, voxel::GraphicsPreset::Low);
+    saved.fullscreen = true;
+    saved.fpsLimit = 60;
+    check(voxel::startupGraphicsSettings(defaults, saved) == saved, "ordinary launches retain saved preferences");
+    const std::vector<std::string_view> overrideArgs{"--render-scale", "1", "--msaa", "4"};
+    const auto overridden = voxel::startupGraphicsSettings(voxel::parseOptions(overrideArgs), saved);
+    check(overridden.renderScale == 1 && overridden.msaa == 4 && overridden.fullscreen
+        && overridden.fpsLimit == 60 && overridden.lighting == saved.lighting,
+        "explicit full-quality arguments override saved values without resetting unrelated settings");
+    for (auto flag : {"--reset-graphics", "--smoke-test", "--benchmark"}) {
+        const std::vector<std::string_view> args{flag};
+        check(voxel::startupGraphicsSettings(voxel::parseOptions(args), saved) == voxel::GraphicsSettings{},
+              "recovery and automated checks start with deterministic defaults");
+    }
+    const std::vector<std::string_view> recoveryArgs{"--reset-graphics", "--render-scale", "0.75"};
+    const auto recovery = voxel::startupGraphicsSettings(voxel::parseOptions(recoveryArgs), saved);
+    check(!recovery.fullscreen && recovery.renderScale == .75f && recovery.msaa == 4,
+          "recovery can still use explicit command-line graphics overrides");
     check(defaults.seed == 1337 && defaults.editReach == 8 && !defaults.smokeTest && !defaults.worldExplicit
           && !defaults.editor && defaults.rootCrossing == -1 && !defaults.benchmark
           && defaults.renderScale == 1.0f && defaults.msaa == 4, "default options start a fresh game at native resolution");

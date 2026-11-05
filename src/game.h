@@ -3,6 +3,7 @@
 #include "camera.h"
 #include "editing.h"
 #include "equipment.h"
+#include "graphics_settings.h"
 #include "encounters.h"
 #include "health.h"
 #include "level_editor.h"
@@ -39,6 +40,8 @@ struct Options {
     bool benchmark = false;
     float renderScale = 1.0f;
     int msaa = 4;
+    bool renderScaleExplicit = false, msaaExplicit = false;
+    bool resetGraphics = false;
     bool help = false;
     bool worldExplicit = false;
     std::string screenshot;
@@ -58,6 +61,7 @@ inline constexpr const char* Usage =
     "  --reach N          Editor reach in blocks, 1 to 64 (default: 8).\n"
     "  --render-scale N   World resolution, 0.5 to 1 (default: 1); UI stays sharp.\n"
     "  --msaa N           Antialiasing samples: 0, 2, or 4 (default: 4).\n"
+    "  --reset-graphics  Ignore saved graphics preferences for this launch.\n"
     "  --benchmark        Measure fixed village views without loading game progress.\n"
     "  --smoke-test       Check rendering in a hidden window, then exit.\n"
     "  --screenshot path.ppm\n"
@@ -75,6 +79,7 @@ inline constexpr const char* Usage =
     "  VoxelEngine --editor --world my-world.vxl\n"
     "  VoxelEngine --seed 42 --screenshot terrain.ppm\n";
 Options parseOptions(std::span<const std::string_view> arguments);
+GraphicsSettings startupGraphicsSettings(const Options& options, GraphicsSettings saved);
 
 struct InputActions;
 

@@ -17,6 +17,14 @@
 
 namespace voxel {
 
+GraphicsSettings startupGraphicsSettings(const Options& options, GraphicsSettings saved)
+{
+    if (options.resetGraphics || options.smokeTest || options.benchmark) saved = {};
+    if (options.renderScaleExplicit) saved.renderScale = options.renderScale;
+    if (options.msaaExplicit) saved.msaa = options.msaa;
+    return saved;
+}
+
 Options parseOptions(std::span<const std::string_view> arguments)
 {
     Options options;
@@ -36,6 +44,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
         else if (argument == "--level-creator") options.levelCreator = true;
         else if (argument == "--smoke-test") options.smokeTest = true;
         else if (argument == "--benchmark") options.benchmark = true;
+        else if (argument == "--reset-graphics") options.resetGraphics = true;
         else if (argument == "--seed") {
             options.seedExplicit = true;
             const auto seed = value();
@@ -60,6 +69,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
                 throw std::invalid_argument("Editing reach must be an integer from 1 to 64");
             }
         } else if (argument == "--render-scale") {
+            options.renderScaleExplicit = true;
             const auto scale = value();
             // Apple's C++20 library does not provide floating-point from_chars.
             // A classic locale keeps decimal settings independent of system locale.
@@ -71,6 +81,7 @@ Options parseOptions(std::span<const std::string_view> arguments)
                 throw std::invalid_argument("Render scale must be a number from 0.5 to 1");
             }
         } else if (argument == "--msaa") {
+            options.msaaExplicit = true;
             const auto samples = value();
             const auto result = std::from_chars(samples.data(), samples.data() + samples.size(), options.msaa);
             if (result.ec != std::errc{} || result.ptr != samples.data() + samples.size()
