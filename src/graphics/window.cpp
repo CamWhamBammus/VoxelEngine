@@ -3,6 +3,7 @@
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -38,7 +39,8 @@ Window::Window(bool visible)
     }
     // GLEW may probe a legacy extension query in a core profile.
     while (glGetError() != GL_NO_ERROR) {}
-    glfwSwapInterval(visible ? 1 : 0);
+    vsync_ = visible;
+    glfwSwapInterval(vsync_ ? 1 : 0);
     glfwSetFramebufferSizeCallback(window_, [](GLFWwindow*, int width, int height) {
         glViewport(0, 0, width, height);
     });
@@ -59,5 +61,54 @@ void Window::framebufferSize(int& width, int& height) const
     glfwGetFramebufferSize(window_, &width, &height);
 }
 void Window::present() const { glfwSwapBuffers(window_); }
+
+bool Window::fullscreen() const { return glfwGetWindowMonitor(window_) != nullptr; }
+
+void Window::setVsync(bool enabled)
+{
+    if (vsync_ == enabled) return;
+    glfwSwapInterval(enabled ? 1 : 0);
+    vsync_ = enabled;
+}
+
+bool Window::setFullscreen(bool enabled)
+{
+    if (fullscreen() == enabled) return true;
+    if (!enabled) {
+        glfwSetWindowMonitor(window_, nullptr, windowedX_, windowedY_,
+                             windowedWidth_, windowedHeight_, GLFW_DONT_CARE);
+        if (fullscreen()) return false;
+        if (windowedMaximized_) glfwMaximizeWindow(window_);
+        return true;
+    }
+
+    int x, y, width, height;
+    glfwGetWindowPos(window_, &x, &y);
+    glfwGetWindowSize(window_, &width, &height);
+    int monitorCount = 0;
+    auto monitors = glfwGetMonitors(&monitorCount);
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    int largestOverlap = 0;
+    // Follow the monitor containing most of the window, instead of always
+    // moving a game opened on an external screen to the laptop display.
+    for (int i = 0; i < monitorCount; ++i) {
+        const auto mode = glfwGetVideoMode(monitors[i]);
+        if (!mode) continue;
+        int monitorX, monitorY;
+        glfwGetMonitorPos(monitors[i], &monitorX, &monitorY);
+        const int overlapWidth = std::max(0, std::min(x + width, monitorX + mode->width) - std::max(x, monitorX));
+        const int overlapHeight = std::max(0, std::min(y + height, monitorY + mode->height) - std::max(y, monitorY));
+        const int overlap = overlapWidth * overlapHeight;
+        if (overlap > largestOverlap) { monitor = monitors[i]; largestOverlap = overlap; }
+    }
+    if (!monitor) return false;
+    const auto mode = glfwGetVideoMode(monitor);
+    if (!mode) return false;
+    windowedX_ = x; windowedY_ = y;
+    windowedWidth_ = std::max(width, 1); windowedHeight_ = std::max(height, 1);
+    windowedMaximized_ = glfwGetWindowAttrib(window_, GLFW_MAXIMIZED) == GLFW_TRUE;
+    glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+    return fullscreen();
+}
 
 } // namespace voxel
