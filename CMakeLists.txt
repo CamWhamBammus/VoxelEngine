@@ -17,6 +17,9 @@ endfunction()
 
 # Game logic and CPU mesh generation can be tested without an OpenGL window.
 add_library(VoxelCore
+    src/graphics_settings.cpp
+    src/pause_menu.cpp
+    src/graphics/graphics_menu_layout.cpp
     src/game.cpp
     src/game_equipment.cpp
     src/skills.cpp
@@ -111,6 +114,8 @@ if(VOXEL_BUILD_APP)
         src/graphics/palette_previews.cpp
         tests/graphics_smoke.cpp
         tests/render_scale_smoke.cpp
+        tests/graphics_quality_smoke.cpp
+        tests/graphics_menu_smoke.cpp
         tests/light_grid_smoke.cpp
         tests/water_graphics_smoke.cpp
         tests/hud_play_smoke.cpp
@@ -147,6 +152,7 @@ include(CTest)
 if(BUILD_TESTING)
     foreach(test_name IN ITEMS
         chunk mesh terrain camera world raycast editor options equipment world_codec ore_blocks light_grid detail_lod chunk_revision light_shadows
+        graphics_settings pause_menu graphics_menu_layout frame_limiter
         edit_history world_io greedy_mesh frustum world_session edit_shortcuts game scene player play cave_details block_relief hub_assets
         root_crossings root_crossing_game asset_collision asset_game
         sections section_editor section_tools section_build_tools section_gap_tools

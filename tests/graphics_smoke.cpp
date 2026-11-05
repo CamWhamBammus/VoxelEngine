@@ -1,5 +1,7 @@
 #include "graphics_smoke.h"
 #include "render_scale_smoke.h"
+#include "graphics_quality_smoke.h"
+#include "graphics_menu_smoke.h"
 #include "light_grid_smoke.h"
 #include "water_graphics_smoke.h"
 #include "hud_play_smoke.h"
@@ -1526,6 +1528,8 @@ int runGraphicsSmokeTest(const Options& options)
     verifyGpuResources();
     verifyPostProcessing();
     verifyRenderScale();
+    verifyGraphicsQuality();
+    verifyGraphicsMenu();
     int width, height;
     window.framebufferSize(width, height);
     verifyCrosshair(width, height);
