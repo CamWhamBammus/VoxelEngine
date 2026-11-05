@@ -150,6 +150,7 @@ uniform int monsterCount;
 uniform vec3 monsterFeet[3];
 uniform int lightCount;
 uniform int lightGridEnabled;
+uniform int shadowSamples;
 uniform usampler3D lightRanges;
 uniform usampler2D lightIndices;
 uniform vec3 lightGridMinimum;
@@ -170,6 +171,9 @@ vec4 lightData(int index, int part) {
 
 float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) {
     float centerVisibility = visibleLight(start, center);
+    // Even the cheapest setting keeps the real visibility ray. Disabling
+    // occlusion would light sealed caves and let lamps shine through walls.
+    if (shadowSamples <= 1) return centerVisibility;
     // Fade in area samples for influential lights without a hard rank cutoff.
     // All endpoints stay inside the emitting voxel, so fully blocked walls
     // remain dark while nearby shadow edges gain a narrow penumbra.
@@ -178,6 +182,8 @@ float lightVisibility(vec3 start, vec3 center, vec3 direction, float influence) 
     vec3 axis = abs(direction.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
     vec3 tangent = normalize(cross(direction, axis));
     vec3 offset = tangent * 0.22 + cross(direction, tangent) * 0.12;
+    if (shadowSamples == 2)
+        return centerVisibility * (1.0 - softness) + softness * visibleLight(start, center + offset);
     return centerVisibility * (1.0 - 2.0 * softness) + softness * visibleLight(start, center + offset)
          + softness * visibleLight(start, center - offset);
 }
@@ -382,6 +388,13 @@ WorldRenderer::~WorldRenderer()
     glDeleteTextures(1, &lightTexture_);
     glDeleteTextures(1, &lightRanges_);
     glDeleteTextures(1, &lightIndices_);
+}
+
+void WorldRenderer::setLightingQuality(LightingQuality quality)
+{
+    if (quality != LightingQuality::Low && quality != LightingQuality::Medium && quality != LightingQuality::High)
+        throw std::invalid_argument("Unknown lighting quality");
+    lightingQuality_ = quality;
 }
 
 void WorldRenderer::uploadLights(const World& world)
@@ -713,6 +726,8 @@ void WorldRenderer::render(const World& world, const Camera& camera, int width, 
     shader_.setVec3("lightGridMinimum",glm::vec3(World::Min)-HubAssetMargin);
     shader_.setInt("lightCount",underground ? static_cast<int>(lights_.size()) : 0);
     shader_.setInt("lightGridEnabled",lightGridEnabled_);
+    shader_.setInt("shadowSamples", lightingQuality_ == LightingQuality::Low ? 1
+        : lightingQuality_ == LightingQuality::Medium ? 2 : 3);
     shader_.setVec3("worldMinimum", glm::vec3(World::Min));
     visibleChunks_ = drawnTriangles_ = pickupTriangles_ = monsterTriangles_ = 0;
     heldSwordTriangles_ = heldPickaxeTriangles_ = heldLanternTriangles_ = heldCompassTriangles_ = 0;

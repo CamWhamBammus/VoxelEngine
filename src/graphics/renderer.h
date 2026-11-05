@@ -5,6 +5,7 @@
 #include "graphics/light_grid.h"
 #include "graphics/detail_lod.h"
 #include "graphics/held_compass.h"
+#include "graphics_settings.h"
 #include "world.h"
 #include "editing.h"
 #include "hub_assets.h"
@@ -29,6 +30,7 @@ public:
     ~WorldRenderer();
     void setRenderScale(float scale) { postProcess_.setRenderScale(scale); }
     void setSamples(int samples) { postProcess_.setSamples(samples); }
+    void setLightingQuality(LightingQuality quality);
     // Reference path for comparing the spatial light lookup against every source.
     void setLightGridEnabled(bool enabled) { lightGridEnabled_ = enabled; }
     void render(const World& world, const Camera& camera, int width, int height, bool wireframe,
@@ -87,6 +89,7 @@ private:
     bool hubAssets_ = true;
     bool hubLighting_ = false;
     bool lightGridEnabled_ = true;
+    LightingQuality lightingQuality_ = LightingQuality::High;
     std::vector<HubAsset> placedAssets_;
 };
 
